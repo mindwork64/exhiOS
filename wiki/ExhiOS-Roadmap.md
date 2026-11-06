@@ -100,7 +100,7 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] Non-blocking `try_read_byte` and polling `read_byte_blocking` for the future serial shell.
 - [x] Kernel boot diagnostics use `serial::COM1`; direct COM1 port I/O was removed from `main.rs`.
 - [x] Headless QEMU/OVMF boot regression: [run 42257896620](https://github.com/mindwork64/exhiOS/actions/runs/42257896620), including the P2.6 guard-page/#DF/IST1 check.
-- [ ] Latest RX code CI runtime regression: [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) still running at this snapshot.
+- [x] RX-inclusive code CI build + headless QEMU/OVMF regression: [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) passed; boot log includes P3.1 readiness marker and retains P2.6 guard-page/#DF/IST1 success.
 - [ ] Local Linux Mint/QEMU and actual interactive serial receive test.
 
 ### P3.2 — Framebuffer console
