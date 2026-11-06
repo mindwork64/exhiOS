@@ -272,6 +272,8 @@ fn main() -> Status {
         descriptor_size: memory_map_meta.desc_size as u32,
         descriptor_version: memory_map_meta.desc_version,
     };
+    final_boot_info.kernel_stack_base = stack_pages.as_ptr() as u64;
+    final_boot_info.kernel_stack_size = stack_bytes as u64;
 
     // SAFETY: BootInfo resides in a dedicated LOADER_DATA page allocated before
     // ExitBootServices and remains writable by the loader and the kernel.
