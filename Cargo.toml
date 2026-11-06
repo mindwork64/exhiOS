@@ -1,5 +1,5 @@
 [workspace]
-members = ["exhi-abi", "exhi-elf", "exhi-boot", "exhi-kernel", "exhi-memory", "exhi-heap"]
+members = ["exhi-abi", "exhi-elf", "exhi-boot", "exhi-kernel", "exhi-memory", "exhi-heap", "exhi-console"]
 resolver = "2"
 
 [workspace.package]
@@ -12,6 +12,7 @@ exhi-abi = { path = "exhi-abi" }
 exhi-elf = { path = "exhi-elf" }
 exhi-memory = { path = "exhi-memory" }
 exhi-heap = { path = "exhi-heap" }
+exhi-console = { path = "exhi-console" }
 
 [profile.dev]
 panic = "abort"
