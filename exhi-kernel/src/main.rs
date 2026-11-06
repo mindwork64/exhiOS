@@ -4,7 +4,7 @@
 mod arch;
 mod memory;
 
-use arch::x86_64::{gdt, idt, pic};
+use arch::x86_64::{gdt, idt, paging, pic};
 use core::arch::asm;
 use core::hint::spin_loop;
 use core::panic::PanicInfo;
@@ -170,7 +170,53 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             };
             serial_write(b"Physical allocator smoke test: allocated, freed and reused page 0x");
             serial_write_hex(reused_page);
-            serial_write(b"\r\nP2: physical page allocator ready.\r\n");
+            serial_write(b"\r\nP2.1: physical page allocator ready.\r\n");
+
+            serial_write(b"P2.2: building kernel-owned bootstrap page tables.\r\n");
+            let paging_status = match paging::initialize_identity_map_4g(info) {
+                Ok(status) => status,
+                Err(error) => {
+                    serial_write(b"P2.2: page-table initialization failed: ");
+                    serial_write(error.message());
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+
+            serial_write(b"Page-table root (PML4): 0x");
+            serial_write_hex(paging_status.root_address);
+            serial_write(b"\r\nActive CR3: 0x");
+            serial_write_hex(paging_status.active_cr3);
+            serial_write(b"\r\nPage-table pages: 0x");
+            serial_write_hex(paging_status.table_pages);
+            serial_write(b"\r\nIdentity-mapped bytes: 0x");
+            serial_write_hex(paging_status.mapped_bytes);
+            serial_write(b"\r\nLarge-page size: 0x");
+            serial_write_hex(paging_status.large_page_size);
+            serial_write(b"\r\nVerified address ranges: 0x");
+            serial_write_hex(paging_status.verified_ranges);
+            serial_write(b"\r\nVerified stack address: 0x");
+            serial_write_hex(paging_status.verified_stack_address);
+
+            let kernel_address = _start as *const () as u64;
+            let translated_kernel = match paging::translate_current(kernel_address) {
+                Ok(address) => address,
+                Err(error) => {
+                    serial_write(b"\r\nP2.2: kernel address translation failed: ");
+                    serial_write(error.message());
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+            serial_write(b"\r\nKernel entry translation: 0x");
+            serial_write_hex(translated_kernel);
+
+            if translated_kernel != kernel_address {
+                serial_write(b"\r\nP2.2: kernel identity translation mismatch.\r\n");
+                halt_forever();
+            }
+
+            serial_write(b"\r\nP2.2: kernel page tables active; CR3 and identity mappings verified.\r\n");
         } else {
             serial_write(b"BootInfo: invalid; cannot initialize physical memory.\r\n");
             halt_forever();
