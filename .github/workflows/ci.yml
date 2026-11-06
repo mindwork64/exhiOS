@@ -34,6 +34,8 @@ jobs:
         run: cargo test -p exhi-console
       - name: Test keyboard input queue and Set 1 decoder
         run: cargo test -p exhi-input
+      - name: Test driver registry
+        run: cargo test -p exhi-driver
 
       - name: Build UEFI application
         run: cargo build -p exhi-boot --target x86_64-unknown-uefi

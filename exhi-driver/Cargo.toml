@@ -1,0 +1,6 @@
+[package]
+name = "exhi-driver"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

@@ -2,7 +2,14 @@ use core::arch::{asm, global_asm};
 use core::hint::spin_loop;
 use core::ptr;
 
+use exhi_driver::{DriverClass, DriverDescriptor, DriverId};
 use exhi_input::{KeyEvent, KeyboardDecoder, EXHIOS_KEYBOARD_SCANCODE_QUEUE};
+
+pub const DRIVER: DriverDescriptor = DriverDescriptor::new(
+    DriverId::Ps2Keyboard,
+    DriverClass::Input,
+    "i8042 PS/2 keyboard",
+);
 
 use super::pic;
 

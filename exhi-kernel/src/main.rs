@@ -9,6 +9,7 @@ mod memory;
 use arch::x86_64::{address_space, framebuffer, gdt, idt, keyboard, paging, pic, serial, stack_guard, timer, vmm};
 use console::KernelConsole;
 use exhi_console::Color;
+use exhi_driver::{DriverRegistry, DriverState, RegistryError};
 use core::arch::asm;
 use core::panic::PanicInfo;
 
@@ -112,6 +113,14 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial::COM1.write(b"PIC: remap sequence issued; all IRQ masks verified.\r\n");
     serial::COM1.write(b"Interrupt flag remains clear until IRQ handlers are installed.\r\n");
+
+    let mut driver_registry = match register_builtin_drivers() {
+        Ok(registry) => registry,
+        Err(_) => {
+            serial::COM1.write(b"P3.5: built-in driver registration failed.\r\n");
+            halt_forever();
+        }
+    };
 
     if !boot_info.is_null() {
         // SAFETY: The bootloader passes a pointer to a dedicated LOADER_DATA
@@ -553,6 +562,22 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     }
     kernel_console.write(b"\r\nKERNEL HANDOFF: SUCCESS\r\n");
 
+    kernel_console.write_fmt(format_args!(
+        "P3.5: driver registry ready; registered={} initialized={} failed={}\r\n",
+        driver_registry.len(),
+        driver_registry.initialized_count(),
+        driver_registry.failed_count()
+    ));
+    for entry in driver_registry.iter() {
+        kernel_console.write_fmt(format_args!(
+            "P3.5: driver {} id={:?} class={:?} state={:?}\r\n",
+            entry.descriptor.name(),
+            entry.descriptor.id(),
+            entry.descriptor.class(),
+            entry.state
+        ));
+    }
+
     #[cfg(feature = "timer-smoke-test")]
     {
         let timer_status = timer::initialize();
@@ -562,7 +587,15 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             timer_status.pit_divisor
         ));
         if !timer_status.irq0_unmasked {
+            let _ = driver_registry.set_state(timer::DRIVER.id(), DriverState::Failed);
             kernel_console.write(b"P3.3: IRQ0 could not be enabled; refusing to execute STI.\r\n");
+            halt_forever();
+        }
+        if driver_registry
+            .set_state(timer::DRIVER.id(), DriverState::Initialized)
+            .is_err()
+        {
+            kernel_console.write(b"P3.5: PIT driver registry transition failed.\r\n");
             halt_forever();
         }
 
@@ -598,7 +631,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
 
     #[cfg(feature = "keyboard-smoke-test")]
     {
-        keyboard_smoke_test(&mut kernel_console);
+        keyboard_smoke_test(&mut kernel_console, &mut driver_registry);
     }
 
     #[cfg(not(any(feature = "serial-rx-smoke-test", feature = "keyboard-smoke-test")))]
@@ -749,10 +782,11 @@ fn heap_test_error_message(error: heap::HeapTestError) -> &'static [u8] {
 }
 
 #[cfg(feature = "keyboard-smoke-test")]
-fn keyboard_smoke_test(console: &mut KernelConsole) -> ! {
+fn keyboard_smoke_test(console: &mut KernelConsole, drivers: &mut DriverRegistry<8>) -> ! {
     let status = match keyboard::initialize() {
         Ok(status) => status,
         Err(error) => {
+            let _ = drivers.set_state(keyboard::DRIVER.id(), DriverState::Failed);
             console.write(b"P3.4: keyboard initialization failed: ");
             console.write(error.message());
             if let Some(response) = error.response() {
@@ -764,6 +798,14 @@ fn keyboard_smoke_test(console: &mut KernelConsole) -> ! {
     };
     if !status.is_valid() {
         console.write(b"P3.4: keyboard status verification failed.\r\n");
+        halt_forever();
+    }
+
+    if drivers
+        .set_state(keyboard::DRIVER.id(), DriverState::Initialized)
+        .is_err()
+    {
+        console.write(b"P3.5: PS/2 driver registry transition failed.\\r\\n");
         halt_forever();
     }
     console.write_fmt(format_args!(
@@ -855,6 +897,19 @@ fn serial_rx_smoke_test() -> ! {
             _ => {}
         }
     }
+}
+
+fn halt_forever() -> ! {
+fn register_builtin_drivers() -> Result<DriverRegistry<8>, RegistryError> {
+    let mut registry = DriverRegistry::<8>::new();
+
+    registry.register(serial::DRIVER)?;
+    registry.set_state(serial::DRIVER.id(), DriverState::Initialized)?;
+
+    registry.register(timer::DRIVER)?;
+    registry.register(keyboard::DRIVER)?;
+
+    Ok(registry)
 }
 
 fn halt_forever() -> ! {

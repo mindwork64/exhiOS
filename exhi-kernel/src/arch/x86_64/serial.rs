@@ -1,6 +1,14 @@
 use core::arch::asm;
 use core::hint::spin_loop;
 
+use exhi_driver::{DriverClass, DriverDescriptor, DriverId};
+
+pub const DRIVER: DriverDescriptor = DriverDescriptor::new(
+    DriverId::SerialCom1,
+    DriverClass::Serial,
+    "16550 UART COM1",
+);
+
 /// A minimal polling 16550-compatible UART port.
 ///
 /// This driver is intentionally single-core and non-interrupt-driven for the

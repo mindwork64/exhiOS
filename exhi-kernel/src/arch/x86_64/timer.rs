@@ -10,6 +10,14 @@
 use core::arch::global_asm;
 use core::sync::atomic::{AtomicU64, Ordering};
 
+use exhi_driver::{DriverClass, DriverDescriptor, DriverId};
+
+pub const DRIVER: DriverDescriptor = DriverDescriptor::new(
+    DriverId::PitChannel0,
+    DriverClass::Clock,
+    "PIT channel 0",
+);
+
 use super::pic;
 
 pub const TICK_HZ: u32 = 100;
