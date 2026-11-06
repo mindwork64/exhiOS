@@ -1,5 +1,8 @@
 #![no_std]
 
+#[cfg(test)]
+extern crate std;
+
 //! Allocation-free, pixel-format-aware GOP text console.
 
 use core::convert::TryFrom;
@@ -326,7 +329,7 @@ mod tests {
         console.clear();
         console.write(b"A");
         drop(console);
-        assert_eq!(pixels[2], 0x0056_3412);
+        assert_eq!(pixels[3], 0x0056_3412);
         assert!(pixels[12..16].iter().all(|pixel| *pixel == sentinel));
     }
 
@@ -337,7 +340,7 @@ mod tests {
         console.set_colors(Color::new(0x12, 0x34, 0x56), Color::new(0, 0, 0));
         console.write(b"A");
         drop(console);
-        assert_eq!(pixels[2], 0x0012_3456);
+        assert_eq!(pixels[3], 0x0012_3456);
     }
 
     #[test]
