@@ -177,12 +177,13 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] Self-hosted QEMU [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) и локальный пользовательский Linux Mint/QEMU log (2026-11-06) подтвердили A→B→A→B→A→B, сохранность stack-local данных на разных стеках, Finished=2, восстановление boot context/TSS.RSP0 и debug-exit 33.
 
 ### P4.3 — PIT-backed cooperative task runtime accounting
-**Реализация в main; CI и локальная QEMU-приёмка ожидаются.**
-- [x] Добавить per-task `runtime_ticks` в `exhi-task` и насыщающее накопление на безопасной границе планирования.
-- [x] Оставить IRQ0 stub минимальным: атомарный tick increment + EOI; никакого вызова Rust или scheduler из ISR.
-- [x] Добавить отдельный feature-gated QEMU test: две задачи ждут реальные PIT intervals, чередуются кооперативно и накапливают собственное время.
-- [ ] Проверить новые host tests, kernel build и headless QEMU runtime в self-hosted CI.
-- [ ] Проверить локально: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TASK_ACCOUNTING_TEST=1 ./scripts/run-qemu.sh`.
+**Host tests и headless self-hosted CI runtime прошли; ожидается локальный Linux Mint/QEMU.**
+- [x] Per-task `runtime_ticks` в `exhi-task`, saturating accumulation только у Running task.
+- [x] IRQ0 stub остаётся assembly-only: atomic tick increment + EOI; Rust и scheduler из ISR не вызываются.
+- [x] Отдельный QEMU test с двумя задачами, реальными PIT intervals и cooperative accounting на yield/finish boundaries.
+- [x] Host tests: 14/14 `exhi-task`; kernel feature build и все QEMU regression modes прошли в self-hosted CI [run 42306726315](https://github.com/mindwork64/exhiOS/actions/runs/42306726315).
+- [x] P4.3 headless QEMU serial: elapsed PIT ticks=0x12, task A runtime=0x9, task B runtime=0x9, Finished=2, IRQ0 masked=yes, TSS.RSP0 restored=yes, pass marker, debug-exit 33.
+- [ ] Локальный Linux Mint/QEMU: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TASK_ACCOUNTING_TEST=1 ./scripts/run-qemu.sh`; требуется пользовательский serial log для приёмки.
 
 ### P4.4 — Timer-driven preemption (planned)
 - [ ] Спроектировать полный interrupt frame для безопасного переключения с IRQ0.
