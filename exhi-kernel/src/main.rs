@@ -6,7 +6,7 @@ mod console;
 mod heap;
 mod memory;
 
-use arch::x86_64::{address_space, framebuffer, gdt, idt, paging, pic, serial, stack_guard, vmm};
+use arch::x86_64::{address_space, framebuffer, gdt, idt, paging, pic, serial, stack_guard, timer, vmm};
 use console::KernelConsole;
 use exhi_console::Color;
 use core::arch::asm;
@@ -523,7 +523,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 }
             }
 
-            #[cfg(feature = "qemu-debug-exit-smoke-test")]
+            #[cfg(all(feature = "qemu-debug-exit-smoke-test", not(feature = "timer-smoke-test")))]
             {
                 serial::COM1.write(b"P2.6: forcing an exception-frame write into the unmapped stack guard page.\r\n");
                 idt::trigger_double_fault_guard_stack_smoke_test(
@@ -547,6 +547,44 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         kernel_console.write(b"P3.2: unified COM1/framebuffer writer ready.\r\n");
     }
     kernel_console.write(b"\r\nKERNEL HANDOFF: SUCCESS\r\n");
+
+    #[cfg(feature = "timer-smoke-test")]
+    {
+        let timer_status = timer::initialize();
+        kernel_console.write_fmt(format_args!(
+            "P3.3: PIT initialized at {} Hz (divisor {}); IRQ0 unmasked.\r\n",
+            timer_status.requested_hz,
+            timer_status.pit_divisor
+        ));
+        if !timer_status.irq0_unmasked {
+            kernel_console.write(b"P3.3: IRQ0 could not be enabled; refusing to execute STI.\r\n");
+            halt_forever();
+        }
+
+        let start_tick = timer::ticks();
+        // STI followed by HLT is an atomic wait pattern on x86: an interrupt
+        // arriving after the condition check is delivered after HLT executes.
+        while timer::elapsed_ticks(start_tick) < 5 {
+            unsafe {
+                asm!("sti", "hlt", options(nomem, nostack));
+            }
+        }
+        unsafe {
+            asm!("cli", options(nomem, nostack, preserves_flags));
+        }
+
+        let elapsed = timer::elapsed_ticks(start_tick);
+        let pic_status = timer::mask_irq0();
+        kernel_console.write_fmt(format_args!(
+            "P3.3: monotonic timer advanced by {} ticks; IRQ0 masked again.\r\n",
+            elapsed
+        ));
+        if elapsed < 5 || pic_status.master_mask & 0x01 == 0 || pic_status.slave_mask != 0xFF {
+            kernel_console.write(b"P3.3: PIT timer smoke test failed.\r\n");
+            halt_forever();
+        }
+        kernel_console.write(b"P3.3: PIT IRQ0 runtime smoke test passed.\r\n");
+    }
 
     #[cfg(feature = "serial-rx-smoke-test")]
     {
