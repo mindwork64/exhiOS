@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: [eee4895](https://github.com/mindwork64/exhiOS/commit/eee489589c0b79416ac4753e181dfd1656b8deed) — P2.6, P3.1 и первая реализация P3.2 подтверждены локально + CI. Пользователь подтвердил ожидаемый текст на framebuffer-экране по скриншоту.
+Кодовый checkpoint: [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a) — P2.6, P3.1 и первая реализация P3.2 подтверждены локально + CI. Добавлен allocation-free KernelConsole writer; его CI build job прошёл, QEMU runtime и локальная проверка нового зеркального вывода ещё ожидаются.
 
 ## Закрыто и проверено в QEMU
 
@@ -194,9 +194,21 @@ INT3: `EXHIOS_EXCEPTION_TEST=1 ./scripts/run-qemu.sh`
 QEMU debug-exit: `EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh`
 
 
+
+
+## P3.2 unified KernelConsole writer — implementation checkpoint
+
+Commits: [c3d2b8c](https://github.com/mindwork64/exhiOS/commit/c3d2b8ccaa34c6b399b7f12905ae11658455916b) adds `exhi-kernel/src/console.rs`; [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a) integrates it into kernel handoff.
+
+- `KernelConsole` sends byte slices to COM1 and, when initialized, to GOP framebuffer.
+- `write_fmt` uses `core::fmt` and does not allocate from the kernel heap.
+- If framebuffer initialization fails, the writer remains useful through COM1 only.
+- Early diagnostics remain serial-only before GOP initialization; the post-handoff, unified-writer-ready, QEMU debug-exit and final halt messages use both outputs.
+- CI build job passed all host tests and kernel build variants in [run 42274252754](https://github.com/mindwork64/exhiOS/actions/runs/42274252754). The headless QEMU runtime job is still running; local QEMU verification is pending.
+
 ## P3.2 — GOP framebuffer console (initial implementation)
 
-Code checkpoint: [eee4895](https://github.com/mindwork64/exhiOS/commit/eee489589c0b79416ac4753e181dfd1656b8deed).
+Initial framebuffer implementation checkpoint: [eee4895](https://github.com/mindwork64/exhiOS/commit/eee489589c0b79416ac4753e181dfd1656b8deed).
 
 - New `exhi-console` no_std crate with a compact 5x7 ASCII font rendered in 12x16 cells.
 - RGB-reserved GOP format 0 and BGR-reserved format 1 are packed separately; BitMask and BltOnly modes return an explicit unsupported-format error.
