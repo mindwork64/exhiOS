@@ -32,8 +32,8 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         asm!("cli", options(nomem, nostack, preserves_flags));
     }
 
-    serial_write(b"GDT: installing kernel GDT.\r\n");
-    gdt::initialize();
+    serial_write(b"GDT: installing kernel GDT and 64-bit TSS.\r\n");
+    let tss_status = gdt::initialize();
 
     let selectors = gdt::read_segment_selectors();
     serial_write(b"GDT selectors: CS=0x");
@@ -45,9 +45,20 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     serial_write(b" SS=0x");
     serial_write_hex(u64::from(selectors.ss));
     serial_write(b"\r\n");
+    serial_write(b"GDT TSS selector: 0x");
+    serial_write_hex(u64::from(tss_status.selector));
+    serial_write(b"\r\nTask register (TR): 0x");
+    serial_write_hex(u64::from(tss_status.task_register));
+    serial_write(b"\r\nTSS base: 0x");
+    serial_write_hex(tss_status.tss_base);
+    serial_write(b"\r\nDouble-fault IST1 stack: 0x");
+    serial_write_hex(tss_status.double_fault_ist_bottom);
+    serial_write(b"..0x");
+    serial_write_hex(tss_status.double_fault_ist_top);
+    serial_write(b"\r\n");
 
-    if !selectors.is_valid() {
-        serial_write(b"GDT: selector verification failed.\r\n");
+    if !selectors.is_valid() || !tss_status.valid {
+        serial_write(b"GDT/TSS selector verification failed.\r\n");
         halt_forever();
     }
 
@@ -59,6 +70,8 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     serial_write_hex(idt_status.base);
     serial_write(b"\r\nIDT limit: 0x");
     serial_write_hex(u64::from(idt_status.limit));
+    serial_write(b"\r\nDouble-fault IST index: 0x");
+    serial_write_hex(u64::from(idt_status.double_fault_ist));
     serial_write(b"\r\n");
 
     if !idt_status.valid {
@@ -451,6 +464,12 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial_write(b"P2.5: private page tables reclaimed; data frames safely returned.\r\n");
             serial_write(b"P2.5: kernel address-space smoke test passed.\r\n");
 
+            #[cfg(feature = "qemu-debug-exit-smoke-test")]
+            {
+                serial_write(b"P2.6: triggering controlled double fault to verify IST1.\r\n");
+                idt::trigger_double_fault_smoke_test();
+            }
+
         } else {
             serial_write(b"BootInfo: invalid; cannot initialize physical memory.\r\n");
             halt_forever();
@@ -493,6 +512,7 @@ pub extern "sysv64" fn exhi_exception_handler(
     instruction_pointer: u64,
     code_selector: u64,
     flags: u64,
+    exception_stack_pointer: u64,
 ) -> ! {
     serial_write(b"\r\nExhiOS CPU EXCEPTION\r\n");
     serial_write(b"Vector: 0x");
@@ -508,6 +528,32 @@ pub extern "sysv64" fn exhi_exception_handler(
     serial_write(b"\r\nRFLAGS: 0x");
     serial_write_hex(flags);
     serial_write(b"\r\n");
+
+    if vector == 8 {
+        serial_write(b"Exception stack pointer: 0x");
+        serial_write_hex(exception_stack_pointer);
+        serial_write(b"\r\n");
+        if gdt::double_fault_ist_contains(exception_stack_pointer) {
+            serial_write(b"P2.6: double fault arrived on the dedicated IST1 stack.\r\n");
+            #[cfg(feature = "qemu-debug-exit-smoke-test")]
+            {
+                serial_write(b"P2.6: double-fault IST runtime smoke test passed.\r\n");
+                // SAFETY: The QEMU debug-exit device is attached by the test
+                // script. Reaching here proves #DF was delivered on IST1.
+                unsafe {
+                    asm!(
+                        "out dx, eax",
+                        in("dx") QEMU_DEBUG_EXIT_PORT,
+                        in("eax") QEMU_DEBUG_EXIT_VALUE,
+                        options(nomem, nostack, preserves_flags)
+                    );
+                }
+                serial_write(b"QEMU debug-exit: device did not terminate after IST test.\r\n");
+            }
+        } else {
+            serial_write(b"P2.6: double fault did not use the dedicated IST1 stack.\r\n");
+        }
+    }
 
     if vector == 14 {
         let fault_address: u64;
