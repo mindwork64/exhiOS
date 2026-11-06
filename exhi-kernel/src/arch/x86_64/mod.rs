@@ -9,5 +9,5 @@ pub mod serial;
 pub mod framebuffer;
 pub mod timer;
 pub mod keyboard;
-#[cfg(feature = "context-switch-smoke-test")]
+#[cfg(any(feature = "context-switch-smoke-test", feature = "task-accounting-smoke-test"))]
 pub mod task;
