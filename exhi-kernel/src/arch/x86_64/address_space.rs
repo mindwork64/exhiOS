@@ -41,6 +41,8 @@ pub enum AddressSpaceError {
     MissingPageTableEntry,
     UnexpectedLargePage,
     AddressSpaceActive,
+    Destroyed,
+    InvalidAddressSpace,
     Cr3Mismatch,
     FrameReleaseFailed,
     MappingVerificationFailed,
@@ -63,6 +65,8 @@ impl AddressSpaceError {
             Self::MissingPageTableEntry => b"required upper-level page-table entry is missing",
             Self::UnexpectedLargePage => b"unexpected huge page in a private user page-table subtree",
             Self::AddressSpaceActive => b"cannot destroy the currently active address space",
+            Self::Destroyed => b"address space has already been destroyed",
+            Self::InvalidAddressSpace => b"address-space root and private PDPT are inconsistent",
             Self::Cr3Mismatch => b"CR3 did not switch to the requested address-space root",
             Self::FrameReleaseFailed => b"page-table frame could not be returned to the physical allocator",
             Self::MappingVerificationFailed => b"address-space mapping verification failed",
@@ -205,8 +209,34 @@ impl AddressSpace {
         })
     }
 
+    /// Returns zero after this address space has been successfully destroyed.
     pub fn root_address(&self) -> u64 {
         self.root_frame
+    }
+
+    /// Checks the owned root/PDPT pair before any page-table walk or CR3 switch.
+    fn ensure_live(&self) -> Result<(), AddressSpaceError> {
+        if self.root_frame == 0 && self.pdpt_frame == 0 {
+            return Err(AddressSpaceError::Destroyed);
+        }
+        if self.root_frame == 0 || self.pdpt_frame == 0 {
+            return Err(AddressSpaceError::InvalidAddressSpace);
+        }
+        if self.root_frame >= PHYSICAL_LIMIT
+            || self.pdpt_frame >= PHYSICAL_LIMIT
+            || self.root_frame % PAGE_SIZE != 0
+            || self.pdpt_frame % PAGE_SIZE != 0
+        {
+            return Err(AddressSpaceError::InvalidPhysicalFrame);
+        }
+
+        let root_entry = unsafe { read_entry(self.root_frame, 0) };
+        if root_entry & PRESENT == 0
+            || root_entry & PAGE_TABLE_ADDRESS_MASK != self.pdpt_frame
+        {
+            return Err(AddressSpaceError::InvalidAddressSpace);
+        }
+        Ok(())
     }
 
     /// Maps a caller-owned physical frame into this address space's private user range.
@@ -222,6 +252,7 @@ impl AddressSpace {
     ) -> Result<(), AddressSpaceError> {
         ensure_initialized()?;
         ensure_interrupts_disabled()?;
+        self.ensure_live()?;
         validate_user_virtual_address(virtual_address)?;
         validate_physical_address(physical_address)?;
 
@@ -308,6 +339,7 @@ impl AddressSpace {
     ) -> Result<u64, AddressSpaceError> {
         ensure_initialized()?;
         ensure_interrupts_disabled()?;
+        self.ensure_live()?;
         validate_user_virtual_address(virtual_address)?;
 
         let pdpt_index = ((virtual_address >> 30) & 0x1FF) as usize;
@@ -364,6 +396,7 @@ impl AddressSpace {
     /// or inactive. The returned flags are the effective permissions.
     pub fn translate(&self, virtual_address: u64) -> Result<PageMapping, AddressSpaceError> {
         ensure_initialized()?;
+        self.ensure_live()?;
         translate_from_root(self.root_frame, virtual_address)
     }
 
@@ -372,9 +405,7 @@ impl AddressSpace {
     pub fn activate(&self) -> Result<(), AddressSpaceError> {
         ensure_initialized()?;
         ensure_interrupts_disabled()?;
-        if self.root_frame == 0 || self.root_frame % PAGE_SIZE != 0 {
-            return Err(AddressSpaceError::InvalidPhysicalFrame);
-        }
+        self.ensure_live()?;
 
         unsafe {
             asm!(
@@ -394,9 +425,10 @@ impl AddressSpace {
     pub fn destroy(&mut self) -> Result<(), AddressSpaceError> {
         ensure_initialized()?;
         ensure_interrupts_disabled()?;
-        if self.root_frame == 0 || self.pdpt_frame == 0 {
+        if self.root_frame == 0 && self.pdpt_frame == 0 {
             return Ok(());
         }
+        self.ensure_live()?;
         if is_active(self.root_frame) {
             return Err(AddressSpaceError::AddressSpaceActive);
         }
@@ -547,7 +579,11 @@ pub fn smoke_test() -> Result<AddressSpaceTestStatus, AddressSpaceError> {
     unsafe {
         ptr::write_volatile(USER_VIRTUAL_BASE as *mut u8, 0xA1);
     }
+    let active_destroy_result = first.destroy();
     restore_kernel()?;
+    if active_destroy_result != Err(AddressSpaceError::AddressSpaceActive) {
+        return Err(AddressSpaceError::MappingVerificationFailed);
+    }
 
     second.activate()?;
     unsafe {
@@ -581,6 +617,34 @@ pub fn smoke_test() -> Result<AddressSpaceTestStatus, AddressSpaceError> {
 
     first.destroy()?;
     second.destroy()?;
+
+    // Destroy is idempotent, and every operation that could walk or activate
+    // a freed root must fail cleanly instead of dereferencing physical address 0.
+    if first.root_address() != 0
+        || first.destroy().is_err()
+        || first.translate(USER_VIRTUAL_BASE) != Err(AddressSpaceError::Destroyed)
+        || first.unmap_user_page(USER_VIRTUAL_BASE) != Err(AddressSpaceError::Destroyed)
+        || first.activate() != Err(AddressSpaceError::Destroyed)
+    {
+        return Err(AddressSpaceError::MappingVerificationFailed);
+    }
+
+    let post_destroy_frame = memory::allocate_frame()
+        .map_err(|_| AddressSpaceError::OutOfPhysicalFrames)?;
+    // SAFETY: The test owns this fresh frame. The destroyed-state check must
+    // reject the operation before the frame can be referenced by a page table.
+    let post_destroy_map = unsafe {
+        first.map_user_page(
+            USER_VIRTUAL_BASE,
+            post_destroy_frame,
+            UserPageFlags::read_write_nx(),
+        )
+    };
+    memory::release_frame(post_destroy_frame)
+        .map_err(|_| AddressSpaceError::FrameReleaseFailed)?;
+    if post_destroy_map != Err(AddressSpaceError::Destroyed) {
+        return Err(AddressSpaceError::MappingVerificationFailed);
+    }
 
     Ok(AddressSpaceTestStatus {
         kernel_root,
