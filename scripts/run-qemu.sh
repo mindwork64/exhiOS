@@ -71,7 +71,11 @@ mcopy -i "$ESP_MTOOLS_IMAGE" \
 
 cp "$OVMF_VARS_PATH" "$VARS_COPY"
 
-echo "Starting ExhiOS P0.2 ELF validation test in QEMU."
+if [[ "${EXHIOS_EXCEPTION_TEST:-0}" == "1" ]]; then
+    echo "Starting ExhiOS IDT/INT3 exception smoke test in QEMU."
+else
+    echo "Starting ExhiOS kernel foundation test in QEMU."
+fi
 echo "EFI application and kernel ELF are on the same GPT EFI System Partition."
 
 qemu-system-x86_64 \

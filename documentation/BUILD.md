@@ -53,32 +53,6 @@ Before exiting Boot Services, it closes the filesystem and drops temporary heap-
 
 The loader then switches to its dedicated kernel stack, disables interrupts, and calls the kernel entry point using the x86-64 System V ABI. No UEFI protocol, console, allocator or Boot Services API is used after the transition.
 
-Expected QEMU output is split between the UEFI display and serial console. The UEFI display should end with the handoff message; the QEMU terminal should show:
-
-```text
-ExhiOS Kernel 0.1
-Kernel entry point reached.
-BootInfo: valid
-Memory map address: 0x...
-Memory map size: 0x...
-Memory descriptor size: 0x...
-Memory descriptor version: 0x...
-Memory descriptors: 0x...
-Framebuffer address: 0x...
-Framebuffer resolution: 0x...
-ACPI RSDP address: 0x...
-ExhiOS: kernel handoff successful.
-ExhiOS: interrupts remain disabled until the IDT is ready.
-ExhiOS: halt loop entered.
-```
-
-The kernel intentionally leaves interrupts disabled and halts after printing the handoff information. It does not yet install an IDT or initialize its own page tables.
-
-## Scope of this checkpoint
-
-P0.4 validates the complete UEFI-to-kernel handoff and memory-map delivery. GDT/IDT setup, exception handling, kernel-owned page tables, physical memory manager and drivers are subsequent milestones.
-
-
 ## P1.1: install the kernel GDT
 
 At kernel entry, ExhiOS replaces the firmware-provided GDT with its own three-entry table:
@@ -87,12 +61,40 @@ At kernel entry, ExhiOS replaces the firmware-provided GDT with its own three-en
 - selector 0x10: kernel data/stack segment;
 - selector 0x00: mandatory null descriptor.
 
-The loader already enters the kernel with interrupts disabled. The GDT setup loads GDTR, performs a far return to reload CS, and reloads DS, ES and SS. It does not enable interrupts or change the active paging structures.
+The GDT setup loads GDTR, performs a far return to reload CS, and reloads DS, ES and SS. The kernel reads CS, DS, ES and SS back and verifies the expected selector values. The QEMU runtime check is required before P1.1 is considered complete.
 
-After installation, the kernel reads CS, DS, ES and SS back and verifies the expected selector values. The QEMU serial output should include:
+Expected output includes:
 
-    GDT: installing kernel GDT.
-    GDT selectors: CS=0x0008 DS=0x0010 ES=0x0010 SS=0x0010
-    GDT: installed and verified.
+```text
+GDT: installing kernel GDT.
+GDT selectors: CS=0x0008 DS=0x0010 ES=0x0010 SS=0x0010
+GDT: installed and verified.
+```
 
-The QEMU runtime check is still required before P1.1 is considered complete.
+## P1.2: kernel IDT and CPU exception diagnostics
+
+The kernel installs a 256-entry IDT with gates for the 32 x86 CPU exception vectors. Each assembly stub normalizes the stack layout so the common handler receives the vector, error code, RIP, CS and RFLAGS consistently. The fatal handler reports those values over COM1; for a page fault it also reads CR2 to show the faulting linear address.
+
+The default QEMU run verifies that LIDT/SIDT agree on the active IDT base and limit. To exercise the actual exception entry path, run the optional INT3 test:
+
+```bash
+EXHIOS_EXCEPTION_TEST=1 ./scripts/run-qemu.sh
+```
+
+The kernel deliberately executes INT3 after installing the IDT. The expected serial output includes:
+
+```text
+IDT smoke test: triggering INT3 breakpoint.
+
+ExhiOS CPU EXCEPTION
+Vector: 0x0000000000000003 (Breakpoint)
+Error code: 0x0000000000000000
+RIP: 0x...
+CS: 0x0000000000000008
+RFLAGS: 0x...
+ExhiOS: CPU halted after fatal exception.
+```
+
+This test intentionally halts the guest after printing diagnostics. Stop QEMU with Ctrl+C in the terminal.
+
+P1.2 remains open until both the normal IDT installation and the optional exception smoke test have been observed in QEMU.

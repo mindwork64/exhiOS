@@ -1,7 +1,7 @@
 use core::arch::{asm, global_asm};
 use core::mem::size_of;
 
-const KERNEL_CODE_SELECTOR: u16 = 0x08;
+pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
 const KERNEL_DATA_SELECTOR: u16 = 0x10;
 
 const GDT_NULL: u64 = 0;

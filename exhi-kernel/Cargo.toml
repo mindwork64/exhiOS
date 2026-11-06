@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 build = "build.rs"
 
+[features]
+exception-smoke-test = []
+
 [[bin]]
 name = "exhi-kernel"
 path = "src/main.rs"

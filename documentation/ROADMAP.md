@@ -49,7 +49,7 @@
 ### P0.4 — Final memory map, ExitBootServices and enter ExhiKernel
 
 - [x] Reserve the kernel stack, segment pages and BootInfo page before the final memory map.
-- [x] Drop filesystem/protocol handles and temporary UEFI heap allocations before ExitBootServices.
+- [x] Drop filesystem/protocol handles and temporary heap-backed buffers before ExitBootServices.
 - [x] Obtain the final memory map and handle a stale map key using the uefi crate helper.
 - [x] Populate BootInfo memory-map address, size, descriptor size and descriptor version.
 - [x] Switch to a dedicated kernel stack with the System V x86-64 entry ABI.
@@ -70,9 +70,12 @@
 
 ### P1.2 — IDT and CPU exceptions
 
-- [ ] Define and load a kernel-owned IDT.
-- [ ] Add exception stubs and readable diagnostics.
-- [ ] Install handlers for CPU exceptions before enabling interrupts.
+- [x] Define and load a kernel-owned 256-entry IDT.
+- [x] Add exception stubs for CPU exception vectors 0–31.
+- [x] Normalize exception stack frames, including CPU-pushed error codes.
+- [x] Add fatal exception diagnostics with vector, name, error code, RIP, CS and RFLAGS.
+- [x] Report CR2 when a page fault occurs.
+- [ ] Verify the IDT in QEMU and trigger the optional INT3 smoke test.
 
 ### P1.3 — Interrupt controllers and test exit
 

@@ -3,7 +3,7 @@
 
 mod arch;
 
-use arch::x86_64::gdt;
+use arch::x86_64::{gdt, idt};
 use core::arch::asm;
 use core::hint::spin_loop;
 use core::panic::PanicInfo;
@@ -40,6 +40,31 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     }
 
     serial_write(b"GDT: installed and verified.\r\n");
+
+    serial_write(b"IDT: installing kernel IDT.\r\n");
+    let idt_status = idt::initialize();
+    serial_write(b"IDT base: 0x");
+    serial_write_hex(idt_status.base);
+    serial_write(b"\r\nIDT limit: 0x");
+    serial_write_hex(u64::from(idt_status.limit));
+    serial_write(b"\r\n");
+
+    if !idt_status.valid {
+        serial_write(b"IDT: SIDT verification failed.\r\n");
+        halt_forever();
+    }
+
+    serial_write(b"IDT: installed and verified (CPU exceptions 0-31).\r\n");
+
+    #[cfg(feature = "exception-smoke-test")]
+    {
+        serial_write(b"IDT smoke test: triggering INT3 breakpoint.\r\n");
+        // SAFETY: The kernel IDT has a valid vector-3 gate. Its fatal handler
+        // reports the exception and halts instead of returning to this point.
+        unsafe {
+            asm!("int3", options(nomem, nostack));
+        }
+    }
 
     if !boot_info.is_null() {
         // SAFETY: The bootloader passes a pointer to a dedicated LOADER_DATA
@@ -89,10 +114,83 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     }
 
     serial_write(b"ExhiOS: kernel handoff successful.\r\n");
-    serial_write(b"ExhiOS: interrupts remain disabled until the IDT is ready.\r\n");
+    serial_write(b"ExhiOS: interrupts remain disabled until interrupt controllers are configured.\r\n");
     serial_write(b"ExhiOS: halt loop entered.\r\n");
 
     halt_forever()
+}
+
+/// Fatal CPU-exception entry called by the assembly stubs.
+/// Arguments follow the x86-64 System V ABI.
+#[no_mangle]
+pub extern "sysv64" fn exhi_exception_handler(
+    vector: u64,
+    error_code: u64,
+    instruction_pointer: u64,
+    code_selector: u64,
+    flags: u64,
+) -> ! {
+    serial_write(b"\r\nExhiOS CPU EXCEPTION\r\n");
+    serial_write(b"Vector: 0x");
+    serial_write_hex(vector);
+    serial_write(b" (");
+    serial_write(exception_name(vector));
+    serial_write(b")\r\nError code: 0x");
+    serial_write_hex(error_code);
+    serial_write(b"\r\nRIP: 0x");
+    serial_write_hex(instruction_pointer);
+    serial_write(b"\r\nCS: 0x");
+    serial_write_hex(code_selector);
+    serial_write(b"\r\nRFLAGS: 0x");
+    serial_write_hex(flags);
+    serial_write(b"\r\n");
+
+    if vector == 14 {
+        let fault_address: u64;
+        // SAFETY: Reading CR2 is valid in ring 0 and does not modify CPU state.
+        unsafe {
+            asm!("mov {}, cr2", out(reg) fault_address, options(nomem, nostack, preserves_flags));
+        }
+        serial_write(b"CR2 (page-fault address): 0x");
+        serial_write_hex(fault_address);
+        serial_write(b"\r\n");
+    }
+
+    serial_write(b"ExhiOS: CPU halted after fatal exception.\r\n");
+    halt_forever()
+}
+
+fn exception_name(vector: u64) -> &'static [u8] {
+    match vector {
+        0 => b"Divide Error",
+        1 => b"Debug",
+        2 => b"Non-maskable Interrupt",
+        3 => b"Breakpoint",
+        4 => b"Overflow",
+        5 => b"Bound Range",
+        6 => b"Invalid Opcode",
+        7 => b"Device Not Available",
+        8 => b"Double Fault",
+        9 => b"Coprocessor Segment Overrun",
+        10 => b"Invalid TSS",
+        11 => b"Segment Not Present",
+        12 => b"Stack-Segment Fault",
+        13 => b"General Protection Fault",
+        14 => b"Page Fault",
+        15 => b"Reserved",
+        16 => b"x87 Floating-Point Exception",
+        17 => b"Alignment Check",
+        18 => b"Machine Check",
+        19 => b"SIMD Floating-Point Exception",
+        20 => b"Virtualization Exception",
+        21 => b"Control Protection Exception",
+        22..=27 => b"Reserved",
+        28 => b"Hypervisor Injection Exception",
+        29 => b"VMM Communication Exception",
+        30 => b"Security Exception",
+        31 => b"Reserved",
+        _ => b"Unknown CPU exception",
+    }
 }
 
 fn halt_forever() -> ! {
