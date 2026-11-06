@@ -20,6 +20,8 @@ const KERNEL_PATH: &uefi::CStr16 = cstr16!("\\exhi-kernel.elf");
 const MAX_KERNEL_SIZE: u64 = 64 * 1024 * 1024;
 const PAGE_SIZE: u64 = boot::PAGE_SIZE as u64;
 const KERNEL_STACK_PAGES: usize = 16;
+const KERNEL_STACK_GUARD_PAGES: usize = 1;
+const KERNEL_STACK_ALLOCATION_PAGES: usize = KERNEL_STACK_PAGES + KERNEL_STACK_GUARD_PAGES;
 
 struct AllocatedPages {
     base: NonNull<u8>,
@@ -196,11 +198,11 @@ fn main() -> Status {
     let stack_pages = match boot::allocate_pages(
         boot::AllocateType::AnyPages,
         boot::MemoryType::LOADER_DATA,
-        KERNEL_STACK_PAGES,
+        KERNEL_STACK_ALLOCATION_PAGES,
     ) {
         Ok(pages) => pages,
         Err(error) => {
-            uefi::println!("ERROR: cannot allocate the kernel stack: {error:?}");
+            uefi::println!("ERROR: cannot allocate the kernel stack and guard page: {error:?}");
             release_allocations(&mut allocations);
             return finish(Status::OUT_OF_RESOURCES);
         }
@@ -211,18 +213,29 @@ fn main() -> Status {
         None => {
             uefi::println!("ERROR: kernel stack size overflow.");
             // SAFETY: This is the exact allocation just returned by UEFI.
-            let _ = unsafe { boot::free_pages(stack_pages, KERNEL_STACK_PAGES) };
+            let _ = unsafe { boot::free_pages(stack_pages, KERNEL_STACK_ALLOCATION_PAGES) };
             release_allocations(&mut allocations);
             return finish(Status::LOAD_ERROR);
         }
     };
 
-    let stack_top = match (stack_pages.as_ptr() as u64).checked_add(stack_bytes as u64) {
+    let stack_guard_page = stack_pages.as_ptr() as u64;
+    let stack_base = match stack_guard_page.checked_add(PAGE_SIZE) {
+        Some(base) => base,
+        None => {
+            uefi::println!("ERROR: kernel stack base address overflow.");
+            // SAFETY: This is the exact allocation just returned by UEFI.
+            let _ = unsafe { boot::free_pages(stack_pages, KERNEL_STACK_ALLOCATION_PAGES) };
+            release_allocations(&mut allocations);
+            return finish(Status::LOAD_ERROR);
+        }
+    };
+    let stack_top = match stack_base.checked_add(stack_bytes as u64) {
         Some(top) => top,
         None => {
             uefi::println!("ERROR: kernel stack address overflow.");
             // SAFETY: This is the exact allocation just returned by UEFI.
-            let _ = unsafe { boot::free_pages(stack_pages, KERNEL_STACK_PAGES) };
+            let _ = unsafe { boot::free_pages(stack_pages, KERNEL_STACK_ALLOCATION_PAGES) };
             release_allocations(&mut allocations);
             return finish(Status::LOAD_ERROR);
         }
@@ -230,15 +243,17 @@ fn main() -> Status {
 
     allocations.push(AllocatedPages {
         base: stack_pages,
-        page_count: KERNEL_STACK_PAGES,
+        page_count: KERNEL_STACK_ALLOCATION_PAGES,
     });
 
     let boot_info_ptr = boot_info_page.as_ptr().cast::<BootInfo>();
 
     uefi::println!("BootInfo prepared at {:#018x}.", boot_info_ptr as u64);
     uefi::println!(
-        "Kernel stack: {:#018x}..{stack_top:#018x} ({} bytes).",
-        stack_pages.as_ptr() as u64,
+        "Kernel stack guard page reserved: {stack_guard_page:#018x} (4096 bytes)."
+    );
+    uefi::println!(
+        "Kernel stack: {stack_base:#018x}..{stack_top:#018x} ({} bytes).",
         stack_bytes
     );
     uefi::println!("All kernel, stack and handoff allocations are reserved.");
@@ -272,7 +287,7 @@ fn main() -> Status {
         descriptor_size: memory_map_meta.desc_size as u32,
         descriptor_version: memory_map_meta.desc_version,
     };
-    final_boot_info.kernel_stack_base = stack_pages.as_ptr() as u64;
+    final_boot_info.kernel_stack_base = stack_base;
     final_boot_info.kernel_stack_size = stack_bytes as u64;
 
     // SAFETY: BootInfo resides in a dedicated LOADER_DATA page allocated before
