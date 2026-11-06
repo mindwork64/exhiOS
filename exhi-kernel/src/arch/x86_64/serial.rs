@@ -43,6 +43,28 @@ impl SerialPort {
         false
     }
 
+    /// Attempts to receive one byte without waiting.
+    ///
+    /// Returns None when the UART receive-data-ready bit is clear.
+    pub fn try_read_byte(&self) -> Option<u8> {
+        if unsafe { self.inb(5) } & 0x01 != 0 {
+            Some(unsafe { self.inb(0) })
+        } else {
+            None
+        }
+    }
+
+    /// Polls until one byte is received. This is intended for the early
+    /// single-core serial shell while interrupts remain disabled.
+    pub fn read_byte_blocking(&self) -> u8 {
+        loop {
+            if let Some(byte) = self.try_read_byte() {
+                return byte;
+            }
+            spin_loop();
+        }
+    }
+
     /// Writes bytes until the complete slice is sent or the UART times out.
     pub fn write(&self, bytes: &[u8]) {
         for &byte in bytes {
