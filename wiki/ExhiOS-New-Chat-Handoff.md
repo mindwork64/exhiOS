@@ -37,7 +37,7 @@
 - P3.2 initial GOP framebuffer console is implemented in `exhi-console` and kernel startup. It supports GOP formats 0/1, visible width + separate scanline stride, ASCII text, wrap and scroll. Host tests and kernel build variants passed in CI; headless QEMU runtime and local visual confirmation remain pending.
 
 ## Следующие действия
-1. Дождаться статуса headless QEMU runtime для текущего P3.2 code checkpoint [2cffee5](https://github.com/mindwork64/exhiOS/commit/2cffee513eda6c63c6cc1d0bd8ee9be0a14c1be9), CI workflow [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662).
+1. Headless QEMU/OVMF runtime для P3.2 checkpoint [2cffee5](https://github.com/mindwork64/exhiOS/commit/2cffee513eda6c63c6cc1d0bd8ee9be0a14c1be9) прошёл в CI [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662); осталось подтвердить картинку локально.
 2. Пользовательская проверка latest main:
    ```bash
    git fetch origin
