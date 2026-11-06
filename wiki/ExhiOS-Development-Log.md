@@ -74,3 +74,31 @@ P2.2 is runtime-verified and closed.
 - Kernel emitted the P2.2 success line; isa-debug-exit returned status 33.
 - Root address differs from CI (0x14E000) because firmware memory allocation/layout differs. No functional discrepancy.
 - P2.2 confirmed both in CI and locally; next milestone is P2.3 VMM.
+
+## 2026-11-06 — P2.3 initial VMM implementation
+
+Commits:
+- [b066efa](https://github.com/mindwork64/exhiOS/commit/b066efaaddb755822caf1c9c002d4bdeb588c8d0): 4 KiB map/unmap/query, 2 MiB split, NX enablement, TLB invalidation and runtime test.
+- [08f179a](https://github.com/mindwork64/exhiOS/commit/08f179af25190092597dead6ad918082fa79b79b): safe 2 MiB coalescing and page-table-frame reclamation.
+
+Implementation:
+- New \`arch/x86_64/vmm.rs\` with PageFlags, PageMapping, VmmStatus, map_page, unmap_page, query_page and try_coalesce_large_page.
+- Physical allocator exposes allocate_frame/release_frame for paging structures.
+- 4 KiB mapping granularity within the initial 0..4 GiB identity window.
+- A 2 MiB PDE is split into 512 4 KiB PTEs on the first unmap of a leaf. Existing mappings and cache/permission attributes are preserved, including PAT bit conversion.
+- NX support is checked through CPUID and EFER.NXE is enabled only when supported.
+- Page mapping supports RW, USER, NX, PWT, PCD and GLOBAL flags. Mutations require IF=0.
+- INVLPG is issued for changed mappings. A page-table frame is retained while referenced.
+- Coalescing verifies all 512 entries are present, contiguous, 2 MiB-aligned and have matching access/cache attributes. Accessed/dirty bits are merged. The large PDE is installed, all 512 addresses are invalidated, and only then is the child table frame returned to the allocator.
+
+Runtime smoke test in kernel startup:
+- Temporarily unmaps VA 0x40000000 (splitting its original 2 MiB mapping).
+- Maps a managed physical frame there with supervisor RW+NX permissions.
+- Verifies page translation and permission metadata.
+- Writes and reads a byte pattern through the virtual address.
+- Unmaps it, verifies the translation reports NotMapped, and releases the data frame.
+- Restores the original identity mapping, coalesces the 512 PTEs back to a 2 MiB PDE and releases the page-table frame.
+
+Headless QEMU/OVMF CI [run 42213581974](https://github.com/mindwork64/exhiOS/actions/runs/42213581974) passed. Serial markers confirm NX enabled, 2 MiB split, RW supervisor NX read/write, unmap/TLB verification, identity restoration, safe page-table reclamation, and QEMU debug-exit status 33.
+
+Local Linux Mint/QEMU validation by the user is still pending. Do not mark P2.3 fully closed before receiving that serial report.

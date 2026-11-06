@@ -28,10 +28,16 @@
 - Evidence: [GitHub Actions run 42205457670](https://github.com/mindwork64/exhiOS/actions/runs/42205457670).
 
 ### P2.3 Virtual memory manager
-- [ ] 4 KiB map/unmap и translation.
-- [ ] Page permissions: present/writable/executable/supervisor.
-- [ ] TLB invalidation и безопасное освобождение таблиц.
-- [ ] Kernel/process address spaces.
+**Первая реализация прошла headless QEMU/OVMF CI; локальная проверка пользователя ожидается.**
+- [x] 4 KiB `map_page`, `unmap_page`, `query_page` в пределах identity map 0–4 GiB.
+- [x] Разбиение 2 MiB huge page на 512 4 KiB entries.
+- [x] Права writable/read-only, user/supervisor, executable/NX; включение NXE только после CPUID.
+- [x] TLB invalidation через `invlpg`.
+- [x] Безопасное coalesce 512 совместимых contiguous PTE в 2 MiB PDE.
+- [x] Освобождение page-table frame после замены PDE и инвалидирования 512 адресов.
+- [x] QEMU smoke test: RW supervisor NX mapping, read/write, unmap, NotMapped, restore and reclaim; debug-exit 33.
+- [ ] Локальный Linux Mint/QEMU прогон пользователя.
+- [ ] Address spaces с отдельными PML4 roots и mapping вне 4 GiB bootstrap window.
 
 ### P2.4 Kernel heap
 - [ ] Heap allocator поверх физических страниц и VMM.

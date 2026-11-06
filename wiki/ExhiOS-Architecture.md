@@ -54,3 +54,14 @@ CI build и headless QEMU/OVMF runtime прошли: root/CR3 0x14E000, map 4 Gi
 
 ## Устройства
 COM1 base `0x3F8` используется для serial output. GOP framebuffer приходит через BootInfo, но текстовая framebuffer console ещё не реализована. QEMU: q35, OVMF, 512 MiB RAM, ESP на USB storage, serial stdio.
+
+## P2.3 — Initial Virtual Memory Manager
+
+New module: \`exhi-kernel/src/arch/x86_64/vmm.rs\`.
+- 4 KiB \`map_page\`, \`unmap_page\`, \`query_page\` over the bootstrap 0..4 GiB identity window.
+- Huge 2 MiB PDE can be split into 512 equivalent 4 KiB leaves.
+- PageFlags represent writable, user, executable, write-through, cache-disable and global. NX is used only after CPUID feature detection and EFER.NXE activation.
+- Changed leaves are invalidated with INVLPG. Mutating operations require interrupts disabled.
+- Coalescing only occurs after checking all 512 leaves for presence, physical contiguity, alignment and identical permissions/cache attributes. A/D bits are merged. All 512 virtual pages are invalidated before releasing the no-longer-referenced page-table frame.
+- No independent address spaces, mappings above 4 GiB, SMP locks or Ring 3 permission tests yet. Those belong to later iterations.
+- QEMU runtime smoke test passed in CI run 42213581974; user's local verification remains pending.

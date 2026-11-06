@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: 207df7ffc86d97cdc15f32b8231ee2d1176f2139 (Paging + headless QEMU runtime CI).
+Кодовый checkpoint: 08f179af25190092597dead6ad918082fa79b79b (VMM 4 KiB map/unmap + table reclaim; headless QEMU passed).
 
 ## Закрыто и проверено в QEMU
 
@@ -59,6 +59,32 @@ QEMU/OVMF runtime evidence из CI:
 P2.2 закрыт по CI и локальному runtime smoke test.
 
 Ограничения bootstrap map — временная карта RWX/supervisor для первых 4 GiB. W^X, user/supervisor isolation, 4 KiB mappings, per-device cache attributes и process address spaces ещё не реализованы.
+
+
+## P2.3 — Virtual Memory Manager: CI runtime passed; local confirmation pending
+
+Код: [08f179a](https://github.com/mindwork64/exhiOS/commit/08f179af25190092597dead6ad918082fa79b79b). Headless QEMU/OVMF CI: [run 42213581974](https://github.com/mindwork64/exhiOS/actions/runs/42213581974).
+
+Реализовано:
+- `exhi-kernel/src/arch/x86_64/vmm.rs`: 4 KiB `map_page`, `unmap_page`, `query_page`.
+- Разбиение 2 MiB huge page на 512 эквивалентных 4 KiB PTE.
+- Page flags: writable/read-only, user/supervisor, executable/NX, write-through, cache-disable, global. NX применяется только после CPUID проверки и включения EFER.NXE.
+- TLB invalidation через `invlpg`.
+- Безопасное объединение обратно в 2 MiB page только при проверке всех 512 leaf entries: contiguous physical pages, одинаковые права/атрибуты; accessed/dirty агрегируются.
+- После замены PDE и инвалидирования всех 512 адресов освобождается больше не используемый page-table frame.
+- Ошибочные, unaligned и out-of-range mapping запросы отклоняются; allocator frames остаются выделенными, пока на них ссылается активная таблица.
+
+QEMU runtime evidence:
+- NX support: enabled.
+- 2 MiB → 4 KiB split выполнен.
+- RW supervisor NX mapping, запись и чтение через виртуальный адрес прошли.
+- Unmap и проверка отсутствия трансляции прошли.
+- Identity mapping восстановлен; таблица безопасно возвращена физическому аллокатору.
+- QEMU debug-exit status 33.
+
+Ограничения текущей итерации: виртуальные и физические адреса ограничены первыми 4 GiB; управление новыми PML4/PDPT и отдельными address spaces ещё не реализовано. VMM пока однопроцессорный и выполняет операции при IF=0. Пользовательская Ring 3-проверка и fault-driven permission tests отложены до появления user mode и recoverable fault path.
+
+CI runtime подтверждён. Локальный прогон пользователя на Linux Mint/QEMU ещё ожидается; до него P2.3 оставлен без окончательного локального checkpoint.
 
 ## Wiki и автоматическая синхронизация
 
