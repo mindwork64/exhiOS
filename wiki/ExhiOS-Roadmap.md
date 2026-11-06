@@ -165,12 +165,17 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] New no_std `exhi-task` crate: fixed-capacity task table, monotonic TaskId, opaque saved-RSP context and Ready/Running/Blocked/Finished lifecycle.
 - [x] Cooperative round-robin policy: spawn/start/yield/block/wake/finish/reap, no heap allocation.
 - [x] Self-hosted CI: 11/11 task-model tests, all kernel build variants and headless QEMU standard/PIT/registry regressions passed in [run 42302307480](https://github.com/mindwork64/exhiOS/actions/runs/42302307480).
+- [x] Локальный Linux Mint: `cargo fmt` + `cargo test`, все 57 host tests (ABI, console, driver, ELF, heap, input, memory, task) passed 2026-11-06.
 - [ ] x86-64 kernel stacks, initial stack frames and actual register/RSP switching are P4.2.
 
 ### P4.2 — x86-64 cooperative context switching
-- [ ] Per-task kernel stacks and SysV-aligned initial stack frames.
-- [ ] Save/restore callee-saved registers and RSP; first-task bootstrap and controlled task exit.
-- [ ] QEMU runtime test with at least two tasks yielding to each other and independent stack-local state.
+**Self-hosted CI QEMU runtime passed; local QEMU confirmation pending.**
+- [x] Two static kernel stacks, each with 16 KiB usable space and a separate 4 KiB unmapped guard page.
+- [x] Initial x86-64 context frame obeys SysV stack alignment; assembly saves/restores RBP, RBX, R12–R15 and RSP.
+- [x] First-task bootstrap calls the task entry point; a returning task is marked Finished and switched away from. The final task returns to the saved boot context.
+- [x] TSS.RSP0 follows the active task stack and is restored on return to the boot stack. The dedicated double-fault IST1 remains separate.
+- [x] Headless QEMU runtime: A/B tasks alternated A→B→A→B→A→B, preserved stack-local probes at different addresses, both reached Finished, and boot execution resumed. Self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157), QEMU debug-exit status 33.
+- [ ] Local Linux Mint/QEMU runtime log from the user; P4.2 remains open until this confirmation.
 
 ### P4.3 — Timer integration and preemption
 - [ ] Integrate monotonic PIT ticks with scheduler accounting.

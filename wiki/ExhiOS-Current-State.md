@@ -3,7 +3,7 @@
 Снимок: **2026-11-07**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: P3.5 закрыт по локальному и CI runtime evidence. Основной CI переведён на self-hosted Linux x64 runner; build + standard/PIT/registry headless QEMU passed in [run 42301446350](https://github.com/mindwork64/exhiOS/actions/runs/42301446350). Начат P4.1: no_std task model и round-robin scheduler core в crate `exhi-task`.
+Кодовый checkpoint: P3.5 полностью закрыт. P4.1 host-tested и локально подтверждён 57/57 тестами. P4.2 реализован; self-hosted CI build + standard/PIT/registry/context-switch QEMU tests passed in [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157). Локальная QEMU-проверка P4.2 ожидается.
 
 ## Закрыто и проверено в QEMU
 
@@ -268,5 +268,19 @@ New no_std crate: `exhi-task`.
 - States: Ready, Running, Blocked and Finished. APIs cover spawn, start, cooperative yield, block/wake, finish and reap.
 - Invalid zero stack pointers, capacity overflow, unknown tasks and illegal state transitions are rejected.
 - Self-hosted CI passed all 11 task-model unit tests, all kernel build variants and headless standard/PIT/registry QEMU regressions in [run 42302307480](https://github.com/mindwork64/exhiOS/actions/runs/42302307480).
+- User-local Linux Mint `cargo fmt` + `cargo test` passed all 57 host tests on 2026-11-06.
 - This slice does not allocate kernel stacks or switch CPU registers. x86-64 initial stack frames/context switching and two-task QEMU proof are P4.2.
 - Tasks remain Ring 0 and share the kernel address space. No user-mode isolation or timer preemption is claimed.
+
+
+## P4.2 — x86-64 cooperative context switching (self-hosted QEMU passed; local pending)
+
+Implementation:
+- Feature-gated architecture module: `exhi-kernel/src/arch/x86_64/task.rs`; runtime mode: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_CONTEXT_SWITCH_TEST=1 ./scripts/run-qemu.sh`.
+- Two static task stacks, each 20 KiB total: one 4 KiB unmapped guard page + 16 KiB usable stack. Guard pages are removed from the identity map through VMM before first use.
+- Synthetic initial frame is 16-byte aligned and matches the assembly restore order. R12 carries the task entry pointer into the assembly bootstrap.
+- Context switch saves/restores RSP and the SysV callee-saved set RBP/RBX/R12–R15. Caller-saved registers remain caller-clobbered according to the ABI.
+- Returning task entry functions transition to Finished and never resume. The final task restores the suspended boot stack.
+- TSS.RSP0 is updated before each switch and cleared/restored after returning to boot; double-fault IST1 remains independent.
+- Self-hosted QEMU [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157): A/B alternation A→B→A→B→A→B; stack-local values survived yields on two distinct stack addresses; both tasks reached Finished; boot context resumed; QEMU exited with status 33.
+- Local Linux Mint/QEMU verification is still pending. Cooperative Ring 0 only; no timer preemption, Ring 3, or per-process address spaces are included.

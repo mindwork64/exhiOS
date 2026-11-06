@@ -369,3 +369,18 @@ Implementation:
 - Added monotonic TaskId allocation, fixed-capacity task table, opaque saved-RSP contexts and Ready/Running/Blocked/Finished lifecycle.
 - Added round-robin cooperative yield, block/wake, finish and reap policy. This slice does not yet allocate task stacks or switch CPU context; those belong to P4.2.
 - Self-hosted CI passed all 11 task-model tests, every existing kernel build variant and headless QEMU standard/PIT/registry regressions in [run 42302307480](https://github.com/mindwork64/exhiOS/actions/runs/42302307480). P4.1 host-side scheduler policy is accepted.
+
+
+## 2026-11-07 — P4.1 local host-test acceptance
+
+- User ran `cargo fmt` and `cargo test` after updating to main.
+- All 57 host tests passed: ABI 2, console 5, driver 8, ELF 12, heap 4, input 6, memory 9 and task scheduler 11.
+
+## 2026-11-07 — P4.2 x86-64 cooperative context switching
+
+- Added a feature-gated x86-64 task runtime smoke module with two static kernel stacks. Each stack has a 4 KiB unmapped guard page and 16 KiB usable space.
+- Added a SysV-aligned initial restore frame and assembly context switch saving RSP plus RBP/RBX/R12–R15. R12 passes the task entry function to the assembly bootstrap.
+- Added a task-return path: Finished tasks are switched away from; the last task restores the boot context. TSS.RSP0 tracks the selected task stack and is restored when returning to boot. The existing IST1 path remains independent.
+- QEMU runtime test runs two tasks in deterministic A/B alternation; each verifies stack-local state after yields, records a different local-stack address, then exits. Both scheduler entries must be Finished before boot resumes.
+- Self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) passed all build variants and standard/PIT/registry/P4.2 QEMU runtime tests. The P4.2 trace proves A→B→A→B→A→B, preserved locals, Finished=2, TSS.RSP0 restored and debug-exit 33.
+- Local Linux Mint/QEMU confirmation is pending; do not close P4.2 until the user supplies this run's serial output.

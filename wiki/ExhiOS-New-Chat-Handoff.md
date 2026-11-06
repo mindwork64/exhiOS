@@ -38,17 +38,28 @@
 - P3.2 initial GOP framebuffer console is implemented in `exhi-console` and kernel startup. It supports GOP formats 0/1, visible width + separate scanline stride, ASCII text, wrap and scroll. Host tests, build variants and headless QEMU runtime passed in CI [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662). User's local QEMU serial log (2026-11-06) confirms GOP framebuffer 0x80000000, 1280x800, stride 1280, pixel format 1, successful console initialization, kernel handoff and halt loop. User-provided screenshot description confirms the expected visible strings for kernel banner, framebuffer ready, 1280x800, stride 1280, BGRX, COM1 ready and kernel handoff success. Fine visual details (font sharpness, spacing, artifacts) were not independently assessed. P3.2 initial functional acceptance is complete.
 - Follow-up commits [c3d2b8c](https://github.com/mindwork64/exhiOS/commit/c3d2b8ccaa34c6b399b7f12905ae11658455916b) and [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a) add an allocation-free `KernelConsole` writer. After GOP setup it mirrors byte and formatted output to COM1 + framebuffer; on GOP failure it remains serial-only. Early startup diagnostics remain COM1-only. `write_fmt` uses `core::fmt` without heap allocation. CI build + headless QEMU runtime passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072); local QEMU serial output confirms unified-writer readiness and final handoff/halt messages.
 
-## Последняя подтверждённая точка — P3.5 закрыт
+## Последняя подтверждённая точка — P3.5/P4.1 закрыты; P4.2 ожидает local QEMU
 
 - User local QEMU log (2026-11-06): registry summary `registered=3 initialized=1 failed=0`; COM1/Serial/Initialized, PIT/Clock/Registered, i8042 PS/2/Input/Registered; runtime pass marker and debug-exit status 33.
 - Self-hosted CI workflow migration commit [f161f2a](https://github.com/mindwork64/exhiOS/commit/f161f2a967b4fe0194c05ea968ebab87ed814202). Run [42301446350](https://github.com/mindwork64/exhiOS/actions/runs/42301446350) passed build, host tests, standard boot, PIT and registry QEMU runtime.
 - P3.5 is fully closed.
+- User-local Linux Mint `cargo fmt` + `cargo test` (2026-11-06) passed 57/57 host tests, including 11/11 `exhi-task` tests.
+- P4.2 implementation commits: [651d95a](https://github.com/mindwork64/exhiOS/commit/651d95a319abc2d545734e492c61e5751f93aa42) adds the x86-64 stack/context-switch smoke implementation; [8e479b4](https://github.com/mindwork64/exhiOS/commit/8e479b4329dc02be610482495d317c61386e899d) fixes task exit control flow; [498116f](https://github.com/mindwork64/exhiOS/commit/498116ffcfa2114d69a2f62927604635038ae3f5) restores executable mode on both shell scripts.
+- Self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) passed all build variants and all QEMU tests, including P4.2 runtime. The trace confirms A/B alternation, distinct stack-local addresses, both tasks Finished, TSS.RSP0 restored, boot stack resumed and debug-exit 33. P4.2 still requires the user's local QEMU log.
 
 ## Следующие действия
-1. P4.1 is complete: `exhi-task` host tests passed 11/11; self-hosted CI passed all build variants and standard/PIT/registry QEMU regressions in [run 42302307480](https://github.com/mindwork64/exhiOS/actions/runs/42302307480).
-2. P4.2: implement per-task kernel stacks, x86-64 context switch (callee-saved registers + RSP, SysV alignment), first-task bootstrap and a two-task cooperative QEMU runtime test.
-3. P4.3: integrate tick accounting and later preemption separately; do not call Rust or scheduler from the minimal IRQ0 assembly stub.
-4. Ring 3, syscalls, user-pointer validation and hardware-enforced user/supervisor fault tests remain P5. TSS.RSP0 must be updated when per-task kernel stacks arrive; keep dedicated double-fault IST1 and boot-stack guard separate.
+1. P4.1 is complete: local 57/57 host tests and self-hosted CI [run 42302307480](https://github.com/mindwork64/exhiOS/actions/runs/42302307480).
+2. P4.2 code and self-hosted QEMU runtime are complete in [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157); obtain the user's local QEMU confirmation using:
+   ```bash
+   git fetch origin
+   git reset --hard origin/main
+   cargo fmt
+   cargo test
+   EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_CONTEXT_SWITCH_TEST=1 ./scripts/run-qemu.sh
+   ```
+   Expected: P4.2 A/B task-entry/resume markers, both task-local stack addresses different, Finished=2, TSS.RSP0 restored=yes, `P4.2: cooperative context-switch runtime smoke test passed.`, QEMU status 33.
+3. After local P4.2 acceptance, proceed to P4.3 scheduler tick accounting/preemption. Keep the IRQ0 assembly stub minimal; do not call Rust or the scheduler from interrupt context.
+4. Ring 3, syscalls, user-pointer validation and hardware-enforced user/supervisor fault tests remain P5. TSS.RSP0 updates must remain synchronized with the active task stack; keep dedicated double-fault IST1 and stack guards independent.
 
 ## Правила работы
 - Русский язык общения.

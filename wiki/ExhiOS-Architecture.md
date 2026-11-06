@@ -174,3 +174,16 @@ The initial scheduler policy lives in the host-testable no_std crate `exhi-task`
 - This first slice does not allocate stacks or execute an x86-64 context switch. P4.2 adds initial kernel stack frames, SysV-aligned context switching and a QEMU two-task runtime test.
 - Initial tasks remain Ring 0, single-CPU and cooperative. The PIT IRQ0 stub remains a minimal tick increment/EOI handler; no scheduler work runs from interrupt context.
 - When per-task kernel stacks arrive, update TSS.RSP0 to the active task's kernel stack. Keep the dedicated #DF IST1 and boot-stack guard page independent.
+
+
+## P4.2 — x86-64 cooperative context switching
+
+The first executable context switch is implemented in the feature-gated `exhi-kernel/src/arch/x86_64/task.rs` module.
+- Two static task stacks each reserve one 4 KiB guard page followed by 16 KiB of usable stack. VMM removes each guard page from the identity map before the stack is initialized.
+- The synthetic initial context frame is 16-byte aligned. Restore order is R15, R14, R13, R12, RBX, RBP, then RET; R12 carries the task entry function to the bootstrap thunk.
+- `exhi_context_switch` saves the outgoing RSP and callee-saved registers RBP/RBX/R12–R15, then restores those values and RSP for the incoming task. Caller-saved registers remain caller-clobbered under SysV ABI.
+- The assembly bootstrap calls the task entry point. Returning tasks are marked Finished and switched away from; after the final task exits, the saved boot context resumes.
+- TSS.RSP0 is updated to each selected task's stack top and reset after returning to boot. The 16 KiB double-fault IST1 is not reused.
+- The smoke test keeps IF disabled and is cooperative only. It does not implement timer preemption, Ring 3, per-process CR3 isolation or SMP.
+- Self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) passed. QEMU serial confirms A/B task alternation, stack-local values preserved across yields at different addresses, both tasks Finished, TSS.RSP0 restored, boot stack resumed and debug-exit status 33.
+- User-local Linux Mint/QEMU runtime confirmation remains required before P4.2 is marked closed.
