@@ -123,9 +123,24 @@ Headless CI QEMU/OVMF [run 42217123278](https://github.com/mindwork64/exhiOS/act
 - Kernel entry and heap translations survived process-root activation.
 - Private page tables were reclaimed, data frames returned, debug-exit status 33.
 
-Последний commit a856090 adds explicit assertions that shared kernel code, stack and heap remain supervisor-only; its CI rerun is pending at this snapshot. Local Linux Mint/QEMU validation also pending.
+Последний code commit [a856090](https://github.com/mindwork64/exhiOS/commit/a856090c0d6e25215e5b56d269894b00696bd01d) adds explicit assertions that shared kernel code, stack and heap remain supervisor-only, plus the unsafe caller ownership/scrub contract for user frames. Headless QEMU/OVMF CI [run 42217369804](https://github.com/mindwork64/exhiOS/actions/runs/42217369804) passed.
+
+Локальный Linux Mint/QEMU прогон пользователя (2026-11-06) после этого checkpoint также прошёл:
+- Kernel address-space root: 0x11B000.
+- Address-space A PML4: 0x177000; B PML4: 0x179000.
+- Shared kernel translation: 0x104000; shared heap translation: 0x163000.
+- User VA 0x200000000 mapped to A physical frame 0x17B000 and B physical frame 0x17C000.
+- Separate roots, shared kernel maps, private user mappings and CR3 switching verified.
+- Private page tables reclaimed; data frames safely returned.
+- Kernel handoff successful; QEMU debug-exit status 33.
+
+P2.5 initial address-space layer закрыт по CI и локальному runtime evidence. Smoke test выполняется на Ring 0: CPL3 execution и аппаратные user/supervisor fault tests ещё не реализованы. Дополнительные lifecycle/error-path и негативные permission tests остаются полезным hardening до полноценного user-mode этапа.
 
 Ограничения: test пока выполняется в Ring 0, он подтверждает раздельные mappings/CR3 и permission bits в page tables, но ещё не запускает код в Ring 3 и не проверяет аппаратные user-mode faults. Это подготовка address-space layer, не завершённая process isolation.
+
+## Следующий технический этап
+
+P2.5 initial address-space layer принят. До реального Ring 3 остаются дополнительные проверки lifecycle/error paths и отказов при некорректных permission/mapping requests. Отдельный P2.6 должен добавить TSS + IST stack для double fault; guard page под boot kernel stack включать только после проверки независимого IST path.
 
 ## Wiki и автоматическая синхронизация
 
