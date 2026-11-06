@@ -43,3 +43,18 @@ jobs:
         run: |
           readelf -h target/x86_64-unknown-none/debug/exhi-kernel
           readelf -h target/x86_64-unknown-none/debug/exhi-kernel | grep -Eq 'Type:[[:space:]]+EXEC[[:space:]]+\(Executable file\)'
+
+  qemu-smoke-test:
+    name: QEMU runtime smoke test
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install QEMU, UEFI firmware and disk tools
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf gdisk mtools dosfstools binutils
+
+      - name: Run headless UEFI and kernel smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh

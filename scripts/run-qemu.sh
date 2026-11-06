@@ -6,6 +6,7 @@ cd "$ROOT_DIR"
 
 EXCEPTION_TEST="${EXHIOS_EXCEPTION_TEST:-0}"
 QEMU_EXIT_TEST="${EXHIOS_QEMU_EXIT_TEST:-0}"
+HEADLESS_TEST="${EXHIOS_HEADLESS:-0}"
 
 if [[ "$EXCEPTION_TEST" == "1" && "$QEMU_EXIT_TEST" == "1" ]]; then
     echo "Choose either EXHIOS_EXCEPTION_TEST or EXHIOS_QEMU_EXIT_TEST, not both." >&2
@@ -91,6 +92,10 @@ QEMU_ARGS=(
     -serial stdio
     -no-reboot
 )
+
+if [[ "$HEADLESS_TEST" == "1" ]]; then
+    QEMU_ARGS+=(-display none -monitor none)
+fi
 
 if [[ "$QEMU_EXIT_TEST" == "1" ]]; then
     echo "Starting ExhiOS QEMU debug-exit test."
