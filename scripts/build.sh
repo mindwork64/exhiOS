@@ -32,7 +32,7 @@ KERNEL_ELF="$ROOT_DIR/target/x86_64-unknown-none/debug/exhi-kernel"
 echo
 echo "Verifying kernel ELF type..."
 LC_ALL=C readelf -h "$KERNEL_ELF"
-if ! LC_ALL=C readelf -h "$KERNEL_ELF" | grep -Eq 'Type:[[:space:]]+EXEC[[:space:]]+(Executable file)'; then
+if ! LC_ALL=C readelf -h "$KERNEL_ELF" | grep -Eq 'Type:[[:space:]]+EXEC[[:space:]]+\\(Executable file\\)'; then
     echo "ERROR: kernel must be ET_EXEC, not PIE/ET_DYN." >&2
     exit 1
 fi
