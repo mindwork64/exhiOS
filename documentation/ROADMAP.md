@@ -83,11 +83,19 @@
 - [x] Define the initial interrupt strategy: remap the legacy 8259 PIC to vectors 0x20–0x2F; defer local APIC/IOAPIC activation until ACPI MADT parsing and IRQ handlers exist.
 - [x] Initialize the PIC and mask all IRQ lines while keeping the CPU interrupt flag clear.
 - [x] Add controlled QEMU test termination through the isa-debug-exit device at I/O port 0xF4.
-- [ ] Verify PIC mask readback and QEMU debug-exit behavior in QEMU.
+- [x] Verify PIC mask readback (0xFF on both controllers) and QEMU debug-exit behavior (status 33) in QEMU.
 
 ## P2 — Memory management
 
-- [ ] Physical page allocator based on the UEFI memory map.
+### P2.1 — Initial physical page allocator
+
+- [x] Parse UEFI memory descriptor version 1 using the firmware-reported descriptor stride.
+- [x] Make only EfiConventionalMemory pages available; retain loader, firmware, runtime, ACPI and MMIO ranges as reserved.
+- [x] Reserve physical addresses below 1 MiB and cap the first bitmap allocator at 4 GiB.
+- [x] Add managed/allocated bitmaps, single-page allocation, release and reuse checks.
+- [x] Add host tests for descriptor stride, malformed ranges, overlaps, reserved types, allocation, release and reuse.
+- [ ] Verify memory-map initialization and allocation/reuse in QEMU.
+
 - [ ] Kernel-owned page-table management.
 - [ ] Virtual memory manager.
 - [ ] Kernel heap allocator.

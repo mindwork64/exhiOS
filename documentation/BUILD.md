@@ -108,4 +108,22 @@ QEMU debug-exit: requesting controlled shutdown.
 QEMU debug-exit confirmed (exit status 33).
 ```
 
-P1.3 remains open until this runtime test has been observed in QEMU.
+P1.3 was verified in QEMU: both PIC masks read back as 0xFF, and isa-debug-exit terminated the guest with status 33.
+
+
+## P2.1: initial physical page allocator
+
+The kernel initializes a bitmap-based physical frame allocator from the final UEFI memory map passed in BootInfo. It uses the firmware-reported descriptor stride and supports UEFI descriptor version 1. The descriptor structure itself is 40 bytes, while the firmware-reported stride may be 48 bytes; the parser never assumes those values are identical.
+
+The first implementation is intentionally conservative:
+
+- Only UEFI EfiConventionalMemory (type 7) is considered free.
+- Loader, boot-services, runtime, ACPI, MMIO and all other descriptor types remain reserved.
+- Physical addresses below 1 MiB remain reserved.
+- The initial bitmap manages physical addresses below 4 GiB. Memory above that limit is counted but not allocated.
+- Two bitmaps distinguish pages managed by ExhiOS from pages currently allocated by the kernel.
+- Allocation, release, invalid-free and page reuse paths are covered by host unit tests.
+
+The kernel startup performs an allocation/release/reuse smoke test without dereferencing the returned physical page. Mapping and accessing arbitrary physical pages is deferred until the kernel page-table subsystem exists.
+
+P2.1 remains open until the physical memory map and allocator smoke test have been observed in QEMU.

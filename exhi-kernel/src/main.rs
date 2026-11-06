@@ -2,6 +2,7 @@
 #![no_std]
 
 mod arch;
+mod memory;
 
 use arch::x86_64::{gdt, idt, pic};
 use core::arch::asm;
@@ -132,11 +133,51 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial_write(b"\r\nACPI RSDP address: 0x");
             serial_write_hex(info.acpi_rsdp_address);
             serial_write(b"\r\n");
+
+            serial_write(b"P2: initializing physical page allocator.\r\n");
+            let memory_stats = match memory::initialize(info) {
+                Ok(stats) => stats,
+                Err(error) => {
+                    serial_write(b"P2: physical page allocator initialization failed: ");
+                    serial_write(error.message());
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+
+            serial_write(b"Physical memory descriptors: 0x");
+            serial_write_hex(memory_stats.descriptor_count);
+            serial_write(b"\r\nManaged conventional pages: 0x");
+            serial_write_hex(memory_stats.managed_pages);
+            serial_write(b"\r\nFree physical pages: 0x");
+            serial_write_hex(memory_stats.free_pages);
+            serial_write(b"\r\nIgnored pages below 1 MiB: 0x");
+            serial_write_hex(memory_stats.ignored_low_pages);
+            serial_write(b"\r\nIgnored pages at/above 4 GiB: 0x");
+            serial_write_hex(memory_stats.ignored_above_limit_pages);
+            serial_write(b"\r\nHighest managed physical address: 0x");
+            serial_write_hex(memory_stats.highest_managed_address);
+            serial_write(b"\r\n");
+
+            let reused_page = match memory::allocation_reuse_smoke_test() {
+                Ok(address) => address,
+                Err(error) => {
+                    serial_write(b"P2: physical page allocation/reuse test failed: ");
+                    serial_write(error.message());
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+            serial_write(b"Physical allocator smoke test: allocated, freed and reused page 0x");
+            serial_write_hex(reused_page);
+            serial_write(b"\r\nP2: physical page allocator ready.\r\n");
         } else {
-            serial_write(b"BootInfo: invalid\r\n");
+            serial_write(b"BootInfo: invalid; cannot initialize physical memory.\r\n");
+            halt_forever();
         }
     } else {
-        serial_write(b"BootInfo: not supplied\r\n");
+        serial_write(b"BootInfo: not supplied; cannot initialize physical memory.\r\n");
+        halt_forever();
     }
 
     serial_write(b"ExhiOS: kernel handoff successful.\r\n");
