@@ -268,3 +268,26 @@ Commits:
 The opt-in mode blocks on `SerialPort::read_byte_blocking`, echoes printable ASCII, supports Enter and Backspace echo, and reports the number of received bytes when Ctrl+D is received. It is intentionally a diagnostic byte-echo loop, not a command shell or line editor. Normal boot and automated QEMU debug-exit behavior remain separate.
 
 The user's 2026-11-06 local log confirms COM1 TX and the full P2.6 guard/#DF/IST1 test. Actual typed-byte RX validation is still pending. The interactive RX feature build passed in workflow run [42268731034](https://github.com/mindwork64/exhiOS/actions/runs/42268731034); its headless QEMU regression job is still in progress. Neither build nor headless regression validates receipt of keyboard bytes.
+
+
+## 2026-11-06 — P3.1 interactive COM1 RX confirmed locally
+
+The user ran `EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh` on Linux Mint/QEMU and supplied the serial log:
+- Kernel reached `P3.1 RX test ready`.
+- Input `hello exhiOS` was echoed back exactly.
+- Enter produced a new `RX>` prompt.
+- Ctrl+D ended the loop and printed `received input bytes: 0x000000000000000D` (13 bytes including the Enter terminator).
+This proves actual UART receive, echo and control-character handling in local QEMU, not just driver compilation. The P3.1 driver/build/QEMU regression was already green in [run 42270059656](https://github.com/mindwork64/exhiOS/actions/runs/42270059656). Backspace remains implemented but was not clearly exercised by this supplied log.
+
+## 2026-11-06 — P3.2 initial GOP framebuffer console
+
+Commits in this implementation:
+- [d8e2b21](https://github.com/mindwork64/exhiOS/commit/d8e2b219bed087e5bf92ab74bfa1c7c5bc27aa62) — created the `exhi-console` no_std crate.
+- [4fd68df](https://github.com/mindwork64/exhiOS/commit/4fd68dfe2ebc1d6a83cc8d332698b2962eeee8dd) — added the allocation-free renderer, ASCII glyphs, RGB/BGR format packing, stride-aware writes, wrapping/scrolling and host tests.
+- [a90d01e](https://github.com/mindwork64/exhiOS/commit/a90d01ed8ef1a01272584b5f4424d5169811d938) — kernel-side GOP range validation and framebuffer mapping.
+- [84eb361](https://github.com/mindwork64/exhiOS/commit/84eb361133f2f1ec76c26f513a372dda0d3480e6), [2596970](https://github.com/mindwork64/exhiOS/commit/25969701b1d8580a6c07101306cf43292ab8d84c), [c717853](https://github.com/mindwork64/exhiOS/commit/c717853e9832942f1f63581ada6823c2fae59f99), [13ac6ff](https://github.com/mindwork64/exhiOS/commit/13ac6fff8532742974c30c7953768c4d6a658237), [b2ebda1](https://github.com/mindwork64/exhiOS/commit/b2ebda1b89ba223bc40c1741976d932f7a774f7d) and [e049446](https://github.com/mindwork64/exhiOS/commit/e04944679dac9de21f2c4038275617f6db494a57) — workspace wiring, kernel startup display and CI host-test/build integration.
+- [527dfc3](https://github.com/mindwork64/exhiOS/commit/527dfc3d7802cab3d24918cf2f33a1ad5f19a8d9), [e3e0021](https://github.com/mindwork64/exhiOS/commit/e3e002197f22777390c0b0ba0e9076c79dbcd638), [2248e42](https://github.com/mindwork64/exhiOS/commit/2248e423c1d6ad7074d09a23cf1618e3ce32e9ee) and [2cffee5](https://github.com/mindwork64/exhiOS/commit/2cffee513eda6c63c6cc1d0bd8ee9be0a14c1be9) — fixes to test crate setup and RGB/BGR pixel-position expectations.
+
+The console currently supports GOP format 0 (RGB-reserved) and 1 (BGR-reserved), uses the firmware stride rather than assuming stride equals visible width, validates the framebuffer byte range against the current 4 GiB identity map and writes pixels with volatile stores. The first boot screen reports the kernel banner, resolution, stride and pixel format. BitMask/BltOnly modes and cache policy are not implemented in this first slice.
+
+Host tests and all kernel build variants passed in CI workflow run [42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662); its headless QEMU runtime job is still in progress. Local visual confirmation remains pending.
