@@ -22,17 +22,19 @@
 - P2.4 local + CI QEMU: heap at 4 GiB; 4 initial pages; grows to 18 pages; cross-page read/write, free/reuse/coalescing; 0x12000 free bytes; debug-exit 33.
 
 ## Текущий checkpoint
-- Code checkpoint: [a856090](https://github.com/mindwork64/exhiOS/commit/a856090c0d6e25215e5b56d269894b00696bd01d).
+- P2.5 base checkpoint: [a856090](https://github.com/mindwork64/exhiOS/commit/a856090c0d6e25215e5b56d269894b00696bd01d) (local + CI QEMU verified).
+- Latest code checkpoint: [e19db15](https://github.com/mindwork64/exhiOS/commit/e19db15bf891805c2e22cb3251ebade7872bf515) (P2.5.1 hardening; CI and local runtime pending).
 - P2.5 initial address-space manager committed. New PML4/PDPT per space; shared supervisor-only kernel PDPT entries 0..4; reserved entries 5..7; private user VA 8..512 GiB (PDPT entries 8..511).
 - Unsafe user-frame mapping contract: caller owns and scrubs the frame before exposing it to untrusted code.
 - Initial headless QEMU CI [run 42217123278](https://github.com/mindwork64/exhiOS/actions/runs/42217123278) passed: same VA 0x200000000 mapped to different physical frames in two roots; A1/B2 contents survived CR3 switches; shared kernel/heap maps survived; private page tables reclaimed; debug-exit 33.
 - Latest hardening commit a856090 adds explicit supervisor-only assertions for shared code/stack/heap and the user frame safety contract. Headless QEMU/OVMF CI [run 42217369804](https://github.com/mindwork64/exhiOS/actions/runs/42217369804) and local Linux Mint/QEMU both passed.
 - Local serial values: kernel root 0x11B000; A PML4 0x177000; B PML4 0x179000; shared kernel translation 0x104000; shared heap translation 0x163000; VA 0x200000000 → A frame 0x17B000 / B frame 0x17C000; private page tables reclaimed; debug-exit 33.
 - P2.5 smoke test runs at Ring 0. No actual Ring 3 process execution, syscalls or hardware user-fault test yet. TSS/IST and stack guard page also remain future hardening.
+- P2.5.1 latest code adds use-after-destroy guards, active-destroy rejection, W^X denial, invalid/duplicate map and double-unmap tests, page-table frame validation and retry-safe teardown. This code has not yet received CI/local runtime confirmation.
 
 ## Следующие действия
-1. Продолжить P2.5 hardening: тесты lifecycle, cleanup/error paths и негативные permission/mapping cases. Не считать Ring 0 smoke test доказательством CPL3 isolation.
-2. P2.6: установить TSS и отдельный IST stack для double fault; перевести #DF gate на IST и проверить контролируемую диагностику.
+1. Получить CI и локальный runtime evidence для P2.5.1 checkpoint e19db15; исправить compile/runtime ошибки до дальнейшего расширения подсистемы.
+2. После закрытия P2.5.1 перейти к P2.6: TSS и отдельный IST stack для double fault; перевести #DF gate на IST и проверить контролируемую диагностику.
 3. Только после подтверждённого IST path добавить guard page под kernel stack. Не допускать тройного fault при тестах.
 4. Ring 3, системные вызовы и аппаратные user/supervisor fault tests остаются отдельным последующим user-mode этапом.
 
