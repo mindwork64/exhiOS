@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: b46c8702e3725281e9a42654524649d1d04b4fe8 (P2.6 TSS/IST + contiguous boot-stack guard page; headless CI QEMU passed, local QEMU pending).
+Кодовый checkpoint: d1ea6145e4fa2c10a04e03725d7677b679cbede0 (P3.1 COM1 serial driver with polling TX/RX; kernel build passed, latest QEMU regression pending).
 
 ## Закрыто и проверено в QEMU
 
@@ -158,6 +158,18 @@ CI serial evidence (run 42256795134):
 - #DF/IST1 runtime success marker printed; QEMU debug-exit status 33.
 
 Local Linux Mint/QEMU validation by the user is still pending.
+
+## P3.1 — Polling serial driver
+
+Code: [d1ea614](https://github.com/mindwork64/exhiOS/commit/d1ea6145e4fa2c10a04e03725d7677b679cbede0).
+
+- Reusable 16550-compatible SerialPort with configurable I/O base.
+- COM1 initialization: 38400 baud, 8N1, FIFO, transmitter polling with a bounded timeout.
+- write/write_byte and fixed-width hexadecimal output are implemented.
+- RX: non-blocking try_read_byte and polling read_byte_blocking are implemented for the later serial shell.
+- main.rs uses serial::COM1 for all early boot and exception diagnostics; direct COM1 I/O helpers were removed from main.rs.
+- CI build for normal, exception and QEMU debug-exit kernel variants passed. The RX-inclusive headless QEMU regression run [42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) is pending in this snapshot.
+- Interactive byte reception through the user's local QEMU serial terminal has not yet been tested.
 
 ## Wiki и автоматическая синхронизация
 
