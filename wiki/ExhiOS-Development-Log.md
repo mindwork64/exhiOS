@@ -64,3 +64,13 @@ P2.2 is runtime-verified and closed.
 - Added a headless QEMU/OVMF CI job to the main workflow; it runs after the compile/test job on each push.
 - CI run 42205457670 booted the EFI loader and kernel, switched CR3 to 0x14E000, verified nine critical ranges and the kernel entry translation, then exited with status 33.
 - P2.2 is closed. Next milestone: P2.3 Virtual Memory Manager (4 KiB mappings, map/unmap, page flags, TLB invalidation and dynamic page-table frames).
+
+
+## 2026-11-06 — P2.2 confirmed in user's local QEMU
+- User ran the latest local kernel through UEFI/OVMF and supplied serial output.
+- PML4 root and active CR3 both 0x10C000.
+- Identity map: 4 GiB via 2 MiB pages; 9 critical ranges verified.
+- Kernel entry translation 0x100000 → 0x100000.
+- Kernel emitted the P2.2 success line; isa-debug-exit returned status 33.
+- Root address differs from CI (0x14E000) because firmware memory allocation/layout differs. No functional discrepancy.
+- P2.2 confirmed both in CI and locally; next milestone is P2.3 VMM.

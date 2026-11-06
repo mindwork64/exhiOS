@@ -30,7 +30,7 @@ P2.1 закрыт по runtime evidence. В дорожной карте осно
 
 ## P2.2 — Bootstrap page tables: завершено и проверено в QEMU
 
-Код: [6ae6826](https://github.com/mindwork64/exhiOS/commit/6ae6826ac5e9ad9969efa907d438571444942dec). Headless QEMU CI: [run 42205457670](https://github.com/mindwork64/exhiOS/actions/runs/42205457670).
+Код: [6ae6826](https://github.com/mindwork64/exhiOS/commit/6ae6826ac5e9ad9969efa907d438571444942dec). Headless QEMU CI: [run 42205457670](https://github.com/mindwork64/exhiOS/actions/runs/42205457670). Локальный QEMU пользователя: проверка 2026-11-06, serial output получен в чате.
 
 Реализация:
 - paging module экспортирован и вызывается при kernel startup после P2.1;
@@ -41,16 +41,22 @@ P2.1 закрыт по runtime evidence. В дорожной карте осно
 - отдельная translate_current проверка сопоставляет kernel entry с физическим адресом.
 
 QEMU/OVMF runtime evidence из CI:
-- PML4 root 0x14E000, active CR3 0x14E000 — совпали;
-- 0x100000000 bytes (4 GiB) отображено;
-- huge page size 0x200000 (2 MiB);
+- PML4 root = active CR3 = 0x14E000;
+- 4 GiB отображено, huge page size 2 MiB;
 - проверено 9 address ranges;
-- stack 0x1E70FA00;
-- kernel entry translation 0x100000 = исходный entry point;
-- serial подтвердил P2.2: kernel page tables active; CR3 and identity mappings verified.
-- QEMU debug-exit завершился с ожидаемым status 33.
+- kernel entry translation 0x100000 → 0x100000;
+- success serial line выведена, debug-exit status 33.
 
-P2.2 закрыт по runtime smoke test. Локальный прогон в пользовательской Linux Mint/QEMU среде остаётся полезной дополнительной проверкой, но CI уже исполнил kernel в настоящем QEMU/OVMF, а не только собрал ELF.
+Локальная проверка пользователя (2026-11-06):
+- PML4 root = active CR3 = 0x10C000;
+- 4 GiB отображено, huge page size 2 MiB;
+- проверено 9 address ranges;
+- stack 0x1E0E3A00;
+- kernel entry translation 0x100000 → 0x100000;
+- success serial line выведена, debug-exit status 33.
+Различие адреса корневой таблицы относительно CI ожидаемо: UEFI memory map и размещение loader allocations отличаются между запусками.
+
+P2.2 закрыт по CI и локальному runtime smoke test.
 
 Ограничения bootstrap map — временная карта RWX/supervisor для первых 4 GiB. W^X, user/supervisor isolation, 4 KiB mappings, per-device cache attributes и process address spaces ещё не реализованы.
 
