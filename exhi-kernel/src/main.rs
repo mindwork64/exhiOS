@@ -704,12 +704,41 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         halt_forever();
     }
 
+    #[cfg(feature = "task-accounting-smoke-test")]
+    {
+        kernel_console.write(b"P4.3: starting PIT-backed scheduler runtime-accounting smoke test.\r\n");
+        let passed = arch::x86_64::task::timer_accounting_smoke_test();
+        if passed {
+            kernel_console.write(b"P4.3: scheduler recorded independent task runtime from PIT ticks.\r\n");
+            kernel_console.write(b"P4.3: cooperative task runtime-accounting smoke test passed.\r\n");
+        } else {
+            kernel_console.write(b"P4.3: cooperative task runtime-accounting smoke test failed.\r\n");
+        }
+
+        let exit_value = if passed {
+            QEMU_DEBUG_EXIT_VALUE
+        } else {
+            QEMU_DEBUG_EXIT_VALUE + 1
+        };
+        kernel_console.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
+        unsafe {
+            asm!(
+                "out dx, eax",
+                in("dx") QEMU_DEBUG_EXIT_PORT,
+                in("eax") exit_value,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+        kernel_console.write(b"QEMU debug-exit: device did not terminate the guest.\r\n");
+        halt_forever();
+    }
+
     #[cfg(feature = "keyboard-smoke-test")]
     {
         keyboard_smoke_test(&mut kernel_console, &mut driver_registry);
     }
 
-    #[cfg(not(any(feature = "serial-rx-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test")))]
+    #[cfg(not(any(feature = "serial-rx-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test", feature = "task-accounting-smoke-test")))]
     {
         #[cfg(feature = "qemu-debug-exit-smoke-test")]
         {
