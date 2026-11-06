@@ -25,6 +25,15 @@ if [[ "${EXHIOS_SERIAL_RX_TEST:-0}" == "1" ]] && {
     exit 1
 fi
 
+if [[ "${EXHIOS_TIMER_TEST:-0}" == "1" ]]; then
+    if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]] ||
+       [[ "${EXHIOS_EXCEPTION_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_SERIAL_RX_TEST:-0}" == "1" ]]; then
+        echo "EXHIOS_TIMER_TEST requires EXHIOS_QEMU_EXIT_TEST and cannot be combined with exception or serial RX tests." >&2
+        exit 1
+    fi
+fi
+
 rustup target add x86_64-unknown-uefi x86_64-unknown-none
 
 cargo test -p exhi-abi
@@ -45,6 +54,10 @@ fi
 if [[ "${EXHIOS_SERIAL_RX_TEST:-0}" == "1" ]]; then
     KERNEL_FEATURES+=(serial-rx-smoke-test)
     echo "Building the kernel with the interactive COM1 RX smoke test."
+fi
+if [[ "${EXHIOS_TIMER_TEST:-0}" == "1" ]]; then
+    KERNEL_FEATURES+=(timer-smoke-test)
+    echo "Building the kernel with the PIT IRQ0 timer smoke test."
 fi
 
 FEATURE_ARGS=()
