@@ -54,7 +54,7 @@ CI build и headless QEMU/OVMF runtime прошли: root/CR3 0x14E000, map 4 Gi
 Ограничения bootstrap map: RWX, supervisor-only, 2 MiB granularity; нет W^X, user mappings, per-device cache attributes, process address spaces и общей VMM.
 
 ## Устройства
-COM1 base `0x3F8` обслуживается модулем `arch/x86_64/serial.rs`: reusable 16550-compatible `SerialPort`, 38400 baud, 8N1, FIFO, bounded polling TX, non-blocking `try_read_byte` и polling `read_byte_blocking`. Основной boot/exception logging использует `serial::COM1`; raw COM1 I/O удалён из `main.rs`. QEMU подключает UART как `-serial stdio`, поэтому этот же интерфейс станет transport для диагностического shell. Interactive RX ещё не проверен локально. GOP framebuffer приходит через BootInfo, текстовая framebuffer console ещё не реализована. QEMU: q35, OVMF, 512 MiB RAM, ESP на USB storage, serial stdio.
+COM1 base `0x3F8` обслуживается модулем `arch/x86_64/serial.rs`: reusable 16550-compatible `SerialPort`, 38400 baud, 8N1, FIFO, bounded polling TX, non-blocking `try_read_byte` и polling `read_byte_blocking`. Основной boot/exception logging использует `serial::COM1`; raw COM1 I/O удалён из `main.rs`. QEMU подключает UART как `-serial stdio`. Для RX есть opt-in byte-echo режим `EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh`: он использует blocking polling read, echo printable ASCII, Enter/Backspace и выводит счётчик принятых байтов по Ctrl+D. Локальный TX подтверждён, интерактивный RX ещё требует пользовательского ввода. GOP framebuffer приходит через BootInfo, текстовая framebuffer console ещё не реализована. QEMU: q35, OVMF, 512 MiB RAM, ESP на USB storage, serial stdio.
 
 ## P2.3 — Initial Virtual Memory Manager
 
@@ -67,7 +67,7 @@ New module: \`exhi-kernel/src/arch/x86_64/vmm.rs\`.
 - VMM separates virtual and physical bounds: lower canonical virtual addresses below 512 GiB are accepted; mapped physical frames remain below 4 GiB. Missing PDPT children are created on demand.
 - Local Linux Mint/QEMU run on 2026-11-06 confirmed NX, split, RW supervisor NX read/write, unmap/TLB invalidation, identity restore, table reclaim and debug-exit 33; CI runtime passed in run 42213581974.
 - Independent address spaces are now in initial implementation: separate PML4/PDPT, shared supervisor-only kernel entries 0..4, private user PDPT entries 8..511. CI QEMU verified two roots mapping the same VA to different physical frames; local verification pending.
-- Physical memory beyond 4 GiB, SMP TLB shootdown and actual Ring 3 execution/permission fault tests remain future work. TSS/IST and the boot-stack guard page are implemented; their CI runtime proof is recorded under P2.6.
+- Physical memory beyond 4 GiB, SMP TLB shootdown and actual Ring 3 execution/permission fault tests remain future work. TSS/IST and the boot-stack guard page are locally and CI runtime verified under P2.6.
 
 ## P2.4 — Kernel Heap (initial implementation)
 - `exhi-heap` provides no_std first-fit free-list allocation, alignment, splitting, deallocation, coalescing and reuse; four host unit tests pass.

@@ -78,7 +78,7 @@
 Кодовый checkpoint P2.5.1: [e19db15](https://github.com/mindwork64/exhiOS/commit/e19db15bf891805c2e22cb3251ebade7872bf515).
 
 ### P2.6 Exception and stack hardening
-**TSS/IST1 and boot-stack guard page pass headless CI/OVMF QEMU runtime; local user QEMU validation pending.**
+**Завершено; headless CI/OVMF и локальный Linux Mint/QEMU подтверждены 2026-11-06.**
 - [x] Kernel 64-bit TSS descriptor in GDT; LTR installs TR; dedicated aligned 16 KiB IST1 stack.
 - [x] IDT vector 8 (#DF) gate selects IST1; status readback checks IST index.
 - [x] Exception assembly passes the normalized exception-frame pointer to the handler; #DF handler verifies that it lies inside IST1.
@@ -86,7 +86,7 @@
 - [x] Physical allocator reserves the guard frame before later allocations; VMM removes its supervisor identity mapping and confirms the stack pages remain mapped.
 - [x] QEMU debug-exit variant switches RSP to the bottom of the mapped stack and faults on the guard page. The CPU's #PF frame push faults into the same guard page, raising #DF on IST1; handler verifies its frame pointer is inside IST1.
 - [x] Headless CI QEMU/OVMF run [42256850017](https://github.com/mindwork64/exhiOS/actions/runs/42256850017): loader reports guard 0x1E6FF000, stack 0x1E700000..0x1E710000; guard is unmapped, stack remains supervisor-only, #DF reaches IST1, debug-exit status 33.
-- [ ] Local Linux Mint/QEMU confirmation.
+- [x] Локальный Linux Mint/QEMU (2026-11-06): guard page 0x1E0D3000 не отображена; stack 0x1E0D4000..0x1E0E4000 (64 KiB) остался supervisor-only; вызванный guard fault привёл к vector 8 (#DF), exception frame 0x122FC8 находится внутри IST1 0x11F000..0x123000; debug-exit status 33.
 - [ ] Additional deliberate stack exhaustion/guard-page variants beyond the controlled #DF probe.
 
 Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b46c8702e3725281e9a42654524649d1d04b4fe8).
@@ -94,14 +94,16 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 ## P3 — Basic devices
 
 ### P3.1 — Polling serial driver
-**Serial output is integrated and verified in headless QEMU CI; receive support is implemented, interactive input validation pending.**
+**COM1 TX is confirmed locally and in headless QEMU CI; RX API and an interactive diagnostic mode are implemented; actual local RX input validation is pending.**
 - [x] Reusable 16550-compatible `SerialPort` type with configurable base port.
 - [x] COM1 initialization (38400 baud, 8N1, FIFO), bounded polling TX and fixed-width hexadecimal output.
-- [x] Non-blocking `try_read_byte` and polling `read_byte_blocking` for the future serial shell.
+- [x] Non-blocking `try_read_byte` and polling `read_byte_blocking`.
 - [x] Kernel boot diagnostics use `serial::COM1`; direct COM1 port I/O was removed from `main.rs`.
-- [x] Headless QEMU/OVMF boot regression: [run 42257896620](https://github.com/mindwork64/exhiOS/actions/runs/42257896620), including the P2.6 guard-page/#DF/IST1 check.
-- [x] RX-inclusive code CI build + headless QEMU/OVMF regression: [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) passed; boot log includes P3.1 readiness marker and retains P2.6 guard-page/#DF/IST1 success.
-- [ ] Local Linux Mint/QEMU and actual interactive serial receive test.
+- [x] Local Linux Mint/QEMU boot log (2026-11-06) shows the P3.1 readiness marker and successful COM1 diagnostic output.
+- [x] Headless QEMU/OVMF regression: [run 42257896620](https://github.com/mindwork64/exhiOS/actions/runs/42257896620), including the P2.6 guard-page/#DF/IST1 check.
+- [x] RX-inclusive driver build + headless QEMU/OVMF regression: [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) passed; CI does not inject serial input.
+- [x] Added opt-in interactive byte-echo test mode: `EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh`; it echoes printable input, handles Enter/Backspace and reports the received byte count on Ctrl+D. CI compilation and local RX runtime are tracked separately.
+- [ ] Local Linux Mint/QEMU test with actual typed input.
 
 ### P3.2 — Framebuffer console
 - [ ] Pixel-format-aware framebuffer console with GOP stride support.

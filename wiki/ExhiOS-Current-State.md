@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: d1ea6145e4fa2c10a04e03725d7677b679cbede0 (P3.1 COM1 polling TX/RX; CI build + headless QEMU pass, local QEMU pending).
+Кодовый checkpoint: [6014dec](https://github.com/mindwork64/exhiOS/commit/6014dec505682a4d91ff7165d222f274a15561da) — P2.6 local + CI verified; P3.1 interactive RX diagnostic mode added, actual byte reception pending.
 
 ## Закрыто и проверено в QEMU
 
@@ -151,25 +151,30 @@ Implementation:
 - The physical allocator reserves the guard frame before subsequent allocations. After bootstrap paging and VMM setup, the guard identity mapping is removed; the complete stack remains supervisor mapped.
 - The QEMU debug-exit variant sets RSP to the bottom of the mapped stack and faults on the guard page. The #PF exception-frame push then faults into the same guard page; the processor raises #DF, switches to IST1, and the handler verifies its stack pointer.
 
-CI serial evidence (run 42256795134):
+Headless CI/OVMF serial evidence ([run 42256850017](https://github.com/mindwork64/exhiOS/actions/runs/42256850017)):
 - Guard page 0x1E6FF000; kernel stack 0x1E700000..0x1E710000 (64 KiB).
 - Guard translation is NotMapped; first/last stack pages remain mapped and supervisor-only.
-- Exception stack pointer 0x16AFC8 lies inside IST1.
-- #DF/IST1 runtime success marker printed; QEMU debug-exit status 33.
+- Exception stack pointer 0x16AFC8 lies inside IST1; QEMU debug-exit status 33.
 
-Local Linux Mint/QEMU validation by the user is still pending.
+Local Linux Mint/QEMU serial evidence (2026-11-06, supplied log):
+- Guard page 0x1E0D3000; kernel stack 0x1E0D4000..0x1E0E4000 (64 KiB).
+- Kernel explicitly reports that the guard page is unmapped and the boot stack remains mapped and supervisor-only.
+- Controlled guard fault raises vector 8 (Double Fault); exception frame pointer 0x122FC8 lies inside IST1 range 0x11F000..0x123000.
+- P2.6 double-fault IST runtime smoke test passed; QEMU debug-exit status 33.
+
+P2.6 is closed with both local and CI runtime evidence.
 
 ## P3.1 — Polling serial driver
 
-Code: [d1ea614](https://github.com/mindwork64/exhiOS/commit/d1ea6145e4fa2c10a04e03725d7677b679cbede0).
+Driver implementation: [d1ea614](https://github.com/mindwork64/exhiOS/commit/d1ea6145e4fa2c10a04e03725d7677b679cbede0). Interactive RX diagnostic mode: [a58220e](https://github.com/mindwork64/exhiOS/commit/a58220e5fda9afb069b71f08529ebc68f95a4d36), with control-flow cleanup in [6014dec](https://github.com/mindwork64/exhiOS/commit/6014dec505682a4d91ff7165d222f274a15561da).
 
 - Reusable 16550-compatible SerialPort with configurable I/O base.
 - COM1 initialization: 38400 baud, 8N1, FIFO, transmitter polling with a bounded timeout.
-- write/write_byte and fixed-width hexadecimal output are implemented.
-- RX: non-blocking try_read_byte and polling read_byte_blocking are implemented for the later serial shell.
-- main.rs uses serial::COM1 for all early boot and exception diagnostics; direct COM1 I/O helpers were removed from main.rs.
-- CI build for normal, exception and QEMU debug-exit kernel variants passed. RX-inclusive headless QEMU regression [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) also passed; boot log includes the P3.1 readiness marker and the P2.6 guard-page/#DF/IST1 success marker.
-- Interactive byte reception through the user's local QEMU serial terminal has not yet been tested.
+- TX: write_byte, write and fixed-width hexadecimal output. Local boot log (2026-11-06) confirms COM1 output.
+- RX: non-blocking try_read_byte and polling read_byte_blocking.
+- Opt-in diagnostic mode: set EXHIOS_SERIAL_RX_TEST=1 before ./scripts/run-qemu.sh. It echoes printable bytes, handles Enter/Backspace and exits the test loop on Ctrl+D after reporting the received byte count.
+- CI confirms the ordinary and debug-exit kernel variants; interactive RX variant compilation is pending its newly triggered CI run. CI QEMU doesn't inject terminal bytes, so successful compilation isn't RX runtime proof.
+- Actual local typed input remains unverified.
 
 ## Wiki и автоматическая синхронизация
 

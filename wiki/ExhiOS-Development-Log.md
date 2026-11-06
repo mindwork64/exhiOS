@@ -232,7 +232,11 @@ Headless CI/OVMF [run 42256850017](https://github.com/mindwork64/exhiOS/actions/
 - Exception stack pointer 0x16AFC8 is inside IST1.
 - P2.6 double-fault IST runtime success marker and QEMU debug-exit status 33.
 
-Local Linux Mint/QEMU verification of this P2.6 guard-page checkpoint is still pending. Do not yet mark P2.6 fully closed by the project's local+CI acceptance rule.
+Local Linux Mint/QEMU verification (2026-11-06, user-supplied serial log) closed the milestone:
+- Guard page 0x1E0D3000 is unmapped; 64 KiB kernel stack is 0x1E0D4000..0x1E0E4000 and remains supervisor-only.
+- A controlled guard fault produced vector 8 (Double Fault). Exception frame pointer 0x122FC8 lies inside IST1 0x11F000..0x123000.
+- The P2.6 runtime success marker printed and QEMU debug-exit returned status 33.
+P2.6 is now locally and CI runtime verified.
 
 ## 2026-11-06 — P3.1 polling serial driver implementation
 
@@ -253,3 +257,14 @@ Implementation:
 Headless QEMU/OVMF [run 42257896620](https://github.com/mindwork64/exhiOS/actions/runs/42257896620) passed and printed the P3.1 COM1 readiness marker. The same run confirmed the P2.6 guard-page/#DF/IST1 path and debug-exit status 33. The RX-inclusive build and QEMU regression [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) both passed. Boot output included the P3.1 readiness marker and the P2.6 guard-page/#DF/IST1 success marker. CI does not inject terminal input, so actual interactive RX still requires local QEMU stdio validation.
 
 Interactive serial input on the user's local Linux Mint/QEMU terminal has not yet been verified.
+
+
+## 2026-11-06 — Interactive COM1 RX diagnostic mode added
+
+Commits:
+- [a58220e](https://github.com/mindwork64/exhiOS/commit/a58220e5fda9afb069b71f08529ebc68f95a4d36) — adds the `serial-rx-smoke-test` kernel feature, build-script switch `EXHIOS_SERIAL_RX_TEST=1`, and a dedicated CI compile step.
+- [6014dec](https://github.com/mindwork64/exhiOS/commit/6014dec505682a4d91ff7165d222f274a15561da) — isolates the interactive RX path from the automated debug-exit path without introducing unreachable-code warnings.
+
+The opt-in mode blocks on `SerialPort::read_byte_blocking`, echoes printable ASCII, supports Enter and Backspace echo, and reports the number of received bytes when Ctrl+D is received. It is intentionally a diagnostic byte-echo loop, not a command shell or line editor. Normal boot and automated QEMU debug-exit behavior remain separate.
+
+The user's 2026-11-06 local log confirms COM1 TX and the full P2.6 guard/#DF/IST1 test. Actual typed-byte RX validation is still pending. CI compilation of the new feature and the latest QEMU regression are tracked by workflow run [42268731034](https://github.com/mindwork64/exhiOS/actions/runs/42268731034); this entry must not be interpreted as an RX runtime pass.
