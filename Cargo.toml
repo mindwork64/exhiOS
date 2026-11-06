@@ -1,0 +1,21 @@
+[workspace]
+members = ["exhi-abi", "exhi-boot", "exhi-kernel"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+uefi = { version = "0.41.0", default-features = false, features = ["panic_handler"] }
+exhi-abi = { path = "exhi-abi" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+opt-level = "s"
