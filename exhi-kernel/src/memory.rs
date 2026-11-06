@@ -79,6 +79,14 @@ pub fn allocate_frame() -> Result<u64, MemoryError> {
     unsafe { (&mut *allocator).allocate_page() }
 }
 
+/// Keeps a managed physical page unavailable to future allocations.
+pub fn reserve_frame(physical_address: u64) -> Result<(), MemoryError> {
+    let allocator = core::ptr::addr_of_mut!(PHYSICAL_ALLOCATOR);
+
+    // SAFETY: Called during single-core kernel startup with IF clear.
+    unsafe { (&mut *allocator).reserve_page(physical_address) }
+}
+
 /// Releases a physical frame after all virtual mappings and page-table
 /// references to it have been removed and invalidated.
 pub fn release_frame(physical_address: u64) -> Result<(), MemoryError> {
