@@ -226,7 +226,7 @@ Implementation:
 - Kernel reserves the guard frame in the physical allocator before later allocations, then removes its virtual identity mapping through VMM after parsing the UEFI map.
 - QEMU debug-exit build sets RSP to the first byte of the mapped stack and reads the guard page. The first #PF's exception-frame push faults into the guard page and forces a processor #DF, which must switch to IST1. Handler exits with status 33 only if the exception frame lies inside IST1.
 
-Headless CI/OVMF [run 42256795134](https://github.com/mindwork64/exhiOS/actions/runs/42256795134) passed build and QEMU runtime:
+Headless CI/OVMF [run 42256850017](https://github.com/mindwork64/exhiOS/actions/runs/42256850017) passed build and QEMU runtime:
 - Loader guard physical address 0x1E6FF000; usable stack 0x1E700000..0x1E710000.
 - Kernel confirms guard is unmapped and first/last stack pages remain supervisor mapped.
 - Exception stack pointer 0x16AFC8 is inside IST1.
