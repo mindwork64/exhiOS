@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: [6014dec](https://github.com/mindwork64/exhiOS/commit/6014dec505682a4d91ff7165d222f274a15561da) — P2.6 local + CI verified; P3.1 interactive RX diagnostic mode added, actual byte reception pending.
+Кодовый checkpoint: [2cffee5](https://github.com/mindwork64/exhiOS/commit/2cffee513eda6c63c6cc1d0bd8ee9be0a14c1be9) — P2.6 и P3.1 закрыты локально + CI; P3.2 initial GOP framebuffer console реализован, QEMU runtime/local visual confirmation pending.
 
 ## Закрыто и проверено в QEMU
 
@@ -172,9 +172,10 @@ Driver implementation: [d1ea614](https://github.com/mindwork64/exhiOS/commit/d1e
 - COM1 initialization: 38400 baud, 8N1, FIFO, transmitter polling with a bounded timeout.
 - TX: write_byte, write and fixed-width hexadecimal output. Local boot log (2026-11-06) confirms COM1 output.
 - RX: non-blocking try_read_byte and polling read_byte_blocking.
-- Opt-in diagnostic mode: set EXHIOS_SERIAL_RX_TEST=1 before ./scripts/run-qemu.sh. It echoes printable bytes, handles Enter/Backspace and exits the test loop on Ctrl+D after reporting the received byte count.
-- CI's build job passed for the ordinary, exception, debug-exit and interactive RX kernel variants in [run 42268731034](https://github.com/mindwork64/exhiOS/actions/runs/42268731034). Its headless QEMU regression job is still running. CI QEMU doesn't inject terminal bytes, so successful compilation isn't RX runtime proof.
-- Actual local typed input remains unverified.
+- Opt-in diagnostic mode: `EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh`; it echoes printable bytes, handles Enter/Backspace and exits on Ctrl+D after reporting the received-byte count.
+- CI build + headless QEMU regression passed for the interactive RX kernel feature: [run 42270059656](https://github.com/mindwork64/exhiOS/actions/runs/42270059656).
+- Local typed input (2026-11-06): `hello exhiOS` echoed correctly, a fresh `RX>` prompt appeared after Enter, and Ctrl+D ended the loop with byte count `0x0D` (13 including Enter). Backspace was not explicitly exercised in the supplied log.
+- P3.1 is closed with local input and CI build/runtime evidence.
 
 ## Wiki и автоматическая синхронизация
 
@@ -191,3 +192,15 @@ git reset --hard origin/main
 Обычный запуск: `./scripts/run-qemu.sh`  
 INT3: `EXHIOS_EXCEPTION_TEST=1 ./scripts/run-qemu.sh`  
 QEMU debug-exit: `EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh`
+
+
+## P3.2 — GOP framebuffer console (initial implementation)
+
+Code checkpoint: [2cffee5](https://github.com/mindwork64/exhiOS/commit/2cffee513eda6c63c6cc1d0bd8ee9be0a14c1be9).
+
+- New `exhi-console` no_std crate with a compact 5x7 ASCII font rendered in 12x16 cells.
+- RGB-reserved GOP format 0 and BGR-reserved format 1 are packed separately; BitMask and BltOnly modes return an explicit unsupported-format error.
+- The renderer honors `pixels_per_scan_line` independently of visible width, validates backing-buffer length, and uses volatile pixel writes. It supports clear, text, decimal numbers, CR/LF/tab, line wrap and scroll.
+- Kernel-side initialization checks dimensions, alignment, buffer byte count and that the framebuffer range lies within the current 4 GiB identity map. On success the first screen shows the kernel banner, resolution, scanline stride and pixel format.
+- Host tests and target builds are passing in CI workflow run [42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662). The headless QEMU runtime job is still in progress; no local visual check has been supplied yet.
+- Known first-version limits: ASCII-only glyphs, GOP formats 0/1 only, no framebuffer cache policy setup (PAT/MTRR) yet.
