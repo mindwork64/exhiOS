@@ -748,8 +748,6 @@ fn heap_test_error_message(error: heap::HeapTestError) -> &'static [u8] {
     }
 }
 
-#[cfg(feature = "serial-rx-smoke-test")]
-fn serial_rx_smoke_test() -> ! {
 #[cfg(feature = "keyboard-smoke-test")]
 fn keyboard_smoke_test(console: &mut KernelConsole) -> ! {
     let status = match keyboard::initialize() {
