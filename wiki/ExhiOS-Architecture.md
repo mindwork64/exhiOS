@@ -56,7 +56,7 @@ CI build и headless QEMU/OVMF runtime прошли: root/CR3 0x14E000, map 4 Gi
 ## Устройства
 COM1 base `0x3F8` обслуживается модулем `arch/x86_64/serial.rs`: reusable 16550-compatible `SerialPort`, 38400 baud, 8N1, FIFO, bounded polling TX, non-blocking `try_read_byte` и polling `read_byte_blocking`. Основной boot/exception logging использует `serial::COM1`; raw COM1 I/O удалён из `main.rs`. QEMU подключает UART как `-serial stdio`. Локально проверены TX и интерактивный RX: `hello exhiOS` echo, Enter prompt и Ctrl+D с byte counter 0x0D. Diagnostic mode остаётся доступен через `EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh`; это не command shell.
 
-GOP framebuffer приходит через BootInfo. Новый `exhi-console` no_std crate создаёт текстовую консоль без heap allocation: 5x7 ASCII glyphs в 12x16 cells, foreground/background colors, clear, text, decimal values, CR/LF/tab, wrap и scrolling. Поддерживаются UEFI pixel formats 0 (RGB-reserved) и 1 (BGR-reserved); BitMask и BltOnly явно отклоняются. Kernel проверяет physical alignment, dimensions, stride, buffer byte size и что весь используемый framebuffer диапазон помещается в текущий 0..4 GiB identity map. Renderer пишет volatile pixels и индексирует строки по `pixels_per_scan_line`, не по width. Первый экран выводит kernel banner, resolution, stride и pixel format. Host tests, kernel build variants and headless QEMU/OVMF runtime passed in [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662); boot serial confirms framebuffer initialization and the P2.6 IST1 regression. Local screen inspection is still pending.
+GOP framebuffer приходит через BootInfo. Новый `exhi-console` no_std crate создаёт текстовую консоль без heap allocation: 5x7 ASCII glyphs в 12x16 cells, foreground/background colors, clear, text, decimal values, CR/LF/tab, wrap и scrolling. Поддерживаются UEFI pixel formats 0 (RGB-reserved) и 1 (BGR-reserved); BitMask и BltOnly явно отклоняются. Kernel проверяет physical alignment, dimensions, stride, buffer byte size и что весь используемый framebuffer диапазон помещается в текущий 0..4 GiB identity map. Renderer пишет volatile pixels и индексирует строки по `pixels_per_scan_line`, не по width. Первый экран выводит kernel banner, resolution, stride и pixel format. Host tests, kernel build variants and headless QEMU/OVMF runtime passed in [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662); boot serial confirms framebuffer initialization and the P2.6 IST1 regression. Local QEMU serial confirms 1280x800, stride 1280, GOP format 1, initialization, handoff and halt; the user-provided screenshot description confirms the expected banner and all framebuffer status strings. Fine visual details were not independently inspected.
 
 ## P2.3 — Initial Virtual Memory Manager
 
@@ -89,9 +89,18 @@ Module: exhi-kernel/src/arch/x86_64/address_space.rs.
 - API: create, unsafe map_user_page (caller owns and scrubs frame), translate, unmap_user_page, activate, restore_kernel and destroy. Empty private page tables are reclaimed; data frames remain caller-owned.
 - Headless QEMU/OVMF CI [run 42217123278](https://github.com/mindwork64/exhiOS/actions/runs/42217123278) verified two roots: same VA 0x200000000 maps to distinct frames, byte A1/B2 survives CR3 switches, kernel and heap translations persist, page tables/data frames are reclaimed, debug-exit 33.
 - Safety hardening includes supervisor-only checks for kernel code, stack and heap, unsafe caller ownership/scrub contract, use-after-destroy guards, active-destroy rejection, W^X denial, invalid/duplicate map and double-unmap rejection, page-table frame validation and retry-safe teardown. P2.5.1 passed local QEMU and CI [run 42238977281](https://github.com/mindwork64/exhiOS/actions/runs/42238977281).
-- Ring 3 execution, syscalls, user-pointer validation and hardware-enforced user/supervisor fault tests are not implemented yet. TSS/IST and boot-stack guard are implemented under P2.6; latest CI proof is [run 42256850017](https://github.com/mindwork64/exhiOS/actions/runs/42256850017), local QEMU verification pending.
+- Ring 3 execution, syscalls, user-pointer validation and hardware-enforced user/supervisor fault tests are not implemented yet. TSS/IST and boot-stack guard are implemented under P2.6; CI proof is [run 42256850017](https://github.com/mindwork64/exhiOS/actions/runs/42256850017), and local QEMU verification passed on 2026-11-06.
 
 
+
+## Unified kernel console writer
+
+Module: `exhi-kernel/src/console.rs`; implementation commits [c3d2b8c](https://github.com/mindwork64/exhiOS/commit/c3d2b8ccaa34c6b399b7f12905ae11658455916b) and [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a).
+- `KernelConsole` mirrors byte slices to COM1 and the optional GOP framebuffer.
+- `write_fmt` uses `core::fmt` without heap allocation.
+- It is instantiated only after GOP setup; prior boot diagnostics remain serial-only. If GOP setup fails, output remains available over COM1.
+- QEMU debug-exit and final halt messages use the shared writer. It is single-core and polling-only, with no locking/IRQ support yet.
+- CI build job passed all host tests and kernel build variants in [run 42274252754](https://github.com/mindwork64/exhiOS/actions/runs/42274252754); headless QEMU runtime and local mirrored-output validation are pending.
 
 ## P3.1 — Polling serial driver
 
@@ -100,8 +109,8 @@ Module: `exhi-kernel/src/arch/x86_64/serial.rs`.
 - Initialize as 38400 baud, 8N1, FIFO enabled; transmit bytes with bounded polling.
 - TX API: `write_byte`, `write`, `write_hex`.
 - RX API: non-blocking `try_read_byte` and polling `read_byte_blocking`.
-- Driver is single-core and polling; no UART IRQs or shared-console locking yet. Early kernel diagnostics use COM1.
-- Headless CI build and QEMU regression passed [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119). Actual interactive byte reception via local QEMU stdio remains to be tested.
+- Driver is single-core and polling; no UART IRQs or interrupt-safe output locking yet. Early kernel diagnostics use COM1; after GOP setup, `KernelConsole` mirrors post-handoff output to COM1 and framebuffer.
+- Headless CI build and QEMU regression passed [run 42270059656](https://github.com/mindwork64/exhiOS/actions/runs/42270059656). Local interactive byte reception is verified: `hello exhiOS` echoed, Enter prompted again and Ctrl+D ended the loop with 13 received bytes.
 
 ## P2.6 — TSS, double-fault IST and boot-stack guard page
 
