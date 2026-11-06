@@ -27,6 +27,34 @@ impl PicStatus {
 ///
 /// The current QEMU q35 stage uses the PIC only as a compatibility baseline.
 /// Local APIC/IOAPIC routing is deferred until ACPI MADT parsing is available.
+/// Unmasks only IRQ0 while preserving the current state of every other
+/// master PIC line. Slave PIC lines remain untouched.
+pub fn unmask_irq0() -> PicStatus {
+    // SAFETY: Called during single-core startup with IF clear, after the IRQ0
+    // IDT gate is installed. The caller enables CPU interrupts separately.
+    unsafe {
+        let master = inb(MASTER_DATA) & !0x01;
+        outb(MASTER_DATA, master);
+        PicStatus {
+            master_mask: inb(MASTER_DATA),
+            slave_mask: inb(SLAVE_DATA),
+        }
+    }
+}
+
+/// Masks IRQ0 without changing the state of any other PIC line.
+pub fn mask_irq0() -> PicStatus {
+    // SAFETY: Called with IF clear while changing timer interrupt policy.
+    unsafe {
+        let master = inb(MASTER_DATA) | 0x01;
+        outb(MASTER_DATA, master);
+        PicStatus {
+            master_mask: inb(MASTER_DATA),
+            slave_mask: inb(SLAVE_DATA),
+        }
+    }
+}
+
 pub fn initialize_and_mask() -> PicStatus {
     // SAFETY: This code runs in ring 0 during single-CPU kernel startup.
     // Maskable interrupts remain disabled while the PIC is reprogrammed.
