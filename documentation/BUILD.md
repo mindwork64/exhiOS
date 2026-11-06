@@ -12,7 +12,15 @@ The repository's `rust-toolchain.toml` selects the Stable channel and requests:
 
 Install Rust through rustup if it is not already installed. Entering the repository lets rustup select the configured toolchain.
 
+The `x86_64-unknown-none` target supports PIE by default. The initial ExhiOS loader expects fixed-address `ET_EXEC` images, so `.cargo/config.toml` explicitly selects `-C relocation-model=static` for the kernel. Do not remove this setting unless the loader is extended to apply ELF relocations.
+
 ## Build and unit tests
+
+Install the host-side inspection utility on Debian/Ubuntu-based systems:
+
+```bash
+sudo apt install binutils
+```
 
 From the repository root:
 
@@ -20,7 +28,7 @@ From the repository root:
 ./scripts/build.sh
 ```
 
-The script installs the two compilation targets, runs the `exhi-abi` and `exhi-elf` unit tests, and builds the UEFI application and kernel.
+The script installs the two compilation targets, runs the `exhi-abi` and `exhi-elf` unit tests, and builds the UEFI application and kernel. It also uses `readelf` to verify that the resulting kernel is `ET_EXEC` rather than `ET_DYN`.
 
 Expected artifacts:
 

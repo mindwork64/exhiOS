@@ -1,0 +1,4 @@
+[target.x86_64-unknown-none]
+# The initial ExhiOS loader maps PT_LOAD segments at their declared addresses.
+# Build a fixed-address ET_EXEC kernel instead of the target's default PIE.
+rustflags = ["-C", "relocation-model=static"]

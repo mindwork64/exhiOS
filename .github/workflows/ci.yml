@@ -12,6 +12,9 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Install ELF inspection tools
+        run: sudo apt-get update && sudo apt-get install -y binutils
+
       - name: Install Rust targets
         run: rustup target add x86_64-unknown-uefi x86_64-unknown-none
 
@@ -26,3 +29,8 @@ jobs:
 
       - name: Build kernel ELF
         run: cargo build -p exhi-kernel --target x86_64-unknown-none
+
+      - name: Verify fixed-address kernel image
+        run: |
+          readelf -h target/x86_64-unknown-none/debug/exhi-kernel
+          readelf -h target/x86_64-unknown-none/debug/exhi-kernel | grep -Eq 'Type:[[:space:]]+EXEC[[:space:]]+\(Executable file\)'
