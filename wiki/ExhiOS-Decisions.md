@@ -64,3 +64,13 @@
 - Initial heap region is four 4 KiB pages; growth is on demand, up to 64 MiB. The current implementation does not shrink mapped heap pages.
 - Use a small no_std first-fit free-list allocator with in-band free blocks and allocation headers; split free ranges and coalesce adjacent free blocks.
 - Expose it as the kernel GlobalAlloc only after explicit initialization during kernel startup. Operations are serialized by an atomic spinlock and local interrupts are disabled while the lock is held. Current kernel is single-core; SMP TLB shootdown/allocator lock design remains future work.
+
+
+## Kernel address-space layout (P2.5)
+- The kernel currently occupies PML4[0] and keeps its low 4 GiB identity map plus heap virtual range beginning at 4 GiB.
+- New address spaces get private PML4 and PDPT pages. PDPT entries 0..4 are shared from the kernel root; entries 5..7 are reserved.
+- User mappings begin at VA 8 GiB (PDPT[8]) and are limited to the current VMM window below 512 GiB (PDPT[8..511]).
+- The PML4[0] USER bit may be set for user pages, but shared kernel/heap mappings remain supervisor-only because their lower-level entries retain U/S=0.
+- map_user_page is unsafe: caller owns frame, keeps it allocated until unmap and scrubs before exposing it to untrusted code. unmap returns data-frame ownership to caller; destroy only reclaims private page-table structures.
+- CR3 switches require IF=0. Current design is single-core and assumes no PCID/global mappings; SMP TLB shootdown is future work.
+- Actual Ring 3 execution and hardware privilege fault verification remain separate user-mode work.

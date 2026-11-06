@@ -41,19 +41,26 @@
 - [ ] Физические адреса за пределами текущего 4 GiB allocator window.
 
 ### P2.4 Kernel heap
-**Первая реализация в `main`; host tests и все build variants прошли. QEMU runtime проверка новой интеграции ещё не завершена.**
-- [x] Новый `no_std` crate `exhi-heap`: first-fit free list, alignment, split/coalesce, free/reuse.
-- [x] Kernel `GlobalAlloc` поверх page-backed виртуальной области с динамическим ростом.
-- [x] Отдельный heap VA начинается с 4 GiB; физические frames остаются в подтверждённой identity map ниже 4 GiB.
-- [x] Host tests: 4/4; ABI 2/2, ELF 12/12, physical memory 7/7.
-- [x] Kernel default/exception/debug-exit builds и UEFI build прошли в CI.
-- [ ] Headless QEMU runtime smoke test: P2.4 вызов из kernel startup в актуальном commit; runner пока на установке QEMU/OVMF dependencies.
-- [ ] Локальный Linux Mint/QEMU прогон пользователя.
+**Завершено; host tests, headless CI QEMU и локальный Linux Mint/QEMU подтверждены 2026-11-06.**
+- [x] Новый no_std crate exhi-heap: first-fit free list, alignment, splitting/coalescing, free/reuse.
+- [x] Kernel GlobalAlloc поверх page-backed виртуальной области с динамическим ростом.
+- [x] Heap VA начинается с 4 GiB; физические frames остаются ниже 4 GiB; heap mappings RW+NX.
+- [x] Host tests: heap 4/4; ABI 2/2, ELF 12/12, physical memory 7/7.
+- [x] Startup smoke test: align64, 48 KiB align4096 allocation, cross-page write/read, free/reuse/coalescing.
+- [x] Local + CI QEMU: initial 4 pages, вырос до 18 pages (0x12000 bytes), все 0x12000 bytes free after test; debug-exit 33.
+- Evidence: [headless QEMU CI run 42215755990](https://github.com/mindwork64/exhiOS/actions/runs/42215755990).
 
 ### P2.5 Kernel address spaces
-- [ ] Отдельные PML4 roots и контролируемое копирование kernel mappings.
-- [ ] Создание/удаление address spaces и освобождение private page tables.
-- [ ] Проверки переключения CR3 и изоляции mappings.
+**Первая реализация прошла headless QEMU/OVMF CI; локальная проверка пользователя ожидается.**
+- [x] Менеджер адресных пространств и отдельные PML4/PDPT для каждого пространства.
+- [x] Общая supervisor-only область ядра: PDPT entries 0..4 (identity map 0..4 GiB + heap); entries 5..7 зарезервированы.
+- [x] Private user VA window: 8..512 GiB (PDPT entries 8..511); caller-owned physical pages, map/unmap/query, reclaim empty private tables.
+- [x] CR3 switch/restore и destroy inactive address spaces.
+- [x] QEMU smoke test: два PML4, одинаковый user VA 0x200000000 ведёт на разные frames; данные A/B сохраняются независимо; shared kernel/heap mappings доступны в kernel mode; private tables/data frames reclaimed; debug-exit 33.
+- [x] Headless CI QEMU: [run 42217123278](https://github.com/mindwork64/exhiOS/actions/runs/42217123278), initial implementation.
+- [ ] Latest hardening commit a856090 CI rerun and supervisor-only assertions confirmation.
+- [ ] Локальный Linux Mint/QEMU прогон пользователя.
+- [ ] Ring 3 execution and hardware-enforced user/supervisor fault tests (later user-mode milestone).
 
 ## P3 — Basic devices
 - [ ] Serial abstraction, framebuffer console, timer, keyboard, driver registration.

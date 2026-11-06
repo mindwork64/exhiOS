@@ -135,3 +135,41 @@ Design:
 
 Host tests passed: exhi-heap 4/4; existing ABI 2/2, ELF 12/12, physical memory 7/7. Full UEFI/default kernel/exception/debug-exit builds also passed in CI run [42215253674](https://github.com/mindwork64/exhiOS/actions/runs/42215253674). The separate QEMU runtime job was still in its package-install step at this snapshot; do not claim heap runtime verification until its serial output confirms the P2.4 smoke test and debug-exit 33.
 
+
+
+## 2026-11-06 — P2.4 Kernel Heap: local and CI runtime verification
+
+Local Linux Mint/QEMU user run after checkpoint 659a260:
+- Heap virtual base 0x100000000.
+- Initial mapped region: 4 pages / 0x4000 bytes.
+- align64 small allocation and 48 KiB align4096 allocation forced growth to 18 pages / 0x12000 bytes.
+- Cross-page write/read, free, reuse and coalescing passed.
+- All 0x12000 bytes were free after the test.
+- Kernel printed P2.4 ready; QEMU debug-exit status 33.
+
+Headless QEMU/OVMF CI [run 42215755990](https://github.com/mindwork64/exhiOS/actions/runs/42215755990) passed the same P2.4 test with identical page/free-byte counts and debug-exit 33. P2.4 is closed with host, local and CI evidence.
+
+## 2026-11-06 — P2.5 initial Kernel Address Spaces implementation
+
+Commits:
+- [33b4962](https://github.com/mindwork64/exhiOS/commit/33b49627e8b691a6168d5c0b9860029ff0af0b72) — first implementation and QEMU smoke test.
+- [a856090](https://github.com/mindwork64/exhiOS/commit/a856090c0d6e25215e5b56d269894b00696bd01d) — unsafe ownership contract for exposing user frames; supervisor-only shared map assertions.
+
+Implementation:
+- New arch/x86_64/address_space.rs.
+- Initializes after VMM and heap so the current kernel root includes the heap mapping.
+- Creates independent PML4 and PDPT pages. Each process PDPT copies only kernel entries 0..4: physical identity region 0..4 GiB and kernel heap at 4 GiB. Entries 5..7 are reserved.
+- Private user mappings use PDPT entries 8..511, VA range 8..512 GiB. Each new space gets a distinct PML4 and PDPT; user lower-level tables are allocated on demand.
+- User map flags include writable and NX/executable. map_user_page is unsafe: caller must own and retain the physical frame and scrub it before exposing it to untrusted code.
+- unmap_user_page invalidates active translations and reclaims empty PT/PD levels; destroy frees private page tables, PDPT and PML4, but leaves mapped data-frame ownership with the caller.
+- activate/restore_kernel switch CR3 with IF=0. Current kernel mappings remain shared and supervisor-only; private user mappings are not shared.
+
+Headless QEMU/OVMF CI [run 42217123278](https://github.com/mindwork64/exhiOS/actions/runs/42217123278) passed:
+- Kernel root 0x15B000; address-space A PML4 0x177000; B PML4 0x179000.
+- Same VA 0x200000000 resolves to 0x17B000 in A and 0x17C000 in B.
+- A wrote/read byte 0xA1; B wrote/read 0xB2 after switching roots.
+- Shared kernel code and heap translations were preserved.
+- Private tables reclaimed; data frames returned; QEMU debug-exit 33.
+
+Commit a856090 adds explicit validation that kernel code, current stack and heap remain supervisor-only while the PML4 entry allows user mappings elsewhere. CI rerun is pending. User's local QEMU verification of P2.5 is pending. Ring 3 execution and hardware privilege fault tests remain future work.
+
