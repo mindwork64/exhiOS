@@ -51,16 +51,18 @@
 - Evidence: [headless QEMU CI run 42215755990](https://github.com/mindwork64/exhiOS/actions/runs/42215755990).
 
 ### P2.5 Kernel address spaces
-**Первая реализация прошла headless QEMU/OVMF CI; локальная проверка пользователя ожидается.**
+**Первая реализация завершена; headless CI/OVMF и локальный Linux Mint/QEMU подтверждены 2026-11-06.**
 - [x] Менеджер адресных пространств и отдельные PML4/PDPT для каждого пространства.
 - [x] Общая supervisor-only область ядра: PDPT entries 0..4 (identity map 0..4 GiB + heap); entries 5..7 зарезервированы.
 - [x] Private user VA window: 8..512 GiB (PDPT entries 8..511); caller-owned physical pages, map/unmap/query, reclaim empty private tables.
 - [x] CR3 switch/restore и destroy inactive address spaces.
-- [x] QEMU smoke test: два PML4, одинаковый user VA 0x200000000 ведёт на разные frames; данные A/B сохраняются независимо; shared kernel/heap mappings доступны в kernel mode; private tables/data frames reclaimed; debug-exit 33.
-- [x] Headless CI QEMU: [run 42217123278](https://github.com/mindwork64/exhiOS/actions/runs/42217123278), initial implementation.
-- [x] Latest hardening commit a856090 passed CI QEMU run [42217369804](https://github.com/mindwork64/exhiOS/actions/runs/42217369804), including explicit supervisor-only checks for kernel code, stack and heap.
-- [ ] Локальный Linux Mint/QEMU прогон пользователя.
-- [ ] Ring 3 execution and hardware-enforced user/supervisor fault tests (later user-mode milestone).
+- [x] QEMU smoke test: два PML4, одинаковый user VA 0x200000000 ведёт на разные physical frames; общие kernel/heap translations сохраняются; private page tables reclaimed, data frames safely returned.
+- [x] Headless CI QEMU: [run 42217123278](https://github.com/mindwork64/exhiOS/actions/runs/42217123278); safety-hardening commit a856090: [run 42217369804](https://github.com/mindwork64/exhiOS/actions/runs/42217369804).
+- [x] Локальный Linux Mint/QEMU пользователя (2026-11-06): kernel root 0x11B000; A PML4 0x177000; B PML4 0x179000; shared kernel translation 0x104000; shared heap translation 0x163000; user VA 0x200000000 → A frame 0x17B000 / B frame 0x17C000; reclaim прошёл; debug-exit status 33.
+- [ ] Дополнительные lifecycle/error-path и permission-negative tests перед подготовкой Ring 3.
+- [ ] Ring 3 execution и hardware-enforced user/supervisor fault tests — отдельная часть user-mode milestone (P5).
+
+Границы текущего результата: smoke test проверяет раздельные mappings, CR3 switching и supervisor-only policy на Ring 0. Он ещё не доказывает выполнение кода в CPL3 или аппаратное блокирование доступа пользователя к supervisor pages.
 
 ### P2.6 Exception and stack hardening
 - [ ] Kernel TSS and dedicated IST stack for double fault.
