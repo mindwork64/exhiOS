@@ -5,7 +5,7 @@ mod arch;
 mod heap;
 mod memory;
 
-use arch::x86_64::{gdt, idt, paging, pic, vmm};
+use arch::x86_64::{address_space, gdt, idt, paging, pic, vmm};
 use core::arch::asm;
 use core::hint::spin_loop;
 use core::panic::PanicInfo;
@@ -408,6 +408,48 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial_write(b"\r\nKernel heap free bytes: 0x");
             serial_write_hex(heap_status.free_bytes as u64);
             serial_write(b"\r\nP2.4: kernel heap allocator ready.\r\n");
+
+            serial_write(b"P2.5: initializing kernel address-space manager.\r\n");
+            let kernel_root = match address_space::initialize() {
+                Ok(root) => root,
+                Err(error) => {
+                    serial_write(b"P2.5: address-space initialization failed: ");
+                    serial_write(error.message());
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+            serial_write(b"Kernel address-space root: 0x");
+            serial_write_hex(kernel_root);
+            serial_write(b"\r\n");
+
+            let address_space_status = match address_space::smoke_test() {
+                Ok(status) => status,
+                Err(error) => {
+                    let _ = address_space::restore_kernel();
+                    serial_write(b"P2.5: address-space smoke test failed: ");
+                    serial_write(error.message());
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+            serial_write(b"Address-space A PML4: 0x");
+            serial_write_hex(address_space_status.first_root);
+            serial_write(b"\r\nAddress-space B PML4: 0x");
+            serial_write_hex(address_space_status.second_root);
+            serial_write(b"\r\nShared kernel translation: 0x");
+            serial_write_hex(address_space_status.shared_kernel_translation);
+            serial_write(b"\r\nShared heap translation: 0x");
+            serial_write_hex(address_space_status.shared_heap_translation);
+            serial_write(b"\r\nUser virtual test page: 0x");
+            serial_write_hex(address_space_status.user_virtual_page);
+            serial_write(b"\r\nAddress-space A physical page: 0x");
+            serial_write_hex(address_space_status.first_physical_page);
+            serial_write(b"\r\nAddress-space B physical page: 0x");
+            serial_write_hex(address_space_status.second_physical_page);
+            serial_write(b"\r\nP2.5: separate roots, shared kernel maps, private user mappings and CR3 switching verified.\r\n");
+            serial_write(b"P2.5: private page tables reclaimed; data frames safely returned.\r\n");
+            serial_write(b"P2.5: kernel address-space smoke test passed.\r\n");
 
         } else {
             serial_write(b"BootInfo: invalid; cannot initialize physical memory.\r\n");
