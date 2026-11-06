@@ -23,7 +23,7 @@
 - P2.5 is Ring 0 address-space management only; actual CPL3 execution, syscalls and hardware-enforced user/supervisor fault tests are not implemented.
 
 ## Текущий кодовый checkpoint
-- Latest code commit: [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a).
+- Latest code commit: [d2ed6b2](https://github.com/mindwork64/exhiOS/commit/d2ed6b2d40260340396af1db8284b607eba1c4ad).
 - P2.6 implementation: 64-bit TSS in GDT (selector 0x18), TR loaded with LTR, 16 KiB aligned IST1 stack, IDT vector 8 uses IST1; exception assembly passes normalized frame pointer to the Rust #DF handler.
 - BootInfo ABI was bumped to magic `EXHIOS02`, version 2, and now carries kernel stack base/size.
 - UEFI loader allocates a contiguous 17-page LOADER_DATA region: first page is a reserved guard page; remaining 16 pages form the 64 KiB kernel stack.
@@ -35,22 +35,22 @@
 - Commits [a58220e](https://github.com/mindwork64/exhiOS/commit/a58220e5fda9afb069b71f08529ebc68f95a4d36) and [6014dec](https://github.com/mindwork64/exhiOS/commit/6014dec505682a4d91ff7165d222f274a15561da) add the opt-in interactive RX byte-echo mode. Run `EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh`; type ASCII, test Enter/Backspace, then press Ctrl+D to print the received-byte count. This mode has not yet been locally exercised.
 - P2.6 and P3.1 are closed with local + CI evidence. P3.1 local RX log: `hello exhiOS` echoed, Enter produced a new prompt, Ctrl+D printed byte count 0x0D.
 - P3.2 initial GOP framebuffer console is implemented in `exhi-console` and kernel startup. It supports GOP formats 0/1, visible width + separate scanline stride, ASCII text, wrap and scroll. Host tests, build variants and headless QEMU runtime passed in CI [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662). User's local QEMU serial log (2026-11-06) confirms GOP framebuffer 0x80000000, 1280x800, stride 1280, pixel format 1, successful console initialization, kernel handoff and halt loop. User-provided screenshot description confirms the expected visible strings for kernel banner, framebuffer ready, 1280x800, stride 1280, BGRX, COM1 ready and kernel handoff success. Fine visual details (font sharpness, spacing, artifacts) were not independently assessed. P3.2 initial functional acceptance is complete.
-- Follow-up commits [c3d2b8c](https://github.com/mindwork64/exhiOS/commit/c3d2b8ccaa34c6b399b7f12905ae11658455916b) and [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a) add an allocation-free `KernelConsole` writer. After GOP setup it mirrors byte and formatted output to COM1 + framebuffer; on GOP failure it remains serial-only. Early startup diagnostics remain COM1-only. `write_fmt` uses `core::fmt` without heap allocation. CI build job passed in [run 42274252754](https://github.com/mindwork64/exhiOS/actions/runs/42274252754); headless QEMU runtime and local testing of the writer are pending.
+- Follow-up commits [c3d2b8c](https://github.com/mindwork64/exhiOS/commit/c3d2b8ccaa34c6b399b7f12905ae11658455916b) and [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a) add an allocation-free `KernelConsole` writer. After GOP setup it mirrors byte and formatted output to COM1 + framebuffer; on GOP failure it remains serial-only. Early startup diagnostics remain COM1-only. `write_fmt` uses `core::fmt` without heap allocation. CI build + headless QEMU runtime passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072); local QEMU serial output confirms unified-writer readiness and final handoff/halt messages.
 
 ## Следующие действия
-1. Check CI headless QEMU runtime for unified writer: [run 42274252754](https://github.com/mindwork64/exhiOS/actions/runs/42274252754). Build job already passed.
-2. User's local validation of latest main:
+1. P3.2 unified writer is implemented and CI/local QEMU runtime-verified. The user's local serial logs show the unified-writer-ready marker, kernel handoff and halt messages.
+2. P3.3 PIT timer implementation is in [d2ed6b2](https://github.com/mindwork64/exhiOS/commit/d2ed6b2d40260340396af1db8284b607eba1c4ad). CI build and headless QEMU/OVMF passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072), including five real IRQ0 ticks. Local Linux Mint/QEMU timer validation is pending.
+3. User's local P3.3 validation:
    ```bash
    git fetch origin
    git reset --hard origin/main
    cargo fmt
    cargo test
-   EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh
-   ./scripts/run-qemu.sh
+   EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_TEST=1 ./scripts/run-qemu.sh
    ```
-   Check serial for `P3.2: unified COM1/framebuffer writer ready.` and QEMU debug-exit status 33. In the normal QEMU window, the prior boot banner should be followed by kernel handoff, unified writer ready and halt messages. Confirm the same post-handoff messages appear on both framebuffer and COM1.
-3. After CI and local writer runtime evidence, move to P3.3 timer as a separate implementation slice; do not combine timer and keyboard.
-4. Ring 3, syscalls and hardware user/supervisor fault tests remain a later user-mode milestone. P2.6 guard page is locally and CI verified; do not remove or bypass it.
+   The timer variant uses isa-debug-exit and should finish with status 33. Expect `P3.3: PIT initialized at 100 Hz (divisor 11932)`, `P3.3: monotonic timer advanced by 5 ticks; IRQ0 masked again`, and `P3.3: PIT IRQ0 runtime smoke test passed`.
+4. After local timer confirmation, proceed to P3.4 keyboard as a separate slice. Do not combine keyboard and timer work. APIC/IOAPIC, HPET/TSC calibration and scheduler integration remain later work.
+5. Ring 3, syscalls and hardware user/supervisor fault tests remain a later user-mode milestone. P2.6 guard page is locally and CI verified; do not remove or bypass it.
 
 ## Правила работы
 - Русский язык общения.
