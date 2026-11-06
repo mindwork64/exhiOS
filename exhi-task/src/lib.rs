@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn handles_zero_capacity() {
-        let scheduler = Scheduler::<0>::new();
+        let mut scheduler = Scheduler::<0>::new();
         assert_eq!(scheduler.start(), Err(SchedulerError::NoRunnableTask));
         assert_eq!(scheduler.capacity(), 0);
     }
