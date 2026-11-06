@@ -250,6 +250,6 @@ Implementation:
 - RX offers a non-blocking byte read and a blocking polling read for a later serial shell. The driver is deliberately single-core and non-interrupt-driven while IF remains clear.
 - main.rs no longer owns UART register constants or raw port I/O helpers; GDT, IDT, memory, VMM and exception diagnostics all use the serial module.
 
-Headless QEMU/OVMF [run 42257896620](https://github.com/mindwork64/exhiOS/actions/runs/42257896620) passed and printed the P3.1 COM1 readiness marker. The same run confirmed the P2.6 guard-page/#DF/IST1 path and debug-exit status 33. A subsequent build for the RX-inclusive checkpoint passed; its QEMU regression run [42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) was still in progress at this log snapshot.
+Headless QEMU/OVMF [run 42257896620](https://github.com/mindwork64/exhiOS/actions/runs/42257896620) passed and printed the P3.1 COM1 readiness marker. The same run confirmed the P2.6 guard-page/#DF/IST1 path and debug-exit status 33. The RX-inclusive build and QEMU regression [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) both passed. Boot output included the P3.1 readiness marker and the P2.6 guard-page/#DF/IST1 success marker. CI does not inject terminal input, so actual interactive RX still requires local QEMU stdio validation.
 
 Interactive serial input on the user's local Linux Mint/QEMU terminal has not yet been verified.
