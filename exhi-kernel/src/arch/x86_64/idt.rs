@@ -102,7 +102,8 @@ pub fn initialize() -> IdtStatus {
         exhi_isr_31 as *const () as usize as u64,
     ];
 
-    let entries = ptr::addr_of_mut!(IDT.0).cast::<IdtEntry>();
+    // SAFETY: The IDT is initialized once during single-core startup with IF clear.
+    let entries = unsafe { ptr::addr_of_mut!(IDT.0).cast::<IdtEntry>() };
 
     // SAFETY: IDT is a 16-byte-aligned static table in the kernel image.
     // Each handler is a kernel text symbol and each entry is written before
