@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: [2cffee5](https://github.com/mindwork64/exhiOS/commit/2cffee513eda6c63c6cc1d0bd8ee9be0a14c1be9) — P2.6 и P3.1 закрыты локально + CI; P3.2 initial GOP framebuffer console реализован, QEMU runtime/local visual confirmation pending.
+Кодовый checkpoint: [eee4895](https://github.com/mindwork64/exhiOS/commit/eee489589c0b79416ac4753e181dfd1656b8deed) — P2.6 и P3.1 закрыты локально + CI; P3.2 прошла CI и локальную проверку инициализации GOP, визуальная проверка содержимого экрана ожидает доступного скриншота.
 
 ## Закрыто и проверено в QEMU
 
@@ -196,12 +196,13 @@ QEMU debug-exit: `EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh`
 
 ## P3.2 — GOP framebuffer console (initial implementation)
 
-Code checkpoint: [2cffee5](https://github.com/mindwork64/exhiOS/commit/2cffee513eda6c63c6cc1d0bd8ee9be0a14c1be9).
+Code checkpoint: [eee4895](https://github.com/mindwork64/exhiOS/commit/eee489589c0b79416ac4753e181dfd1656b8deed).
 
 - New `exhi-console` no_std crate with a compact 5x7 ASCII font rendered in 12x16 cells.
 - RGB-reserved GOP format 0 and BGR-reserved format 1 are packed separately; BitMask and BltOnly modes return an explicit unsupported-format error.
 - The renderer honors `pixels_per_scan_line` independently of visible width, validates backing-buffer length, and uses volatile pixel writes. It supports clear, text, decimal numbers, CR/LF/tab, line wrap and scroll.
 - Kernel-side initialization checks dimensions, alignment, buffer byte count and that the framebuffer range lies within the current 4 GiB identity map. On success the first screen shows the kernel banner, resolution, scanline stride and pixel format.
 - Host tests, all target build variants and headless QEMU/OVMF runtime passed in [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662). Serial output confirms framebuffer initialization; the P2.6 IST1/debug-exit regression also passed (status 33).
-- Local visual confirmation in the user's Linux Mint/QEMU window is still pending.
+- Local Linux Mint/QEMU serial evidence (2026-11-06): GOP framebuffer 0x80000000, 1280x800, stride 1280, pixel format 1 (BGR-reserved); console initialization marker printed and kernel reached handoff + halt loop.
+- The supplied screenshot URL could not be fetched from the assistant's runtime (DNS resolution/network access failure); actual rendered glyphs and layout remain visually unverified.
 - Known first-version limits: ASCII-only glyphs, GOP formats 0/1 only, no framebuffer cache policy setup (PAT/MTRR) yet.
