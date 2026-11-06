@@ -334,7 +334,6 @@ fn read_array<const N: usize>(bytes: &[u8], offset: usize) -> Option<[u8; N]> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::vec::Vec;
 
     const PROGRAM_HEADER_OFFSET: usize = ELF_HEADER_SIZE;
     const SEGMENT_OFFSET: usize = ELF_HEADER_SIZE + ELF64_PROGRAM_HEADER_SIZE;
@@ -408,13 +407,12 @@ mod tests {
         assert_eq!(elf.entry_point(), 0x10_0000);
         assert_eq!(elf.program_header_count(), 1);
 
-        let load_segments: Vec<_> = elf
-            .program_headers()
-            .filter(ProgramHeader::is_loadable)
-            .collect();
-        assert_eq!(load_segments.len(), 1);
-        assert_eq!(load_segments[0].file_size, 8);
-        assert_eq!(load_segments[0].memory_size, 16);
+        let mut headers = elf.program_headers();
+        let first = headers.next().unwrap();
+        assert!(first.is_loadable());
+        assert_eq!(first.file_size, 8);
+        assert_eq!(first.memory_size, 16);
+        assert!(headers.next().is_none());
     }
 
     #[test]
