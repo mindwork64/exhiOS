@@ -899,7 +899,6 @@ fn serial_rx_smoke_test() -> ! {
     }
 }
 
-fn halt_forever() -> ! {
 fn register_builtin_drivers() -> Result<DriverRegistry<8>, RegistryError> {
     let mut registry = DriverRegistry::<8>::new();
 
