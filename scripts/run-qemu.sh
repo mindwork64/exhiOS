@@ -6,10 +6,10 @@ cd "$ROOT_DIR"
 
 "$ROOT_DIR/scripts/build.sh"
 
-for tool in qemu-system-x86_64 mformat mmd mcopy; do
+for tool in qemu-system-x86_64 sgdisk mformat mmd mcopy; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "Missing required tool: $tool" >&2
-        echo "On Debian/Ubuntu install: qemu-system-x86 ovmf mtools dosfstools" >&2
+        echo "On Debian/Ubuntu install: qemu-system-x86 ovmf gdisk mtools dosfstools" >&2
         exit 1
     fi
 done
@@ -46,27 +46,43 @@ OVMF_VARS_PATH="$(find_file \
 
 ESP_IMAGE="$ROOT_DIR/target/exhios-esp.img"
 VARS_COPY="$ROOT_DIR/target/exhios-ovmf-vars.fd"
+ESP_OFFSET=1048576
+
 mkdir -p "$ROOT_DIR/target"
 rm -f "$ESP_IMAGE"
-truncate -s 64M "$ESP_IMAGE"
+truncate -s 128M "$ESP_IMAGE"
 
-mformat -i "$ESP_IMAGE" -F ::
-mmd -i "$ESP_IMAGE" ::/EFI
-mmd -i "$ESP_IMAGE" ::/EFI/BOOT
-mcopy -i "$ESP_IMAGE" \
+# UEFI firmware expects a discoverable EFI System Partition. A bare FAT
+# filesystem without a partition table is not a reliable bootable disk.
+sgdisk --clear \
+    --new=1:2048:0 \
+    --typecode=1:EF00 \
+    --change-name=1:EFI-System \
+    "$ESP_IMAGE"
+
+# The EFI System Partition begins at LBA 2048 (1 MiB).
+ESP_MTOOLS_IMAGE="${ESP_IMAGE}@@${ESP_OFFSET}"
+mformat -i "$ESP_MTOOLS_IMAGE" -F ::
+mmd -i "$ESP_MTOOLS_IMAGE" ::/EFI
+mmd -i "$ESP_MTOOLS_IMAGE" ::/EFI/BOOT
+mcopy -i "$ESP_MTOOLS_IMAGE" \
     "$ROOT_DIR/target/x86_64-unknown-uefi/debug/exhi-boot.efi" \
     ::/EFI/BOOT/BOOTX64.EFI
 
 cp "$OVMF_VARS_PATH" "$VARS_COPY"
 
 echo "Starting ExhiOS UEFI entry smoke test in QEMU."
-echo "The UEFI console should display the ExhiOS Bootloader banner."
+echo "Boot device: GPT EFI System Partition on emulated USB storage."
+echo "The bootloader keeps its diagnostic message visible for 15 seconds."
+
 qemu-system-x86_64 \
     -machine q35 \
     -m 512M \
     -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE_PATH" \
     -drive if=pflash,format=raw,file="$VARS_COPY" \
-    -drive format=raw,file="$ESP_IMAGE" \
+    -drive if=none,id=esp,format=raw,file="$ESP_IMAGE" \
+    -device qemu-xhci,id=xhci \
+    -device usb-storage,bus=xhci.0,drive=esp,bootindex=1 \
     -net none \
     -serial stdio \
     -no-reboot \

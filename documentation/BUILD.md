@@ -34,7 +34,7 @@ The kernel output is an ELF64 executable. Its initial link address is `0x0010000
 On Debian/Ubuntu-based systems, install the runtime tools:
 
 ```bash
-sudo apt install qemu-system-x86 ovmf mtools dosfstools
+sudo apt install qemu-system-x86 ovmf gdisk mtools dosfstools
 ```
 
 Then run:
@@ -43,9 +43,9 @@ Then run:
 ./scripts/run-qemu.sh
 ```
 
-The script creates a FAT EFI System Partition image, copies the application to the standard removable-media path `EFI/BOOT/BOOTX64.EFI`, creates a writable copy of OVMF variables, and starts QEMU.
+The script creates a GPT disk with a FAT32 EFI System Partition, copies the application to the standard removable-media path `EFI/BOOT/BOOTX64.EFI`, creates a writable copy of OVMF variables, and attaches the disk as emulated USB storage. This makes the UEFI removable-media fallback path available to OVMF.
 
-The UEFI console should show the ExhiOS Bootloader banner. The application then returns to firmware.
+The UEFI console should show the ExhiOS Bootloader banner. The diagnostic stays visible for 15 seconds before the application returns to firmware.
 
 ## Scope of this checkpoint
 
