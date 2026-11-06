@@ -19,32 +19,36 @@
 ## Последняя подтверждённая точка
 P0 и P1 закрыты в QEMU. P2.1 проверен с настоящей UEFI memory map: 127 descriptors, stride 48, 118 837 managed pages, frame 0x14C000 повторно использован, debug-exit status 33.
 
-## Последний кодовый checkpoint
-- Commit: 6ae6826ac5e9ad9969efa907d438571444942dec.
-- Paging module exported and called after physical allocator initialization.
-- Bootstrap tables in aligned kernel BSS (six pages), 4-level map 0–4 GiB via 2 MiB pages.
-- CR3 switch and translation checks for code, stack, BootInfo, UEFI map, framebuffer, ACPI RSDP, GDT, IDT and table pages before/after switch.
-- CI run 42204902818 succeeded for all jobs and all kernel variants.
-- First CI log showed one redundant assignment and two unused allocator-helper warnings; cleanup follow-up is recorded in the next main commit.
-- Do not mark P2.2 complete yet: QEMU runtime is still pending.
+## Последний подтверждённый checkpoint
+- Main commit: 207df7ffc86d97cdc15f32b8231ee2d1176f2139.
+- P2.2 bootstrap page tables are integrated and runtime-verified.
+- CI run: https://github.com/mindwork64/exhiOS/actions/runs/42205457670
+- Headless QEMU + OVMF booted the UEFI loader and kernel.
+- PML4 root = active CR3 = 0x14E000.
+- Six page-table pages; 4 GiB identity map using 2 MiB pages.
+- Nine critical ranges verified before and after CR3 switch.
+- Kernel entry 0x100000 translated to physical 0x100000.
+- Serial success line emitted; QEMU debug-exit status 33.
+- Build job is clean (no Rust compiler warnings); runtime job passed.
 
-## Следующее обязательное действие
-After updating local source, run:
+P2.2 is complete. The user's local Linux Mint/QEMU run is an additional environment confirmation, not a blocker for the CI-verified milestone.
+
+## Следующая задача — P2.3 Virtual Memory Manager
+Implement in small complete increments:
+1. Add dynamic page-table allocation after kernel identity map is active; allocator frames below 4 GiB are now identity-accessible.
+2. Support 4 KiB map/unmap and translation while preserving the existing 2 MiB bootstrap mappings.
+3. Split a 2 MiB huge PDE into a 4 KiB page table when a sub-page mapping is requested.
+4. Add map flags (present/writable/user, and NX only after safe EFER.NXE capability handling).
+5. Add INVLPG/TLB invalidation and safe cleanup/release of empty page-table levels.
+6. Add a QEMU smoke test that maps a spare physical frame at a non-identity virtual address, checks translation, unmaps it, and verifies absence; release the frame only after unmap.
+7. Update Roadmap and Wiki; require CI compile + QEMU runtime evidence.
+
+Local environment confirmation command:
 ```bash
 git fetch origin
 git reset --hard origin/main
 EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh
 ```
-Inspect serial output for:
-- Page-table root (PML4) and Active CR3 with matching physical roots.
-- Verified address ranges greater than zero.
-- Kernel entry translation matching the kernel entry address.
-- P2.2: kernel page tables active; CR3 and identity mappings verified.
-- QEMU exits with status 33.
-
-If QEMU halts or resets before that line, capture the full serial log and CR2 if the page-fault handler reports it. Do not claim runtime success on CI build alone.
-
-Bootstrap pages are statically stored in the loaded kernel BSS on purpose; the firmware mapping is not assumed to identity-map arbitrary allocator frames. Dynamic VMM tables can use physical allocator frames after this initial map is active.
 
 ## Правила работы
 - Русский язык общения.

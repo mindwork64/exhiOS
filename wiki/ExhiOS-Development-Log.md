@@ -34,7 +34,13 @@ Commit [6ae6826](https://github.com/mindwork64/exhiOS/commit/6ae6826ac5e9ad9969e
 
 CI run 42204902818 succeeded for ABI, ELF, memory allocator tests, UEFI build, default kernel, exception variant, debug-exit variant and ET_EXEC check. The first successful run showed one redundant assignment warning and two unused allocator helper warnings; a cleanup commit removes them.
 
-No QEMU runtime evidence yet. P2.2 stays open until the user's QEMU debug-exit run confirms the serial translation checks and exit status 33.
+Headless QEMU/OVMF runtime passed in CI run [42205457670](https://github.com/mindwork64/exhiOS/actions/runs/42205457670). Serial evidence:
+- PML4 root and active CR3 both 0x14E000.
+- 6 page-table pages; 4 GiB mapped using 2 MiB pages.
+- 9 critical address ranges verified before and after CR3 switch.
+- Stack address 0x1E70FA00; kernel entry translation 0x100000 → 0x100000.
+- Kernel printed the P2.2 success line and QEMU debug-exit returned status 33.
+P2.2 is runtime-verified and closed.
 
 
 ## 2026-11-06 — Project Wiki initialized and published
@@ -52,3 +58,9 @@ No QEMU runtime evidence yet. P2.2 stays open until the user's QEMU debug-exit r
 - Connected paging module to _start after physical allocator initialization.
 - Added pre-switch checks for all kernel/firmware handoff ranges and post-switch translation verification.
 - CI run 42204902818 succeeded; QEMU runtime confirmation remains required.
+
+
+## 2026-11-06 — P2.2 runtime verification
+- Added a headless QEMU/OVMF CI job to the main workflow; it runs after the compile/test job on each push.
+- CI run 42205457670 booted the EFI loader and kernel, switched CR3 to 0x14E000, verified nine critical ranges and the kernel entry translation, then exited with status 33.
+- P2.2 is closed. Next milestone: P2.3 Virtual Memory Manager (4 KiB mappings, map/unmap, page flags, TLB invalidation and dynamic page-table frames).

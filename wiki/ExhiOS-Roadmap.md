@@ -18,14 +18,14 @@
 **Проверено в QEMU.** Descriptor version 1, stride 48; Conventional Memory only; первые 1 MiB зарезервированы; limit 4 GiB; managed/allocated bitmaps; allocate/free/reuse. 7 host tests прошли. QEMU показал 118 837 managed pages и повторно выдал frame 0x14C000.
 
 ### P2.2 Bootstrap page tables
-**Код подключён и успешно собран в CI; QEMU runtime pending.**
+**Завершено; runtime проверено в headless QEMU/OVMF CI.**
 - [x] Ревью и безопасная схема bootstrap storage.
 - [x] Экспортировать модуль и вызвать после P2.1 при IF=0.
 - [x] Создать PML4 → PDPT → 4 PD в выровненном kernel .bss.
 - [x] Identity map 0–4 GiB через 2 MiB pages.
-- [x] Переключить CR3; проверять критические ranges до и после.
-- [ ] QEMU serial smoke test: увидеть CR3/root, успешные translations и debug-exit status 33.
-- [ ] Только после runtime evidence закрыть P2.2.
+- [x] Переключить CR3; проверить критические ranges до и после.
+- [x] QEMU serial smoke test: root=CR3=0x14E000, 9 проверенных ranges, kernel entry translation 0x100000, debug-exit status 33.
+- Evidence: [GitHub Actions run 42205457670](https://github.com/mindwork64/exhiOS/actions/runs/42205457670).
 
 ### P2.3 Virtual memory manager
 - [ ] 4 KiB map/unmap и translation.

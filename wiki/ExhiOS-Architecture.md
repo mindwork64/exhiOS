@@ -42,15 +42,13 @@
 - Page size 4096 bytes; bitmap managed + allocated.
 - Физический frame пока выдаётся как адрес; arbitrary dereference откладывается до page tables.
 
-## P2.2 — Bootstrap paging
+## P2.2 — Bootstrap paging (runtime verified)
 
-Файл exhi-kernel/src/arch/x86_64/paging.rs подключён к kernel startup после инициализации P2.1. Строит четырёхуровневые таблицы: PML4 → PDPT → четыре PD, identity map 0–4 GiB через 2 MiB supervisor RW pages, переключает CR3.
+Файл exhi-kernel/src/arch/x86_64/paging.rs подключён к kernel startup после P2.1. Строит PML4 → PDPT → четыре PD, identity map 0–4 GiB через 2 MiB supervisor RW pages, переключает CR3.
 
-Шесть страниц таблиц размещены как выровненная статическая область kernel .bss. Не используем физические кадры allocator до первого switch: firmware page tables не обязаны отображать произвольные conventional frames по identity address. После включения kernel map такие кадры станут доступны для динамических таблиц будущего VMM.
+Шесть страниц таблиц находятся в выровненном kernel .bss. Физические кадры allocator не разыменовываются до первого kernel-owned map. Перед и после CR3 switch проверяются kernel code, stack, BootInfo, UEFI memory map, framebuffer, ACPI RSDP, GDTR, IDTR и таблицы. translate_current проверяет kernel entry translation.
 
-До и после CR3 switch проверяются kernel code, stack, BootInfo, UEFI memory map, framebuffer, ACPI RSDP, GDTR, IDTR и сами page-table pages. Отдельная проверка translate_current проверяет kernel entry identity translation.
-
-CI run 42204902818 собрал default kernel и оба smoke-test варианта. QEMU runtime ещё не подтверждён.
+CI build и headless QEMU/OVMF runtime прошли: root/CR3 0x14E000, map 4 GiB, 9 проверенных диапазонов, kernel entry 0x100000 → 0x100000, QEMU debug-exit status 33. Подробности: GitHub Actions run 42205457670.
 
 Ограничения bootstrap map: RWX, supervisor-only, 2 MiB granularity; нет W^X, user mappings, per-device cache attributes, process address spaces и общей VMM.
 

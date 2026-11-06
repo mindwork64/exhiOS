@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint P2.2: 6ae6826ac5e9ad9969efa907d438571444942dec (Paging подключён к старту ядра). Последующие изменения этой записи фиксируются отдельным Wiki/docs-коммитом.
+Кодовый checkpoint: 207df7ffc86d97cdc15f32b8231ee2d1176f2139 (Paging + headless QEMU runtime CI).
 
 ## Закрыто и проверено в QEMU
 
@@ -28,26 +28,31 @@ Loader читает и валидирует ELF64, загружает PT_LOAD п
 
 P2.1 закрыт по runtime evidence. В дорожной карте основного репозитория это отмечено.
 
-## P2.2 — Bootstrap page tables: код подключён, QEMU pending
+## P2.2 — Bootstrap page tables: завершено и проверено в QEMU
 
-В коммите [6ae6826](https://github.com/mindwork64/exhiOS/commit/6ae6826ac5e9ad9969efa907d438571444942dec):
-- paging.rs экспортирован из arch/x86_64/mod.rs и вызывается во время kernel startup после P2.1.
-- Собирается четырёхуровневая структура PML4 → PDPT → четыре Page Directory.
-- Первые 4 GiB identity-mapped страницами 2 MiB.
-- Шесть страниц таблиц размещены в выровненном kernel .bss, а не взяты из physical allocator. Это намеренно: до первого CR3 switch нельзя считать, что произвольный физический кадр доступен под firmware mappings.
-- До switch проверяются CPU state, IF=0, адреса kernel code, stack, BootInfo, UEFI memory map, framebuffer, ACPI RSDP, GDT, IDT и storage таблиц.
-- После CR3 switch повторно проверяются те же диапазоны; отдельный translate_current() проверяет kernel entry.
-- Kernel serial output сообщает root/CR3, размер карты, размер huge page, число проверенных диапазонов и translation entrypoint.
+Код: [6ae6826](https://github.com/mindwork64/exhiOS/commit/6ae6826ac5e9ad9969efa907d438571444942dec). Headless QEMU CI: [run 42205457670](https://github.com/mindwork64/exhiOS/actions/runs/42205457670).
 
-CI run 42204902818 прошёл успешно: ABI, ELF parser, physical allocator tests, UEFI build, default kernel build, exception smoke-test build, QEMU debug-exit build и ET_EXEC check. После первого прохода выявлены и удаляются три warning в cleanup-коммите.
+Реализация:
+- paging module экспортирован и вызывается при kernel startup после P2.1;
+- PML4 → PDPT → четыре Page Directory;
+- identity map 0–4 GiB через 2 MiB supervisor RW pages;
+- шесть page-table pages находятся в выровненном kernel .bss, что не требует предполагать доступность произвольных физических кадров под старыми UEFI mappings;
+- до и после CR3 switch проверяются code, stack, BootInfo, UEFI map, framebuffer, ACPI RSDP, GDT, IDT и storage таблиц;
+- отдельная translate_current проверка сопоставляет kernel entry с физическим адресом.
 
-QEMU runtime пока не подтверждён. Следующая проверка пользователем после обновления локальной копии:
-```bash
-EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh
-```
-Ожидаем serial строки "P2.2: kernel page tables active; CR3 and identity mappings verified." и нормальный QEMU debug-exit status 33. До этого P2.2 остаётся незакрытым.
+QEMU/OVMF runtime evidence из CI:
+- PML4 root 0x14E000, active CR3 0x14E000 — совпали;
+- 0x100000000 bytes (4 GiB) отображено;
+- huge page size 0x200000 (2 MiB);
+- проверено 9 address ranges;
+- stack 0x1E70FA00;
+- kernel entry translation 0x100000 = исходный entry point;
+- serial подтвердил P2.2: kernel page tables active; CR3 and identity mappings verified.
+- QEMU debug-exit завершился с ожидаемым status 33.
 
-Bootstrap map — временная карта RWX/supervisor для первых 4 GiB. W^X, user/supervisor isolation, 4 KiB mappings, per-device cache attributes и process address spaces не реализованы.
+P2.2 закрыт по runtime smoke test. Локальный прогон в пользовательской Linux Mint/QEMU среде остаётся полезной дополнительной проверкой, но CI уже исполнил kernel в настоящем QEMU/OVMF, а не только собрал ELF.
+
+Ограничения bootstrap map — временная карта RWX/supervisor для первых 4 GiB. W^X, user/supervisor isolation, 4 KiB mappings, per-device cache attributes и process address spaces ещё не реализованы.
 
 ## Wiki и автоматическая синхронизация
 
