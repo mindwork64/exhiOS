@@ -12,7 +12,9 @@ use exhi_abi::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
 
 const COM1: u16 = 0x3F8;
 const LINE_STATUS: u16 = COM1 + 5;
+#[cfg(feature = "qemu-debug-exit-smoke-test")]
 const QEMU_DEBUG_EXIT_PORT: u16 = 0xF4;
+#[cfg(feature = "qemu-debug-exit-smoke-test")]
 const QEMU_DEBUG_EXIT_VALUE: u32 = 0x10;
 const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
 
@@ -87,7 +89,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         halt_forever();
     }
 
-    serial_write(b"PIC: remapped and verified; all IRQ lines remain masked.\r\n");
+    serial_write(b"PIC: remap sequence issued; all IRQ masks verified.\r\n");
     serial_write(b"Interrupt flag remains clear until IRQ handlers are installed.\r\n");
 
     if !boot_info.is_null() {

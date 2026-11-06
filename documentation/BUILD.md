@@ -103,7 +103,7 @@ The QEMU serial output should include:
 ```text
 PIC: remapping legacy IRQs to vectors 0x20-0x2F.
 PIC master mask: 0x00000000000000FF slave mask: 0x00000000000000FF
-PIC: remapped and verified; all IRQ lines remain masked.
+PIC: remap sequence issued; all IRQ masks verified.
 QEMU debug-exit: requesting controlled shutdown.
 QEMU debug-exit confirmed (exit status 33).
 ```
