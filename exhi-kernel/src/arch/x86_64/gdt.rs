@@ -95,10 +95,16 @@ pub fn initialize() -> TssStatus {
     assert!(tss_base != 0);
     assert!(tss_base + size_of::<TaskStateSegment>() as u64 <= PHYSICAL_LIMIT);
 
-    let mut tss = TaskStateSegment::EMPTY;
-    tss.ist[0] = stack_top;
-    // iomap_base is beyond the TSS limit: no I/O permission bitmap is present.
-    tss.iomap_base = size_of::<TaskStateSegment>() as u16;
+    let tss = TaskStateSegment {
+        reserved0: 0,
+        rsp: [0; 3],
+        reserved1: 0,
+        ist: [stack_top, 0, 0, 0, 0, 0, 0],
+        reserved2: 0,
+        reserved3: 0,
+        // iomap_base is beyond the TSS limit: no I/O permission bitmap exists.
+        iomap_base: size_of::<TaskStateSegment>() as u16,
+    };
 
     // SAFETY: The TSS storage is static and aligned; the complete packed value
     // is written before its descriptor is loaded with LGDT/LTR.
