@@ -23,7 +23,7 @@
 - P2.5 is Ring 0 address-space management only; actual CPL3 execution, syscalls and hardware-enforced user/supervisor fault tests are not implemented.
 
 ## Текущий кодовый checkpoint
-- Latest code commit: [6014dec](https://github.com/mindwork64/exhiOS/commit/6014dec505682a4d91ff7165d222f274a15561da).
+- Latest code commit: [2cffee5](https://github.com/mindwork64/exhiOS/commit/2cffee513eda6c63c6cc1d0bd8ee9be0a14c1be9).
 - P2.6 implementation: 64-bit TSS in GDT (selector 0x18), TR loaded with LTR, 16 KiB aligned IST1 stack, IDT vector 8 uses IST1; exception assembly passes normalized frame pointer to the Rust #DF handler.
 - BootInfo ABI was bumped to magic `EXHIOS02`, version 2, and now carries kernel stack base/size.
 - UEFI loader allocates a contiguous 17-page LOADER_DATA region: first page is a reserved guard page; remaining 16 pages form the 64 KiB kernel stack.
@@ -33,10 +33,11 @@
 - P3.1 adds a reusable polling 16550 SerialPort driver in `arch/x86_64/serial.rs`. COM1 output is migrated from main.rs; RX adds non-blocking try_read_byte and polling read_byte_blocking. Boot prints the P3.1 readiness marker.
 - RX-inclusive driver build + headless QEMU regression [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) passed before the interactive test harness was added. The CI boot trace proves TX/boot regression, not receipt of input bytes.
 - Commits [a58220e](https://github.com/mindwork64/exhiOS/commit/a58220e5fda9afb069b71f08529ebc68f95a4d36) and [6014dec](https://github.com/mindwork64/exhiOS/commit/6014dec505682a4d91ff7165d222f274a15561da) add the opt-in interactive RX byte-echo mode. Run `EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh`; type ASCII, test Enter/Backspace, then press Ctrl+D to print the received-byte count. This mode has not yet been locally exercised.
-- P2.6 is closed; only the P3.1 typed-byte RX test remains pending.
+- P2.6 and P3.1 are closed with local + CI evidence. P3.1 local RX log: `hello exhiOS` echoed, Enter produced a new prompt, Ctrl+D printed byte count 0x0D.
+- P3.2 initial GOP framebuffer console is implemented in `exhi-console` and kernel startup. It supports GOP formats 0/1, visible width + separate scanline stride, ASCII text, wrap and scroll. Host tests and kernel build variants passed in CI; headless QEMU runtime and local visual confirmation remain pending.
 
 ## Следующие действия
-1. CI build job для commit 6014dec уже прошёл, включая новую сборку `serial-rx-smoke-test` ([run 42268731034](https://github.com/mindwork64/exhiOS/actions/runs/42268731034)); дождаться завершения headless QEMU regression job.
+1. Дождаться статуса headless QEMU runtime для текущего P3.2 code checkpoint [2cffee5](https://github.com/mindwork64/exhiOS/commit/2cffee513eda6c63c6cc1d0bd8ee9be0a14c1be9), CI workflow [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662).
 2. Пользовательская проверка latest main:
    ```bash
    git fetch origin
@@ -44,11 +45,11 @@
    cargo fmt
    cargo test
    EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh
-   EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh
+   ./scripts/run-qemu.sh
    ```
-   Первый QEMU запуск повторяет проверку P2.6 и завершается status 33. Второй должен показать `P3.1 RX test ready`; введённые символы должны возвращаться echo, Enter — переводить на новый prompt, Backspace — стирать символ, Ctrl+D — печатать число принятых байтов.
-3. После локального подтверждения RX переходить к следующему отдельному этапу: framebuffer console, затем timer и keyboard. Не смешивать это с P3.1 до приёмки RX.
-4. Ring 3, syscalls and hardware user/supervisor fault tests remain a later user-mode milestone. Guard page is locally and CI verified; do not remove or bypass it.
+   Автоматический запуск должен завершиться status 33. В обычном QEMU-окне ожидается тёмный экран с текстом `EXHIOS KERNEL 0.1`, `P3.2 FRAMEBUFFER CONSOLE READY`, разрешением 1280x800, stride 1280 и форматом BGRX. В serial log ожидается `P3.2: framebuffer console initialized`.
+3. После визуального подтверждения добавить нормальное API вывода ядра (общий console writer), затем отдельными этапами переходить к timer и keyboard.
+4. Ring 3, syscalls and hardware user/supervisor fault tests remain a later user-mode milestone. P2.6 guard page is locally and CI verified; do not remove or bypass it.
 
 ## Правила работы
 - Русский язык общения.
