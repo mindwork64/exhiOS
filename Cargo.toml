@@ -13,6 +13,7 @@ exhi-elf = { path = "exhi-elf" }
 exhi-memory = { path = "exhi-memory" }
 exhi-heap = { path = "exhi-heap" }
 exhi-console = { path = "exhi-console" }
+exhi-input = { path = "exhi-input" }
 exhi-driver = { path = "exhi-driver" }
 
 [profile.dev]
