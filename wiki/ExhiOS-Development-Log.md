@@ -305,3 +305,14 @@ The user supplied a description of the screenshot captured from local Linux Mint
 - `KERNEL HANDOFF: SUCCESS`
 
 Combined with the user's serial log showing GOP address 0x80000000, 1280x800, stride 1280, format 1, successful framebuffer initialization, kernel handoff and halt loop, this confirms that the initial framebuffer console rendered the expected content in local QEMU. The screenshot URL itself could not be fetched by the assistant runtime, so fine visual details such as glyph sharpness, spacing and artifacts were not independently inspected. P3.2's initial functional acceptance is complete with local evidence and CI [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662).
+
+
+## 2026-11-06 — Unified KernelConsole writer implemented
+
+Commits:
+- [c3d2b8c](https://github.com/mindwork64/exhiOS/commit/c3d2b8ccaa34c6b399b7f12905ae11658455916b) — added `exhi-kernel/src/console.rs`, an allocation-free writer that mirrors byte slices and `core::fmt` output to COM1 and the optional GOP framebuffer.
+- [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a) — constructs the writer after GOP setup and routes kernel handoff, unified-writer readiness, QEMU debug-exit and final halt messages through it.
+
+The writer preserves the early-boot ordering: diagnostics before framebuffer setup remain COM1-only. If GOP initialization fails, the unified writer still outputs through COM1. `write_fmt` uses `core::fmt::write` and does not allocate. It remains a single-core, polling-only writer; calls must be serialized and interrupts stay disabled.
+
+CI workflow [42274252754](https://github.com/mindwork64/exhiOS/actions/runs/42274252754): the build job passed all host tests and all kernel build variants. At the time of this log entry, the separate headless QEMU runtime job is still in progress. Local QEMU verification of the mirrored writer output remains pending.
