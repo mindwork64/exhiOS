@@ -1,5 +1,14 @@
 # ExhiOS — журнал контрольных точек
 
+## 2026-11-06 — P3.3 local acceptance and P3.4 keyboard implementation
+
+- P3.3 PIT timer accepted locally: user's QEMU serial log shows IRQ0 unmasked, five monotonic ticks received, IRQ0 remasked and debug-exit status 33.
+- Added the no_std `exhi-input` crate: fixed-capacity SPSC scan-code queue, overflow counter, Set 1 make/break decoder, HID-usage key identifiers, modifier snapshots and lock-key state.
+- Added the x86-64 i8042 driver. It configures translated Set 1 mode, enables scanning after validating keyboard ACK, and unmasks only PIC IRQ1.
+- Added IDT vector 0x21 gate with read-back validation and an assembly-only IRQ1 handler that reads port 0x60, publishes a byte to the queue, counts overflow and sends EOI. No Rust call or heap allocation occurs in the ISR.
+- Host tests passed 6/6 and the keyboard-enabled kernel build passed CI [run 42278708100](https://github.com/mindwork64/exhiOS/actions/runs/42278708100). Interactive QEMU validation by the user remains pending.
+
+
 ## P0.1 — Repository and firmware entry
 Cargo workspace, UEFI app, kernel ELF, shared ABI, build/QEMU scripts и CI. QEMU + OVMF подтвердили вход в loader.
 

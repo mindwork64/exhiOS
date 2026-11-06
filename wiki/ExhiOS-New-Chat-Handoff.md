@@ -23,7 +23,7 @@
 - P2.5 is Ring 0 address-space management only; actual CPL3 execution, syscalls and hardware-enforced user/supervisor fault tests are not implemented.
 
 ## Текущий кодовый checkpoint
-- Latest code commit: [d2ed6b2](https://github.com/mindwork64/exhiOS/commit/d2ed6b2d40260340396af1db8284b607eba1c4ad).
+- Current P3.4 implementation commits: [993b651](https://github.com/mindwork64/exhiOS/commit/993b651b7dd4cffa9aeffb6331e325dd1d8b190a) and [eafdbd1](https://github.com/mindwork64/exhiOS/commit/eafdbd1305ec7f3ae5b1f29f26d85bf317662310).
 - P2.6 implementation: 64-bit TSS in GDT (selector 0x18), TR loaded with LTR, 16 KiB aligned IST1 stack, IDT vector 8 uses IST1; exception assembly passes normalized frame pointer to the Rust #DF handler.
 - BootInfo ABI was bumped to magic `EXHIOS02`, version 2, and now carries kernel stack base/size.
 - UEFI loader allocates a contiguous 17-page LOADER_DATA region: first page is a reserved guard page; remaining 16 pages form the 64 KiB kernel stack.
@@ -39,7 +39,7 @@
 
 ## Следующие действия
 1. P3.2 unified writer is implemented and CI/local QEMU runtime-verified. The user's local serial logs show the unified-writer-ready marker, kernel handoff and halt messages.
-2. P3.3 PIT timer implementation is in [d2ed6b2](https://github.com/mindwork64/exhiOS/commit/d2ed6b2d40260340396af1db8284b607eba1c4ad). CI build and headless QEMU/OVMF passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072), including five real IRQ0 ticks. Local Linux Mint/QEMU timer validation is pending.
+2. P3.3 PIT timer implementation is in [d2ed6b2](https://github.com/mindwork64/exhiOS/commit/d2ed6b2d40260340396af1db8284b607eba1c4ad). CI build/headless QEMU and local Linux Mint/QEMU passed on 2026-11-06: five real IRQ0 ticks, IRQ0 remasked and debug-exit status 33.
 3. User's local P3.3 validation:
    ```bash
    git fetch origin
@@ -49,7 +49,17 @@
    EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_TEST=1 ./scripts/run-qemu.sh
    ```
    The timer variant uses isa-debug-exit and should finish with status 33. Expect `P3.3: PIT initialized at 100 Hz (divisor 11932)`, `P3.3: monotonic timer advanced by 5 ticks; IRQ0 masked again`, and `P3.3: PIT IRQ0 runtime smoke test passed`.
-4. After local timer confirmation, proceed to P3.4 keyboard as a separate slice. Do not combine keyboard and timer work. APIC/IOAPIC, HPET/TSC calibration and scheduler integration remain later work.
+4. P3.4 keyboard implementation is committed in [993b651](https://github.com/mindwork64/exhiOS/commit/993b651b7dd4cffa9aeffb6331e325dd1d8b190a) with a syntax fix in [eafdbd1](https://github.com/mindwork64/exhiOS/commit/eafdbd1305ec7f3ae5b1f29f26d85bf317662310). Host tests (6/6), standard kernel and keyboard smoke-test variant passed CI run [42278708100](https://github.com/mindwork64/exhiOS/actions/runs/42278708100). Interactive keyboard runtime is still pending.
+5. Run the local interactive keyboard test:
+   ```bash
+   git fetch origin
+   git reset --hard origin/main
+   cargo fmt
+   cargo test
+   EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_KEYBOARD_TEST=1 ./scripts/run-qemu.sh
+   ```
+   Click the QEMU display, type ordinary keys, Shift, Ctrl and arrows. Finish by holding Ctrl and pressing D. Expect key down/up records, zero dropped scan codes, IRQ1 remasked and debug-exit status 33. This test is separate from the timer test.
+6. APIC/IOAPIC, HPET/TSC calibration and scheduler integration remain later work.
 5. Ring 3, syscalls and hardware user/supervisor fault tests remain a later user-mode milestone. P2.6 guard page is locally and CI verified; do not remove or bypass it.
 
 ## Правила работы

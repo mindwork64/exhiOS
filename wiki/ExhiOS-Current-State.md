@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: [d2ed6b2](https://github.com/mindwork64/exhiOS/commit/d2ed6b2d40260340396af1db8284b607eba1c4ad) — P2.6, P3.1, P3.2 и единый KernelConsole writer подтверждены локальным QEMU + CI. P3.3 PIT/IRQ0 monotonic timer реализован и прошёл CI build + headless QEMU runtime; локальный прогон ожидается.
+Кодовый checkpoint: P3.3 PIT/IRQ0 timer locally and CI runtime-verified on 2026-11-06. P3.4 PS/2 keyboard, IRQ1 and input decoder are implemented; CI host tests and all build variants passed, local interactive keyboard validation is pending.
 
 ## Закрыто и проверено в QEMU
 
@@ -231,5 +231,16 @@ Code checkpoint: [d2ed6b2](https://github.com/mindwork64/exhiOS/commit/d2ed6b2d4
 - API: `timer::ticks()` and wrap-safe `timer::elapsed_ticks(start)`. The counter is monotonic modulo 2^64.
 - Opt-in test: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_TEST=1 ./scripts/run-qemu.sh`. It waits for at least five delivered ticks, disables IF, masks IRQ0 again and verifies PIC state.
 - CI build passed all host tests and all kernel variants; headless QEMU first passed the existing P2.6 guard/#DF regression, then timer QEMU printed `P3.3: monotonic timer advanced by 5 ticks; IRQ0 masked again` and exited status 33.
-- Local Linux Mint/QEMU timer runtime validation remains pending.
+- Local Linux Mint/QEMU (2026-11-06): user serial log confirms PIT at 100 Hz/divisor 11,932, five elapsed ticks, IRQ0 remasked, timer runtime success marker and QEMU debug-exit status 33.
 - Current scope is the legacy PIT + PIC path. Local APIC/IOAPIC, HPET/TSC calibration and scheduler integration are future work.
+
+## P3.4 — PS/2 keyboard and input events
+
+New no_std crate: `exhi-input`; hardware driver: `exhi-kernel/src/arch/x86_64/keyboard.rs`.
+- The i8042 controller is configured with IRQ1 enabled, IRQ12 disabled, keyboard clock enabled, auxiliary clock disabled and translated Set 1 output. The keyboard receives the F4 enable-scanning command and its ACK is checked before PIC IRQ1 is unmasked.
+- IDT vector 0x21 points to a dedicated IRQ1 stub. PIC exposes IRQ1-only mask/unmask operations preserving all other lines.
+- IRQ1 assembly reads port 0x60, publishes one byte into a fixed SPSC queue, increments an overflow counter if full, sends master PIC EOI and returns with IRETQ. The stub makes no Rust calls and allocates nothing.
+- Foreground decoding maps Set 1 make/break bytes to USB HID keyboard usage IDs. KeyEvent contains physical key identity, down/up state and modifier snapshot; left/right Shift, Control, Alt and Meta are tracked independently, and Caps/Num/Scroll Lock toggle on make.
+- Host unit tests: 6/6 passed. CI also built the keyboard-enabled kernel variant in [run 42278708100](https://github.com/mindwork64/exhiOS/actions/runs/42278708100).
+- Interactive mode: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_KEYBOARD_TEST=1 ./scripts/run-qemu.sh`. Click the QEMU display, type keys, then hold Ctrl and press D. The kernel prints event transitions and dropped-byte count, masks IRQ1 and requests QEMU debug-exit.
+- Local interactive QEMU validation remains pending. This initial driver supports legacy PS/2 only; USB HID enumeration and keyboard-layout/character translation are future work.

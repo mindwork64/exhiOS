@@ -126,7 +126,7 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] Local Linux Mint/QEMU (2026-11-06): the unified writer emitted readiness, kernel handoff and halt-loop messages on COM1; the same writer call also targets the initialized framebuffer.
 
 ### P3.3 — PIT timer and monotonic ticks
-**Первая реализация проходит CI QEMU runtime; локальная проверка ожидается.**
+**Первая реализация завершена; CI и локальный Linux Mint/QEMU runtime подтверждены 2026-11-06.**
 - [x] PIT channel 0 programmed in mode 2 at requested 100 Hz (input 1,193,182 Hz, divisor 11,932).
 - [x] IDT vector 0x20 interrupt gate installed and read-back validated.
 - [x] PIC exposes IRQ0 mask/unmask controls; timer startup unmasks IRQ0 only and preserves all other PIC masks.
@@ -134,11 +134,18 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] Public monotonic `ticks()` and wrap-safe `elapsed_ticks(start)` interfaces use an atomic 64-bit counter.
 - [x] Opt-in timer smoke test enables interrupts, waits for at least five real PIT ticks, disables IF, masks IRQ0 again and verifies the mask state.
 - [x] CI build of all variants plus headless QEMU/OVMF tests passed: [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072). QEMU printed 5 elapsed ticks and exited with status 33.
-- [ ] Local Linux Mint/QEMU timer runtime validation.
+- [x] Local Linux Mint/QEMU runtime (2026-11-06): user serial log confirms 100 Hz PIT setup, five elapsed ticks, IRQ0 remasked, timer runtime success marker and QEMU debug-exit status 33.
 - [ ] APIC/IOAPIC, HPET/TSC calibration and scheduler integration remain future work.
 
 ### P3.4 — Keyboard
-- [ ] Keyboard input driver and key event abstraction.
+**Реализация и CI build/host tests прошли; локальная интерактивная проверка ожидается.**
+- [x] i8042 initialization: keyboard port enabled, auxiliary port disabled, IRQ1 enabled, Set 2-to-Set 1 translation selected, keyboard scanning enabled and ACK checked.
+- [x] PIC IRQ1 mask/unmask preserves IRQ0 and all other PIC mask bits.
+- [x] IDT vector 0x21 gate installed and read-back validated.
+- [x] Assembly-only IRQ1 handler reads port 0x60, writes to a fixed SPSC queue, counts overflow and sends master PIC EOI; no Rust call or allocation in ISR.
+- [x] no_std exhi-input decoder maps Set 1 make/break to HID-usage KeyEvents and tracks modifiers/lock keys.
+- [x] CI host tests: 6/6 passed; keyboard-enabled kernel variant compiled successfully in [run 42278708100](https://github.com/mindwork64/exhiOS/actions/runs/42278708100).
+- [ ] Local QEMU interactive test: press several keys and use Ctrl+D to finish; runtime log must show key-down/key-up events, zero dropped scan codes and QEMU exit status 33.
 
 ### P3.5 — Driver registration
 - [ ] Initial driver registration model.

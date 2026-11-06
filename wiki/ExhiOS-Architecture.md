@@ -121,8 +121,20 @@ Module: `exhi-kernel/src/arch/x86_64/timer.rs`; code checkpoint [d2ed6b2](https:
 - The IRQ stub is pure assembly: saves RAX, uses a locked 64-bit increment of `EXHIOS_PIT_TICKS`, sends master PIC EOI and executes IRETQ. It makes no Rust calls, heap allocations or SIMD state changes.
 - `timer::ticks()` reads the monotonic 64-bit counter; `timer::elapsed_ticks(start)` uses wrapping subtraction.
 - The opt-in smoke test enables IF only after PIT/IDT/PIC setup, receives five real IRQ0 ticks, disables IF, masks IRQ0 again and verifies all other PIC lines remain masked.
-- CI build + headless QEMU/OVMF passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072); the timer log reports five ticks and QEMU debug-exit status 33. Local Linux Mint/QEMU timer validation remains pending.
+- CI build + headless QEMU/OVMF passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072); local Linux Mint/QEMU log (2026-11-06) also reports five ticks, IRQ0 remasked and debug-exit status 33.
 - This is the initial legacy PIT/PIC implementation; APIC/IOAPIC, HPET/TSC calibration, SMP delivery and scheduler integration are deferred.
+
+## P3.4 — PS/2 keyboard and input events
+
+The hardware driver is `exhi-kernel/src/arch/x86_64/keyboard.rs`; pure queue/event decoding lives in the host-testable no_std `exhi-input` crate.
+- The i8042 command byte enables IRQ1, disables IRQ12, enables the keyboard clock, disables the auxiliary clock and enables translated Set 1 output. The keyboard's F4 ACK is validated before IRQ1 is unmasked.
+- PIC IRQ1 mask/unmask operations preserve the state of IRQ0 and every other line. IDT vector 0x21 is read-back validated.
+- The IRQ1 stub is assembly-only: reads port 0x60, inserts one byte into the SPSC queue, counts overflow, sends master PIC EOI and returns. It deliberately makes no Rust call and does not allocate.
+- Foreground code maps Set 1 make/break bytes to USB HID usage IDs, emits key-down/key-up events and tracks left/right modifier state plus Caps/Num/Scroll Lock. The queue has 63 usable entries and reports dropped scan codes.
+- Six input-crate host tests passed; CI also built the kernel with the keyboard smoke-test feature in [run 42278708100](https://github.com/mindwork64/exhiOS/actions/runs/42278708100).
+- Interactive QEMU smoke mode: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_KEYBOARD_TEST=1 ./scripts/run-qemu.sh`; Ctrl+D ends the test after event output. This is separate from the PIT timer test.
+- Local interactive keyboard QEMU validation remains pending. This initial driver supports legacy PS/2 only; USB HID enumeration, keyboard layouts/Unicode translation, typematic policy and input focus routing remain future work.
+
 
 ## P2.6 — TSS, double-fault IST and boot-stack guard page
 
