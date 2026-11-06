@@ -12,6 +12,7 @@ timer-smoke-test = []
 keyboard-smoke-test = ["qemu-debug-exit-smoke-test"]
 driver-registry-smoke-test = ["qemu-debug-exit-smoke-test"]
 context-switch-smoke-test = ["qemu-debug-exit-smoke-test"]
+task-accounting-smoke-test = ["qemu-debug-exit-smoke-test"]
 
 [[bin]]
 name = "exhi-kernel"
