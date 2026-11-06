@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: a856090c0d6e25215e5b56d269894b00696bd01d (P2.5 separate address spaces; latest hardening validation in CI).
+Кодовый checkpoint: e19db15bf891805c2e22cb3251ebade7872bf515 (P2.5.1 address-space lifecycle/mapping hardening; runtime validation pending).
 
 ## Закрыто и проверено в QEMU
 
@@ -134,7 +134,7 @@ Headless CI QEMU/OVMF [run 42217123278](https://github.com/mindwork64/exhiOS/act
 - Private page tables reclaimed; data frames safely returned.
 - Kernel handoff successful; QEMU debug-exit status 33.
 
-P2.5 initial address-space layer закрыт по CI и локальному runtime evidence. Smoke test выполняется на Ring 0: CPL3 execution и аппаратные user/supervisor fault tests ещё не реализованы. Дополнительные lifecycle/error-path и негативные permission tests остаются полезным hardening до полноценного user-mode этапа.
+P2.5 initial address-space layer закрыт по CI и локальному runtime evidence. Smoke test выполняется на Ring 0: CPL3 execution и аппаратные user/supervisor fault tests ещё не реализованы. Дополнительные lifecycle/error-path и негативные permission tests остаются полезным hardening до полноценного user-mode этапа. Эти проверки вынесены в P2.5.1: защита от use-after-destroy, запрет destroy активного CR3, W^X отказ, проверки invalid/duplicate map и повторного unmap, валидация page-table frame pointers и retry-safe teardown. Код [e19db15](https://github.com/mindwork64/exhiOS/commit/e19db15bf891805c2e22cb3251ebade7872bf515) закоммичен; CI и локальный QEMU runtime пока ожидаются.
 
 Ограничения: test пока выполняется в Ring 0, он подтверждает раздельные mappings/CR3 и permission bits в page tables, но ещё не запускает код в Ring 3 и не проверяет аппаратные user-mode faults. Это подготовка address-space layer, не завершённая process isolation.
 
