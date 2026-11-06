@@ -37,6 +37,7 @@ pub enum AddressSpaceError {
     AddressOutOfRange,
     UnalignedAddress,
     AlreadyMapped,
+    WriteExecuteDenied,
     NotMapped,
     MissingPageTableEntry,
     UnexpectedLargePage,
@@ -61,6 +62,7 @@ impl AddressSpaceError {
             Self::AddressOutOfRange => b"user virtual address is outside the reserved address-space window",
             Self::UnalignedAddress => b"mapping address is not 4 KiB aligned",
             Self::AlreadyMapped => b"user virtual page is already mapped",
+            Self::WriteExecuteDenied => b"user page cannot be writable and executable at the same time",
             Self::NotMapped => b"user virtual page is not mapped",
             Self::MissingPageTableEntry => b"required upper-level page-table entry is missing",
             Self::UnexpectedLargePage => b"unexpected huge page in a private user page-table subtree",
@@ -253,6 +255,9 @@ impl AddressSpace {
         ensure_initialized()?;
         ensure_interrupts_disabled()?;
         self.ensure_live()?;
+        if flags.writable && flags.executable {
+            return Err(AddressSpaceError::WriteExecuteDenied);
+        }
         validate_user_virtual_address(virtual_address)?;
         validate_physical_address(physical_address)?;
 
@@ -525,6 +530,28 @@ pub fn smoke_test() -> Result<AddressSpaceTestStatus, AddressSpaceError> {
             return Err(AddressSpaceError::OutOfPhysicalFrames);
         }
     };
+
+    // W^X is checked before allocating any private page-table levels.
+    // SAFETY: first_frame is freshly allocated and remains owned by this test.
+    let write_execute_result = unsafe {
+        first.map_user_page(
+            USER_VIRTUAL_BASE,
+            first_frame,
+            UserPageFlags {
+                writable: true,
+                executable: true,
+            },
+        )
+    };
+    if write_execute_result != Err(AddressSpaceError::WriteExecuteDenied)
+        || first.translate(USER_VIRTUAL_BASE) != Err(AddressSpaceError::MissingPageTableEntry)
+    {
+        let _ = memory::release_frame(first_frame);
+        let _ = memory::release_frame(second_frame);
+        let _ = first.destroy();
+        let _ = second.destroy();
+        return Err(AddressSpaceError::MappingVerificationFailed);
+    }
 
     // SAFETY: first_frame was freshly allocated and remains owned by this test.
     if let Err(error) = unsafe { first.map_user_page(USER_VIRTUAL_BASE, first_frame, UserPageFlags::read_write_nx()) } {
