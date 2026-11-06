@@ -23,6 +23,7 @@
 | `exhi-boot` | UEFI loader и handoff |
 | `exhi-kernel` | Freestanding kernel |
 | `exhi-memory` | no_std физический frame allocator |
+| `exhi-heap` | no_std first-fit heap allocator, host-tested |
 
 ## BootInfo
 Содержит magic/version/struct_size, физический адрес и размер memory map, descriptor size/version, framebuffer metadata и ACPI RSDP address. Начальная загрузка сохраняет UEFI identity mapping.
@@ -63,5 +64,13 @@ New module: \`exhi-kernel/src/arch/x86_64/vmm.rs\`.
 - PageFlags represent writable, user, executable, write-through, cache-disable and global. NX is used only after CPUID feature detection and EFER.NXE activation.
 - Changed leaves are invalidated with INVLPG. Mutating operations require interrupts disabled.
 - Coalescing only occurs after checking all 512 leaves for presence, physical contiguity, alignment and identical permissions/cache attributes. A/D bits are merged. All 512 virtual pages are invalidated before releasing the no-longer-referenced page-table frame.
-- No independent address spaces, mappings above 4 GiB, SMP locks or Ring 3 permission tests yet. Those belong to later iterations.
-- QEMU runtime smoke test passed in CI run 42213581974; user's local verification remains pending.
+- VMM separates virtual and physical bounds: lower canonical virtual addresses below 512 GiB are accepted; mapped physical frames remain below 4 GiB. Missing PDPT children are created on demand.
+- Local Linux Mint/QEMU run on 2026-11-06 confirmed NX, split, RW supervisor NX read/write, unmap/TLB invalidation, identity restore, table reclaim and debug-exit 33; CI runtime passed in run 42213581974.
+- Independent address spaces with separate PML4 roots, physical memory beyond 4 GiB, SMP shootdown and Ring 3 permission tests remain future work.
+
+## P2.4 — Kernel Heap (initial implementation)
+- `exhi-heap` provides no_std first-fit free-list allocation, alignment, splitting, deallocation, coalescing and reuse; four host unit tests pass.
+- Kernel `GlobalAlloc` uses a virtual arena starting at 4 GiB, initially four pages, max 64 MiB; physical frames are mapped RW+NX from the allocator's managed range.
+- Heap grows on demand through VMM. It serializes allocator operations with an atomic spinlock and disables local interrupts while held. Current SMP assumption: one CPU.
+- Startup smoke test requests a 48 KiB aligned block to force growth, writes/reads across 4 KiB page boundaries, frees it and checks reuse/coalescing.
+- CI build and host tests passed in run 42215253674; QEMU runtime job had not yet executed the heap smoke test at the time of this snapshot.

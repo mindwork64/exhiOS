@@ -102,3 +102,36 @@ Runtime smoke test in kernel startup:
 Headless QEMU/OVMF CI [run 42213581974](https://github.com/mindwork64/exhiOS/actions/runs/42213581974) passed. Serial markers confirm NX enabled, 2 MiB split, RW supervisor NX read/write, unmap/TLB verification, identity restoration, safe page-table reclamation, and QEMU debug-exit status 33.
 
 Local Linux Mint/QEMU validation by the user is still pending. Do not mark P2.3 fully closed before receiving that serial report.
+
+
+## 2026-11-06 — P2.3 confirmed by user's local Linux Mint/QEMU run
+
+- User supplied serial output from UEFI/OVMF run after commit 08f179a.
+- P2.2 active CR3/PML4: 0x110000; bootstrap identity map covers 4 GiB; 9 address ranges verified.
+- VMM reports NX support enabled.
+- 2 MiB mapping split into 4 KiB entries.
+- RW supervisor NX map, direct write/read test, unmap, NotMapped check and TLB invalidation passed.
+- Original identity mapping restored; the temporary 4 KiB page-table frame was safely reclaimed.
+- VMM smoke test success line printed; QEMU debug-exit returned status 33.
+- P2.3 is closed with both CI and local runtime evidence.
+
+## 2026-11-06 — P2.4 initial Kernel Heap implementation
+
+Commits:
+- [e7c7ab6](https://github.com/mindwork64/exhiOS/commit/e7c7ab62c05d0492426688a7ff85afe433a5ed53): initial exhi-heap crate, kernel global allocator, virtual mapping extension and CI unit-test step.
+- [dcf6d9c](https://github.com/mindwork64/exhiOS/commit/dcf6d9c2b08e6d4ab0b89d6591f3031a1333a89b): expose std only for host unit tests.
+- [97a4859](https://github.com/mindwork64/exhiOS/commit/97a4859693a45a638f00f911cf208c043e7f2199): wire root heap module and clean CPUID unsafe blocks.
+- [890d0be](https://github.com/mindwork64/exhiOS/commit/890d0be274f61e02bbfcba933a9699983df53fc9): integrate heap initialize/smoke test into kernel startup.
+- [f03e92b](https://github.com/mindwork64/exhiOS/commit/f03e92b7239cd75b95ff1dffc1a4dce053a74f30): fix mutable startup status after smoke test.
+
+Design:
+- New no_std `exhi-heap`: first-fit free-list allocator with aligned allocations, block splitting, deallocation, adjacent-region and free-block coalescing.
+- Kernel allocator implements `GlobalAlloc`; its initial mapped heap range begins at virtual address 4 GiB, outside the initial identity mapping.
+- VMM now accepts lower canonical virtual addresses below 512 GiB while physical mapping targets remain below 4 GiB. Missing PDPT entries are created on demand.
+- Heap starts with 4 pages and can grow up to 64 MiB. Physical frames are obtained via `exhi-memory` and mapped RW+NX through VMM.
+- An IRQ-safe spinlock serializes heap changes on the current single CPU; local interrupts are disabled while the heap lock is held.
+- Page growth is rolled back if a later frame mapping fails.
+- Startup smoke test covers 64-byte alignment, a 48 KiB aligned allocation that forces heap growth, write/read across several 4 KiB boundaries, free, pointer reuse and complete free-list coalescing.
+
+Host tests passed: exhi-heap 4/4; existing ABI 2/2, ELF 12/12, physical memory 7/7. Full UEFI/default kernel/exception/debug-exit builds also passed in CI run [42215253674](https://github.com/mindwork64/exhiOS/actions/runs/42215253674). The separate QEMU runtime job was still in its package-install step at this snapshot; do not claim heap runtime verification until its serial output confirms the P2.4 smoke test and debug-exit 33.
+

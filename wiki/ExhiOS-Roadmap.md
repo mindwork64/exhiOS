@@ -28,20 +28,32 @@
 - Evidence: [GitHub Actions run 42205457670](https://github.com/mindwork64/exhiOS/actions/runs/42205457670).
 
 ### P2.3 Virtual memory manager
-**Первая реализация прошла headless QEMU/OVMF CI; локальная проверка пользователя ожидается.**
-- [x] 4 KiB `map_page`, `unmap_page`, `query_page` в пределах identity map 0–4 GiB.
+**Завершено и подтверждено CI + локальным Linux Mint/QEMU 2026-11-06.**
+- [x] 4 KiB `map_page`, `unmap_page`, `query_page`.
 - [x] Разбиение 2 MiB huge page на 512 4 KiB entries.
 - [x] Права writable/read-only, user/supervisor, executable/NX; включение NXE только после CPUID.
 - [x] TLB invalidation через `invlpg`.
 - [x] Безопасное coalesce 512 совместимых contiguous PTE в 2 MiB PDE.
 - [x] Освобождение page-table frame после замены PDE и инвалидирования 512 адресов.
-- [x] QEMU smoke test: RW supervisor NX mapping, read/write, unmap, NotMapped, restore and reclaim; debug-exit 33.
-- [ ] Локальный Linux Mint/QEMU прогон пользователя.
-- [ ] Address spaces с отдельными PML4 roots и mapping вне 4 GiB bootstrap window.
+- [x] QEMU проверил RW supervisor NX mapping, read/write, unmap/NotMapped, восстановление identity map и reclaim; debug-exit 33.
+- [x] Локальный прогон: NX enabled, 2 MiB→4 KiB split, запись/чтение, unmap/TLB invalidation, identity restore/reclaim; debug-exit 33.
+- [ ] Отдельные address spaces с собственными PML4 roots и kernel mapping policy.
+- [ ] Физические адреса за пределами текущего 4 GiB allocator window.
 
 ### P2.4 Kernel heap
-- [ ] Heap allocator поверх физических страниц и VMM.
-- [ ] Allocation/free/reuse tests.
+**Первая реализация в `main`; host tests и все build variants прошли. QEMU runtime проверка новой интеграции ещё не завершена.**
+- [x] Новый `no_std` crate `exhi-heap`: first-fit free list, alignment, split/coalesce, free/reuse.
+- [x] Kernel `GlobalAlloc` поверх page-backed виртуальной области с динамическим ростом.
+- [x] Отдельный heap VA начинается с 4 GiB; физические frames остаются в подтверждённой identity map ниже 4 GiB.
+- [x] Host tests: 4/4; ABI 2/2, ELF 12/12, physical memory 7/7.
+- [x] Kernel default/exception/debug-exit builds и UEFI build прошли в CI.
+- [ ] Headless QEMU runtime smoke test: P2.4 вызов из kernel startup в актуальном commit; runner пока на установке QEMU/OVMF dependencies.
+- [ ] Локальный Linux Mint/QEMU прогон пользователя.
+
+### P2.5 Kernel address spaces
+- [ ] Отдельные PML4 roots и контролируемое копирование kernel mappings.
+- [ ] Создание/удаление address spaces и освобождение private page tables.
+- [ ] Проверки переключения CR3 и изоляции mappings.
 
 ## P3 — Basic devices
 - [ ] Serial abstraction, framebuffer console, timer, keyboard, driver registration.

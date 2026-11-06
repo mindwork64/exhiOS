@@ -17,21 +17,22 @@
 - Пользователь присылает serial output для runtime проверки. Не объявлять этап закрытым без него.
 
 ## Последняя подтверждённая точка
-P0/P1 и P2.1 закрыты. P2.2 локально подтверждён пользователем: PML4=CR3=0x10C000, 4 GiB identity map, 9 диапазонов, kernel entry 0x100000, debug-exit 33.
+- P0/P1, P2.1, P2.2 и P2.3 завершены.
+- P2.3 local QEMU (2026-11-06): CR3=0x110000, 4 GiB bootstrap map, 9 ranges; NX enabled; 2 MiB→4 KiB split; RW supervisor NX write/read; unmap/TLB invalidation; identity restore and page-table reclaim; debug-exit 33.
 
 ## Текущий checkpoint
-- Main commit: 08f179af25190092597dead6ad918082fa79b79b.
-- P2.2 bootstrap paging завершён и локально проверен.
-- P2.3 VMM реализован и прошёл headless QEMU/OVMF CI: https://github.com/mindwork64/exhiOS/actions/runs/42213581974
-- Реализованы 4 KiB map/unmap/query, split 2 MiB→4 KiB, NXE/permission flags, INVLPG и safe coalescing/reclaim.
-- CI serial подтвердил NX enabled, RW supervisor NX, запись/чтение, unmap/NotMapped, восстановление identity map, освобождение page-table frame и debug-exit 33.
-- Локальный прогон P2.3 на Linux Mint пользователя ещё не получен; не объявлять P2.3 полностью закрытым.
+- Code checkpoint: [f03e92b](https://github.com/mindwork64/exhiOS/commit/f03e92b7239cd75b95ff1dffc1a4dce053a74f30).
+- P2.4 first implementation committed. `exhi-heap` no_std free-list crate (4/4 tests); kernel `GlobalAlloc`, virtual heap base 4 GiB, initial 4 pages, growth to 64 MiB.
+- VMM virtual window expanded to lower canonical 512 GiB; physical frame targets remain below 4 GiB. Heap mappings RW+NX.
+- Heap startup smoke test integrated: aligned small allocation, 48 KiB aligned growth test, cross-page writes/reads, free/reuse/coalescing.
+- ABI tests 2/2, ELF 12/12, physical memory 7/7, heap 4/4, UEFI + all kernel build variants succeeded in CI run [42215253674](https://github.com/mindwork64/exhiOS/actions/runs/42215253674).
+- QEMU job was still installing packages at last check. P2.4 is not runtime-closed until headless CI and local serial output print the heap success markers and debug-exit 33.
 
 ## Следующее действие после локального отчёта
-Сразу после того как пользователь присылает serial output локального QEMU:
-1. Сверить P2.3 output и показатели с CI, найти и исправить возможные расхождения.
-2. Зафиксировать локальное runtime evidence в Wiki/Development Log.
-3. Немедленно перейти к следующей части без запроса отдельного одобрения. Следующий плановый этап — P2.4 Kernel Heap (heap allocator поверх физического allocator + VMM), сохраняя дальнейшее разбиение на небольшие законченные инкременты.
+После того как пользователь присылает serial output локального QEMU:
+1. Сверить P2.4 startup markers, heap base/page count, growth/read-write/free/reuse and debug-exit 33.
+2. Зафиксировать runtime evidence в Wiki.
+3. Немедленно начать следующий плановый этап **P2.5 Kernel Address Spaces** без запроса одобрения: separate PML4 roots, kernel mapping policy, create/destroy address spaces and safe private page-table reclamation. Сохранять цикл code → CI → user QEMU → immediately next work.
 
 Команда локальной проверки:
 ```bash

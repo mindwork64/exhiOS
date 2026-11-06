@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: 08f179af25190092597dead6ad918082fa79b79b (VMM 4 KiB map/unmap + table reclaim; headless QEMU passed).
+Кодовый checkpoint: f03e92b7239cd75b95ff1dffc1a4dce053a74f30 (P2.4 kernel heap implementation; CI build passed, headless QEMU run pending).
 
 ## Закрыто и проверено в QEMU
 
@@ -61,31 +61,43 @@ P2.2 закрыт по CI и локальному runtime smoke test.
 Ограничения bootstrap map — временная карта RWX/supervisor для первых 4 GiB. W^X, user/supervisor isolation, 4 KiB mappings, per-device cache attributes и process address spaces ещё не реализованы.
 
 
-## P2.3 — Virtual Memory Manager: CI runtime passed; local confirmation pending
+## P2.3 — Virtual Memory Manager: CI + local QEMU verified
 
 Код: [08f179a](https://github.com/mindwork64/exhiOS/commit/08f179af25190092597dead6ad918082fa79b79b). Headless QEMU/OVMF CI: [run 42213581974](https://github.com/mindwork64/exhiOS/actions/runs/42213581974).
 
 Реализовано:
-- `exhi-kernel/src/arch/x86_64/vmm.rs`: 4 KiB `map_page`, `unmap_page`, `query_page`.
-- Разбиение 2 MiB huge page на 512 эквивалентных 4 KiB PTE.
-- Page flags: writable/read-only, user/supervisor, executable/NX, write-through, cache-disable, global. NX применяется только после CPUID проверки и включения EFER.NXE.
-- TLB invalidation через `invlpg`.
-- Безопасное объединение обратно в 2 MiB page только при проверке всех 512 leaf entries: contiguous physical pages, одинаковые права/атрибуты; accessed/dirty агрегируются.
-- После замены PDE и инвалидирования всех 512 адресов освобождается больше не используемый page-table frame.
-- Ошибочные, unaligned и out-of-range mapping запросы отклоняются; allocator frames остаются выделенными, пока на них ссылается активная таблица.
+- 4 KiB `map_page`, `unmap_page`, `query_page`; split 2 MiB PDE в 512 PTE.
+- Page flags: RW/RO, user/supervisor, executable/NX, PWT, PCD, global; NXE только после CPUID.
+- `invlpg` на изменениях; безопасное coalesce обратно в 2 MiB при проверке всех 512 PTE; освобождение child table frame после инвалидации 512 virtual pages.
 
-QEMU runtime evidence:
+CI QEMU подтвердил NX enabled, split, RW supervisor NX mapping, запись/чтение, unmap/NotMapped, identity restore, page-table reclaim и debug-exit 33.
+
+Локальный Linux Mint/QEMU прогон пользователя (2026-11-06) подтвердил:
+- P2.2 root/CR3: `0x110000`; 4 GiB bootstrap identity map, 9 critical ranges.
 - NX support: enabled.
-- 2 MiB → 4 KiB split выполнен.
-- RW supervisor NX mapping, запись и чтение через виртуальный адрес прошли.
-- Unmap и проверка отсутствия трансляции прошли.
-- Identity mapping восстановлен; таблица безопасно возвращена физическому аллокатору.
+- 2 MiB page split into 4 KiB entries.
+- RW supervisor NX map, read/write, unmap и TLB invalidation.
+- Original identity map restored; page-table frame safely reclaimed.
+- `P2.3: virtual memory manager 4 KiB mapping smoke test passed.`
 - QEMU debug-exit status 33.
 
-Ограничения текущей итерации: виртуальные и физические адреса ограничены первыми 4 GiB; управление новыми PML4/PDPT и отдельными address spaces ещё не реализовано. VMM пока однопроцессорный и выполняет операции при IF=0. Пользовательская Ring 3-проверка и fault-driven permission tests отложены до появления user mode и recoverable fault path.
+P2.3 закрыт. Ограничения: VMM пока single-core и требует IF=0 для изменений; address spaces с отдельными PML4 и физический доступ выше 4 GiB ещё не готовы.
 
-CI runtime подтверждён. Локальный прогон пользователя на Linux Mint/QEMU ещё ожидается; до него P2.3 оставлен без окончательного локального checkpoint.
+## P2.4 — Kernel Heap: initial implementation in main
 
+Кодовый checkpoint: [f03e92b](https://github.com/mindwork64/exhiOS/commit/f03e92b7239cd75b95ff1dffc1a4dce053a74f30).
+
+Добавлено:
+- Новый `exhi-heap` (`no_std`) с first-fit free list, alignment, splitting, adjacent-block coalescing, deallocation и reuse.
+- Kernel global allocator `GlobalAlloc`, который получает физические frames у `exhi-memory`, отображает их через VMM в отдельный virtual range от `0x1_0000_0000` (4 GiB), и расширяет heap по требованию.
+- Начальный heap: 4 pages; предел: 64 MiB. Physical frames остаются ниже 4 GiB и доступны через bootstrap identity map. Heap pages RW+NX.
+- Рост сериализован atomic spinlock и происходит при локально выключенных interrupts. Если добавление страниц частично не удалось, новые mappings откатываются, frames возвращаются.
+- Kernel startup теперь вызывает heap initialize и smoke test до debug-exit: 256-byte align64 allocation, 48 KiB align4096 allocation (рост heap), запись/чтение через границы страниц, free/reuse и проверка coalesced free bytes.
+
+CI: [run 42215253674](https://github.com/mindwork64/exhiOS/actions/runs/42215253674). ABI 2/2, ELF 12/12, physical allocator 7/7, heap 4/4, UEFI build и kernel default/exception/debug-exit builds прошли. QEMU runtime job в момент этого снимка ещё устанавливал QEMU/OVMF tools; P2.4 не закрывать до serial evidence.
+
+Local QEMU run ещё ожидается.
+ 
 ## Wiki и автоматическая синхронизация
 
 Исходники страниц находятся в `wiki/` основного репозитория. Workflow `.github/workflows/publish-wiki.yml` публикует их в отдельный GitHub Wiki repository после изменений в `wiki/**`. Первый publish прошёл успешно; Wiki commit: `4181995` на ветке `master`. Существующий контент Home сохраняется вне управляемого блока; посторонние Wiki-страницы не удаляются.

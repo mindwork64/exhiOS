@@ -55,3 +55,12 @@
 - The publisher uses the repository-scoped workflow token with `contents: write`, and pushes to the paired `.wiki.git` repository.
 - The managed block in Wiki `Home.md` is replaced idempotently. Other pages are upserted; unrelated Wiki pages are not deleted.
 - Update Current State, Roadmap, Development Log and New Chat Handoff as milestones change.
+
+
+## Kernel heap layout (P2.4)
+- Keep the first 4 GiB virtual range as the bootstrap physical identity map.
+- Kernel heap begins at virtual address 4 GiB and uses the lower canonical virtual window (VMM limit 512 GiB); this prevents heap allocations from replacing existing identity mappings.
+- Heap maps physical frames below the current 4 GiB physical allocator limit as RW+NX.
+- Initial heap region is four 4 KiB pages; growth is on demand, up to 64 MiB. The current implementation does not shrink mapped heap pages.
+- Use a small no_std first-fit free-list allocator with in-band free blocks and allocation headers; split free ranges and coalesce adjacent free blocks.
+- Expose it as the kernel GlobalAlloc only after explicit initialization during kernel startup. Operations are serialized by an atomic spinlock and local interrupts are disabled while the lock is held. Current kernel is single-core; SMP TLB shootdown/allocator lock design remains future work.
