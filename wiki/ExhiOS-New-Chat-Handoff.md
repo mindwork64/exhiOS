@@ -45,7 +45,7 @@
 - P3.5 is fully closed.
 
 ## Следующие действия
-1. P4.1: validate the host-testable `exhi-task` no_std model and round-robin policy on self-hosted CI.
+1. P4.1 is complete: `exhi-task` host tests passed 11/11; self-hosted CI passed all build variants and standard/PIT/registry QEMU regressions in [run 42302307480](https://github.com/mindwork64/exhiOS/actions/runs/42302307480).
 2. P4.2: implement per-task kernel stacks, x86-64 context switch (callee-saved registers + RSP, SysV alignment), first-task bootstrap and a two-task cooperative QEMU runtime test.
 3. P4.3: integrate tick accounting and later preemption separately; do not call Rust or scheduler from the minimal IRQ0 assembly stub.
 4. Ring 3, syscalls, user-pointer validation and hardware-enforced user/supervisor fault tests remain P5. TSS.RSP0 must be updated when per-task kernel stacks arrive; keep dedicated double-fault IST1 and boot-stack guard separate.

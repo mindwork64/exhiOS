@@ -170,6 +170,7 @@ The initial scheduler policy lives in the host-testable no_std crate `exhi-task`
 - Each task stores a static name, Ready/Running/Blocked/Finished lifecycle state and an opaque architecture `TaskContext` containing a saved stack pointer.
 - `Scheduler<const CAPACITY>` owns a fixed-size task table and performs round-robin cooperative selection without heap allocation.
 - The policy API covers spawn, start, yield, block/wake, finish and reap; invalid contexts, capacity overflow and illegal transitions are rejected.
+- Self-hosted CI passed all 11 unit tests and all previous headless QEMU regression modes in [run 42302307480](https://github.com/mindwork64/exhiOS/actions/runs/42302307480).
 - This first slice does not allocate stacks or execute an x86-64 context switch. P4.2 adds initial kernel stack frames, SysV-aligned context switching and a QEMU two-task runtime test.
 - Initial tasks remain Ring 0, single-CPU and cooperative. The PIT IRQ0 stub remains a minimal tick increment/EOI handler; no scheduler work runs from interrupt context.
 - When per-task kernel stacks arrive, update TSS.RSP0 to the active task's kernel stack. Keep the dedicated #DF IST1 and boot-stack guard page independent.

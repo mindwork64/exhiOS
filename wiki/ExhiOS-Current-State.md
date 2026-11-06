@@ -259,7 +259,7 @@ New no_std crate: `exhi-input`; hardware driver: `exhi-kernel/src/arch/x86_64/ke
 - Local Linux Mint/QEMU runtime (2026-11-06): i8042 config 0x65, IRQ1 gate valid, keyboard events received for letters, Enter, Backspace and arrows; Ctrl+D was decoded with ctrl=true, 28 transitions total, zero dropped scan codes, IRQ1 masked again and QEMU status 33. No separate Shift event appears in this log; Shift decoding has host-test coverage. This initial driver supports legacy PS/2 only; USB HID enumeration and keyboard-layout/character translation are future work.
 
 
-## P4.1 — Task model and scheduler core (CI validation pending)
+## P4.1 — Task model and scheduler core (host tests + self-hosted CI passed)
 
 New no_std crate: `exhi-task`.
 - `TaskId` is monotonically assigned within a scheduler. A reaped task slot may be reused, but an identifier is never reused.
@@ -267,5 +267,6 @@ New no_std crate: `exhi-task`.
 - `Scheduler<const CAPACITY>` is a fixed-capacity, allocation-free round-robin policy core.
 - States: Ready, Running, Blocked and Finished. APIs cover spawn, start, cooperative yield, block/wake, finish and reap.
 - Invalid zero stack pointers, capacity overflow, unknown tasks and illegal state transitions are rejected.
+- Self-hosted CI passed all 11 task-model unit tests, all kernel build variants and headless standard/PIT/registry QEMU regressions in [run 42302307480](https://github.com/mindwork64/exhiOS/actions/runs/42302307480).
 - This slice does not allocate kernel stacks or switch CPU registers. x86-64 initial stack frames/context switching and two-task QEMU proof are P4.2.
 - Tasks remain Ring 0 and share the kernel address space. No user-mode isolation or timer preemption is claimed.

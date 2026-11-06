@@ -368,3 +368,4 @@ Implementation:
 - Added the host-testable no_std `exhi-task` crate.
 - Added monotonic TaskId allocation, fixed-capacity task table, opaque saved-RSP contexts and Ready/Running/Blocked/Finished lifecycle.
 - Added round-robin cooperative yield, block/wake, finish and reap policy. This slice does not yet allocate task stacks or switch CPU context; those belong to P4.2.
+- Self-hosted CI passed all 11 task-model tests, every existing kernel build variant and headless QEMU standard/PIT/registry regressions in [run 42302307480](https://github.com/mindwork64/exhiOS/actions/runs/42302307480). P4.1 host-side scheduler policy is accepted.

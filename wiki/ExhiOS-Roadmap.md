@@ -161,10 +161,10 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 ## P4 — Tasks and scheduling
 
 ### P4.1 — Task model and scheduler policy
-**Код реализован; ожидает self-hosted CI.**
+**Host tests 11/11 и full self-hosted CI подтверждены 2026-11-07.**
 - [x] New no_std `exhi-task` crate: fixed-capacity task table, monotonic TaskId, opaque saved-RSP context and Ready/Running/Blocked/Finished lifecycle.
 - [x] Cooperative round-robin policy: spawn/start/yield/block/wake/finish/reap, no heap allocation.
-- [ ] Self-hosted CI host tests and full kernel regression.
+- [x] Self-hosted CI: 11/11 task-model tests, all kernel build variants and headless QEMU standard/PIT/registry regressions passed in [run 42302307480](https://github.com/mindwork64/exhiOS/actions/runs/42302307480).
 - [ ] x86-64 kernel stacks, initial stack frames and actual register/RSP switching are P4.2.
 
 ### P4.2 — x86-64 cooperative context switching
