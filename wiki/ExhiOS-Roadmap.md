@@ -94,19 +94,28 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 ## P3 — Basic devices
 
 ### P3.1 — Polling serial driver
-**COM1 TX is confirmed locally and in headless QEMU CI; RX API and an interactive diagnostic mode are implemented; actual local RX input validation is pending.**
+**Завершено; COM1 TX/RX подтверждены локально и в CI.**
 - [x] Reusable 16550-compatible `SerialPort` type with configurable base port.
 - [x] COM1 initialization (38400 baud, 8N1, FIFO), bounded polling TX and fixed-width hexadecimal output.
 - [x] Non-blocking `try_read_byte` and polling `read_byte_blocking`.
 - [x] Kernel boot diagnostics use `serial::COM1`; direct COM1 port I/O was removed from `main.rs`.
-- [x] Local Linux Mint/QEMU boot log (2026-11-06) shows the P3.1 readiness marker and successful COM1 diagnostic output.
-- [x] Headless QEMU/OVMF regression: [run 42257896620](https://github.com/mindwork64/exhiOS/actions/runs/42257896620), including the P2.6 guard-page/#DF/IST1 check.
-- [x] RX-inclusive driver build + headless QEMU/OVMF regression: [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) passed; CI does not inject serial input.
-- [x] Added opt-in interactive byte-echo test mode: `EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh`; it echoes printable input, handles Enter/Backspace and reports the received byte count on Ctrl+D. The feature build passed in CI run [42268731034](https://github.com/mindwork64/exhiOS/actions/runs/42268731034); local RX runtime remains pending.
-- [ ] Local Linux Mint/QEMU test with actual typed input.
+- [x] Local Linux Mint/QEMU boot log (2026-11-06) confirms COM1 TX.
+- [x] Headless QEMU/OVMF build + runtime regressions passed, including the RX-enabled kernel feature: [run 42270059656](https://github.com/mindwork64/exhiOS/actions/runs/42270059656).
+- [x] Interactive RX byte-echo mode: `EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh`; printable ASCII echo, Enter prompt, Ctrl+D termination and byte counter.
+- [x] Local Linux Mint/QEMU typed input (2026-11-06): entered `hello exhiOS`, saw the same text echoed and a fresh `RX>` prompt; Ctrl+D ended the loop. Counter was `0x0D` (13 received bytes, including Enter).
+- [ ] Backspace visual erase behavior still needs a separate explicit keystroke check; the handler is implemented.
+
 
 ### P3.2 — Framebuffer console
-- [ ] Pixel-format-aware framebuffer console with GOP stride support.
+**Первая реализация добавлена; CI и локальная проверка экрана ожидаются.**
+- [x] Новый `no_std` crate `exhi-console`: 5x7 ASCII bitmap font rendered into 12x16 cells; clear, write, decimal output, CR/LF/tab, wrap and one-row scroll.
+- [x] GOP format 0 (RGB-reserved) and 1 (BGR-reserved) packing; other GOP formats are rejected explicitly.
+- [x] Every write respects `pixels_per_scan_line`, uses volatile pixel accesses and checks framebuffer size/stride/dimensions.
+- [x] Kernel validates that the GOP buffer lies inside the currently mapped 0..4 GiB identity range before creating the console.
+- [x] Host tests: RGB/BGR byte order, stride padding, invalid stride/format/buffer, wrap/scroll and decimal output.
+- [ ] Headless QEMU/OVMF boot regression for the first integrated framebuffer initialization.
+- [ ] Local Linux Mint/QEMU visual confirmation.
+- [ ] BitMask/BltOnly pixel formats, Unicode fonts and framebuffer cache policy remain future work.
 
 ### P3.3 — Timer
 - [ ] Initial timer source and monotonic tick interface.
