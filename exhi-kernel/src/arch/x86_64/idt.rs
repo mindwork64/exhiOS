@@ -173,39 +173,37 @@ pub fn initialize() -> IdtStatus {
 /// The faulting address is in the reserved, unmapped upper part of the current
 /// lower-canonical kernel window. This function never returns on success.
 #[cfg(feature = "qemu-debug-exit-smoke-test")]
-pub fn trigger_double_fault_smoke_test() {
+unsafe extern "sysv64" {
+    fn exhi_trigger_guard_stack_overflow(stack_bottom: u64, fault_address: u64) -> !;
+}
+
+/// Forces a real page fault while RSP points at the first byte of the mapped
+/// boot stack. CPU exception-frame pushes descend into the unmapped guard page,
+/// so #PF delivery faults and the processor must escalate to #DF on IST1.
+#[cfg(feature = "qemu-debug-exit-smoke-test")]
+pub fn trigger_double_fault_guard_stack_smoke_test(stack_bottom: u64, guard_page: u64) {
     const UNMAPPED_PROBE: u64 = 0x0000_007F_FFFF_F000;
 
-    // Confirm the probe is absent before disabling the #PF gate. A mistaken
-    // address must not turn this diagnostic into an unexpected valid access.
-    if super::vmm::query_page(UNMAPPED_PROBE).is_ok() {
+    if guard_page.checked_add(4096) != Some(stack_bottom)
+        || super::vmm::query_page(guard_page) != Err(super::vmm::VmmError::NotMapped)
+        || super::vmm::query_page(stack_bottom).is_err()
+        || super::vmm::query_page(UNMAPPED_PROBE).is_ok()
+    {
         unsafe {
             asm!("ud2", options(nomem, nostack));
         }
     }
 
-    // SAFETY: This is a deliberate terminal QEMU test. The #PF gate is
-    // temporarily made not-present, then a read from an unmapped VA triggers
-    // #PF delivery failure and consequently a processor-generated #DF.
+    // SAFETY: The test verifies that stack_bottom is mapped, guard_page is
+    // exactly the unmapped page immediately below it, and fault_address is
+    // unmapped. The assembly switches RSP to stack_bottom, faults on
+    // fault_address, then never returns. #PF frame construction writes into
+    // guard_page and deliberately escalates to #DF through the IST1 gate.
     unsafe {
-        let entries = ptr::addr_of_mut!(IDT.0).cast::<IdtEntry>();
-        let page_fault_gate = entries.add(14);
-        let attributes = ptr::read_volatile(ptr::addr_of!((*page_fault_gate).attributes));
-        ptr::write_volatile(
-            ptr::addr_of_mut!((*page_fault_gate).attributes),
-            attributes & !0x80,
-        );
-        asm!("mfence", options(nostack, preserves_flags));
-        ptr::read_volatile(UNMAPPED_PROBE as *const u8);
-        asm!("ud2", options(nomem, nostack));
-    }
-
-    loop {
-        unsafe {
-            asm!("hlt", options(nomem, nostack, preserves_flags));
-        }
+        exhi_trigger_guard_stack_overflow(stack_bottom, UNMAPPED_PROBE);
     }
 }
+
 
 unsafe extern "sysv64" {
         fn exhi_isr_0();
@@ -478,4 +476,20 @@ exhi_exception_common:
         call exhi_exception_handler
         ud2
     "#
+);
+
+
+#[cfg(feature = "qemu-debug-exit-smoke-test")]
+global_asm!(
+    r#"
+    .section .text
+    .global exhi_trigger_guard_stack_overflow
+    .type exhi_trigger_guard_stack_overflow, @function
+exhi_trigger_guard_stack_overflow:
+    cli
+    cld
+    mov rsp, rdi
+    mov rax, [rsi]
+    ud2
+"#
 );
