@@ -74,3 +74,10 @@
 - map_user_page is unsafe: caller owns frame, keeps it allocated until unmap and scrubs before exposing it to untrusted code. unmap returns data-frame ownership to caller; destroy only reclaims private page-table structures.
 - CR3 switches require IF=0. Current design is single-core and assumes no PCID/global mappings; SMP TLB shootdown is future work.
 - Actual Ring 3 execution and hardware privilege fault verification remain separate user-mode work.
+
+
+## Exception and kernel-stack hardening (planned P2.6)
+- Existing exception vectors 0..31 have assembly stubs and a fatal Rust handler; INT3 was runtime-tested and the handler reports vector/error code/RIP/CS/RFLAGS and CR2 for #PF.
+- Current handlers run on the interrupted kernel stack; no TSS or IST is installed yet. A stack-overflow fault can therefore escalate to double fault/triple fault before diagnostics.
+- Install a TSS with a dedicated IST stack for #DF before enabling a guard page below the boot kernel stack.
+- Verify the #DF path in QEMU before treating the guard page as an active protection mechanism.

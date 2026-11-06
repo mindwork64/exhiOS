@@ -86,6 +86,15 @@ Module: exhi-kernel/src/arch/x86_64/address_space.rs.
 - The root PML4 USER bit is enabled when a user mapping is added. Shared kernel/heap entries retain U/S=0 at lower page-table levels and stay supervisor-only.
 - API: create, unsafe map_user_page (caller owns and scrubs frame), translate, unmap_user_page, activate, restore_kernel and destroy. Empty private page tables are reclaimed; data frames remain caller-owned.
 - Headless QEMU/OVMF CI [run 42217123278](https://github.com/mindwork64/exhiOS/actions/runs/42217123278) verified two roots: same VA 0x200000000 maps to distinct frames, byte A1/B2 survives CR3 switches, kernel and heap translations persist, page tables/data frames are reclaimed, debug-exit 33.
-- Latest safety-hardening commit a856090 adds supervisor-only checks for kernel code, stack and heap, plus an explicit unsafe caller ownership/scrub contract. Its CI rerun and user-local QEMU test are pending.
+- Latest safety-hardening commit a856090 adds supervisor-only checks for kernel code, stack and heap, plus an explicit unsafe caller ownership/scrub contract. Headless QEMU/OVMF CI [run 42217369804](https://github.com/mindwork64/exhiOS/actions/runs/42217369804) passed; user-local QEMU test is pending.
 - Ring 3 execution, syscalls, user-pointer validation, TSS/IST, and privilege-fault tests are not implemented yet.
+
+
+
+## P2.6 — Exception and stack hardening (planned)
+- Add a kernel TSS and dedicated IST stack for double fault.
+- Route the #DF gate through IST so diagnostics do not depend on the possibly exhausted kernel stack.
+- Only after the IST path is active, unmap a guard page immediately below the boot kernel stack.
+- Test stack overflow and controlled double-fault reporting in QEMU; avoid an unrecoverable triple fault.
+- This work is not yet implemented. The existing CPU exception stubs and fatal Rust handler already report vector, error code, RIP, CS, RFLAGS and CR2 for page faults; the missing part is fault-stack isolation (IST/TSS).
 

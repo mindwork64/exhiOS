@@ -171,5 +171,5 @@ Headless QEMU/OVMF CI [run 42217123278](https://github.com/mindwork64/exhiOS/act
 - Shared kernel code and heap translations were preserved.
 - Private tables reclaimed; data frames returned; QEMU debug-exit 33.
 
-Commit a856090 adds explicit validation that kernel code, current stack and heap remain supervisor-only while the PML4 entry allows user mappings elsewhere. CI rerun is pending. User's local QEMU verification of P2.5 is pending. Ring 3 execution and hardware privilege fault tests remain future work.
+Commit a856090 adds explicit validation that kernel code, current stack and heap remain supervisor-only while the PML4 entry allows user mappings elsewhere; map_user_page now has an unsafe caller-ownership/scrub contract. Headless QEMU/OVMF CI [run 42217369804](https://github.com/mindwork64/exhiOS/actions/runs/42217369804) passed the hardened source. User's local QEMU verification of P2.5 is pending. Ring 3 execution and hardware privilege fault tests remain future work.
 

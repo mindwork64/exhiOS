@@ -58,9 +58,15 @@
 - [x] CR3 switch/restore и destroy inactive address spaces.
 - [x] QEMU smoke test: два PML4, одинаковый user VA 0x200000000 ведёт на разные frames; данные A/B сохраняются независимо; shared kernel/heap mappings доступны в kernel mode; private tables/data frames reclaimed; debug-exit 33.
 - [x] Headless CI QEMU: [run 42217123278](https://github.com/mindwork64/exhiOS/actions/runs/42217123278), initial implementation.
-- [ ] Latest hardening commit a856090 CI rerun and supervisor-only assertions confirmation.
+- [x] Latest hardening commit a856090 passed CI QEMU run [42217369804](https://github.com/mindwork64/exhiOS/actions/runs/42217369804), including explicit supervisor-only checks for kernel code, stack and heap.
 - [ ] Локальный Linux Mint/QEMU прогон пользователя.
 - [ ] Ring 3 execution and hardware-enforced user/supervisor fault tests (later user-mode milestone).
+
+### P2.6 Exception and stack hardening
+- [ ] Kernel TSS and dedicated IST stack for double fault.
+- [ ] IDT double-fault gate uses IST; verify the fatal handler can print diagnostics without relying on the failing kernel stack.
+- [ ] Guard page below the boot kernel stack, installed only after TSS/IST is live.
+- [ ] QEMU tests for guard-page overflow and controlled double-fault handling; no triple fault.
 
 ## P3 — Basic devices
 - [ ] Serial abstraction, framebuffer console, timer, keyboard, driver registration.

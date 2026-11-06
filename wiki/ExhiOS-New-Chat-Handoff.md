@@ -26,7 +26,7 @@
 - P2.5 initial address-space manager committed. New PML4/PDPT per space; shared supervisor-only kernel PDPT entries 0..4; reserved entries 5..7; private user VA 8..512 GiB (PDPT entries 8..511).
 - Unsafe user-frame mapping contract: caller owns and scrubs the frame before exposing it to untrusted code.
 - Initial headless QEMU CI [run 42217123278](https://github.com/mindwork64/exhiOS/actions/runs/42217123278) passed: same VA 0x200000000 mapped to different physical frames in two roots; A1/B2 contents survived CR3 switches; shared kernel/heap maps survived; private page tables reclaimed; debug-exit 33.
-- Latest hardening commit a856090 adds explicit supervisor-only assertions for shared code/stack/heap and the user frame safety contract. CI rerun [run 42217369804](https://github.com/mindwork64/exhiOS/actions/runs/42217369804) is in progress; local user QEMU check is pending.
+- Latest hardening commit a856090 adds explicit supervisor-only assertions for shared code/stack/heap and the user frame safety contract. Headless QEMU/OVMF CI [run 42217369804](https://github.com/mindwork64/exhiOS/actions/runs/42217369804) passed; local user QEMU check is pending.
 - P2.5 smoke test runs at Ring 0. No actual Ring 3 process execution, syscalls or hardware user-fault test yet. TSS/IST and stack guard page also remain future hardening.
 
 ## Следующее действие после локального отчёта
@@ -34,6 +34,7 @@
 1. Сверить P2.5 root addresses, same-VA/different-frame results, shared kernel/heap translations, private-table reclaim and debug-exit 33.
 2. Записать локальный runtime evidence.
 3. Продолжить P2.5: проверить permission transitions and address-space lifecycle/error paths, затем подготовить Ring 3 handoff without enabling interrupts prematurely.
+4. Запланированный следующий hardening: P2.6 TSS/IST для double fault, затем guard page под kernel stack. Не включать guard page раньше, чем будет проверен независимый IST stack.
 
 Команда локальной проверки:
 ~~~bash
