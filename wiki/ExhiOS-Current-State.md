@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a) — P2.6, P3.1 и первая реализация P3.2 подтверждены локально + CI. Добавлен allocation-free KernelConsole writer; его CI build job прошёл, QEMU runtime и локальная проверка нового зеркального вывода ещё ожидаются.
+Кодовый checkpoint: [d2ed6b2](https://github.com/mindwork64/exhiOS/commit/d2ed6b2d40260340396af1db8284b607eba1c4ad) — P2.6, P3.1, P3.2 и единый KernelConsole writer подтверждены локальным QEMU + CI. P3.3 PIT/IRQ0 monotonic timer реализован и прошёл CI build + headless QEMU runtime; локальный прогон ожидается.
 
 ## Закрыто и проверено в QEMU
 
@@ -204,7 +204,7 @@ Commits: [c3d2b8c](https://github.com/mindwork64/exhiOS/commit/c3d2b8ccaa34c6b39
 - `write_fmt` uses `core::fmt` and does not allocate from the kernel heap.
 - If framebuffer initialization fails, the writer remains useful through COM1 only.
 - Early diagnostics remain serial-only before GOP initialization; the post-handoff, unified-writer-ready, QEMU debug-exit and final halt messages use both outputs.
-- CI build job passed all host tests and kernel build variants in [run 42274252754](https://github.com/mindwork64/exhiOS/actions/runs/42274252754). The headless QEMU runtime job is still running; local QEMU verification is pending.
+- CI build and headless QEMU runtime passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072). Local Linux Mint/QEMU log (2026-11-06) confirms the writer emitted the unified readiness, kernel handoff and halt-loop lines on COM1.
 
 ## P3.2 — GOP framebuffer console (initial implementation)
 
@@ -218,3 +218,18 @@ Initial framebuffer implementation checkpoint: [eee4895](https://github.com/mind
 - Local Linux Mint/QEMU serial evidence (2026-11-06): GOP framebuffer 0x80000000, 1280x800, stride 1280, pixel format 1 (BGR-reserved); console initialization marker printed and kernel reached handoff + halt loop.
 - The user supplied a screenshot description confirming all expected on-screen strings: kernel banner, console ready, 1280x800 resolution, stride 1280, BGRX format, COM1 ready and successful kernel handoff. Fine visual details (glyph sharpness, spacing and artifacts) were not assessed from the text description.
 - Known first-version limits: ASCII-only glyphs, GOP formats 0/1 only, no framebuffer cache policy setup (PAT/MTRR) yet.
+
+## P3.3 — PIT timer and monotonic tick source
+
+Code checkpoint: [d2ed6b2](https://github.com/mindwork64/exhiOS/commit/d2ed6b2d40260340396af1db8284b607eba1c4ad). CI build + headless QEMU/OVMF: [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072).
+
+- New module: `exhi-kernel/src/arch/x86_64/timer.rs`.
+- PIT channel 0 is configured as mode 2, requested 100 Hz, input clock 1,193,182 Hz, divisor 11,932 (actual nominal rate approximately 99.9985 Hz).
+- IDT vector 0x20 uses a dedicated interrupt gate; IDT initialization reads it back and includes it in the global validity check.
+- PIC IRQ0 can be unmasked/masked without changing other lines. The timer starts with IF clear, then its caller explicitly enables interrupts. Other PIC IRQs remain masked.
+- The minimal assembly IRQ0 stub saves RAX, atomically increments the 64-bit `EXHIOS_PIT_TICKS` counter, sends EOI to the master 8259 and returns with IRETQ. It does not call Rust or touch the heap.
+- API: `timer::ticks()` and wrap-safe `timer::elapsed_ticks(start)`. The counter is monotonic modulo 2^64.
+- Opt-in test: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_TEST=1 ./scripts/run-qemu.sh`. It waits for at least five delivered ticks, disables IF, masks IRQ0 again and verifies PIC state.
+- CI build passed all host tests and all kernel variants; headless QEMU first passed the existing P2.6 guard/#DF regression, then timer QEMU printed `P3.3: monotonic timer advanced by 5 ticks; IRQ0 masked again` and exited status 33.
+- Local Linux Mint/QEMU timer runtime validation remains pending.
+- Current scope is the legacy PIT + PIC path. Local APIC/IOAPIC, HPET/TSC calibration and scheduler integration are future work.
