@@ -4,15 +4,13 @@
 
 The workspace uses Rust Stable and requires Rust 1.91 or newer for the current UEFI crate dependency.
 
-The repository's `rust-toolchain.toml` selects the Stable channel and requests:
+The repository's `rust-toolchain.toml` selects Stable and requests:
 
 - `x86_64-unknown-uefi` for the UEFI application;
 - `x86_64-unknown-none` for the freestanding ELF64 kernel;
 - `rustfmt` and `clippy`.
 
-Install Rust through rustup if it is not already installed. Entering the repository lets rustup select the configured toolchain.
-
-The `x86_64-unknown-none` target supports PIE by default. The initial ExhiOS loader expects fixed-address `ET_EXEC` images, so `.cargo/config.toml` explicitly selects `-C relocation-model=static` for the kernel. Do not remove this setting unless the loader is extended to apply ELF relocations.
+The kernel is linked as a fixed-address `ET_EXEC` image. The loader requires physical and virtual addresses in each loadable segment to match and loads at those addresses using UEFI page allocation.
 
 ## Build and unit tests
 
@@ -28,16 +26,14 @@ From the repository root:
 ./scripts/build.sh
 ```
 
-The script installs the two compilation targets, runs the `exhi-abi` and `exhi-elf` unit tests, and builds the UEFI application and kernel. It also uses `readelf` to verify that the resulting kernel is `ET_EXEC` rather than `ET_DYN`.
+The script runs the ABI and ELF parser tests, builds the UEFI application and kernel, and verifies that the kernel output is an ELF64 `ET_EXEC` image.
 
 Expected artifacts:
 
 - `target/x86_64-unknown-uefi/debug/exhi-boot.efi`
 - `target/x86_64-unknown-none/debug/exhi-kernel`
 
-The kernel output is an ELF64 executable. Its initial link address is `0x00100000`.
-
-## P0.2: read and validate the kernel ELF in QEMU
+## P0.3: load and verify kernel segments in QEMU
 
 On Debian/Ubuntu-based systems, install the runtime tools:
 
@@ -51,25 +47,43 @@ Then run:
 ./scripts/run-qemu.sh
 ```
 
-The script creates a GPT disk with a FAT32 EFI System Partition, copies the application to `EFI/BOOT/BOOTX64.EFI`, copies the kernel to `/exhi-kernel.elf`, and starts QEMU with the disk attached as emulated USB storage.
+The script creates a GPT disk with a FAT32 EFI System Partition, copies the loader to `EFI/BOOT/BOOTX64.EFI`, copies the kernel to `\\exhi-kernel.elf`, and starts QEMU.
 
-The loader obtains the filesystem associated with its own UEFI image handle and reads the kernel from the EFI System Partition root using the UEFI path `\\exhi-kernel.elf` (UEFI paths use backslash separators). It then validates the ELF64 headers and loadable segments. The diagnostic remains visible for 15 seconds before the application returns to firmware.
+The loader:
+
+1. Reads and validates the kernel ELF64 image.
+2. For each `PT_LOAD`, computes the page-rounded physical range.
+3. Requests those exact physical pages from UEFI as `LOADER_DATA`.
+4. Clears the allocation, copies `p_filesz` bytes, and zeroes the tail through `p_memsz`.
+5. Verifies the copied bytes and zero-filled tail.
+6. Collects GOP framebuffer information when direct access is supported and finds the ACPI RSDP.
+7. Allocates and populates a `BootInfo` structure.
+
+The loader releases these temporary allocations before returning to firmware. Kernel handoff and `ExitBootServices` remain part of P0.4.
 
 Expected output includes:
 
 ```text
-ExhiOS Bootloader 0.2
-P0.2: loading and validating the kernel ELF64 image.
-Kernel file found: ... bytes.
-Kernel file read successfully.
+ExhiOS Bootloader 0.3
+P0.3: loading kernel segments into physical memory.
 ELF64 validation: OK
-Entry point: 0x...
-Program headers: ...
-PT_LOAD #...: ...
-P0.2 complete: kernel image located, read and validated.
-No segments have been loaded into physical memory yet.
+Reserving PT_LOAD #0: physical=0x..., pages=..., bytes=...
+PT_LOAD #0: loaded at 0x...; ... verified.
+Reserving PT_LOAD #1: physical=0x..., pages=..., bytes=...
+PT_LOAD #1: loaded at 0x...; ... verified.
+GOP framebuffer: ...
+ACPI RSDP: ...
+BootInfo prepared at 0x...
+P0.3 preparation complete.
+Kernel segments are loaded at their fixed physical addresses.
+Segment contents and zero-filled tails were verified.
+Kernel has not been entered; UEFI Boot Services remain active.
 ```
+
+## P0.4: final memory map and kernel handoff
+
+The final memory map must be retrieved only after the loader has completed its UEFI allocations. P0.4 will reserve the memory-map and BootInfo storage first, obtain the current map key, populate the handoff metadata, exit Boot Services, and enter the kernel.
 
 ## Scope of this checkpoint
 
-P0.2 only locates, reads, and validates the ELF image. The loader does **not** yet allocate physical memory for its segments, copy the image into memory, obtain the final boot information, call `ExitBootServices`, or transfer control to ExhiKernel.
+P0.3 does not call `ExitBootServices` or execute the kernel. The temporary segment and BootInfo allocations are freed after successful verification so the current smoke test leaves firmware in a clean state.

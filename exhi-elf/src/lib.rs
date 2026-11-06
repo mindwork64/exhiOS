@@ -8,6 +8,7 @@
 
 pub const ELF_HEADER_SIZE: usize = 64;
 pub const ELF64_PROGRAM_HEADER_SIZE: usize = 56;
+pub const ELF_PAGE_SIZE: u64 = 4096;
 pub const MAX_PROGRAM_HEADERS: usize = 128;
 
 pub const ET_EXEC: u16 = 2;
@@ -38,6 +39,9 @@ pub enum ElfError {
     SegmentFileRangeOutOfBounds,
     InvalidSegmentMemorySize,
     SegmentAddressOverflow,
+    PhysicalVirtualAddressMismatch,
+    PageRangeOverflow,
+    OverlappingPageRanges,
     InvalidSegmentAlignment,
     WritableExecutableSegment,
     OverlappingLoadSegments,
@@ -178,10 +182,20 @@ impl<'a> ElfFile<'a> {
                 return Err(ElfError::SegmentFileRangeOutOfBounds);
             }
 
+            if header.physical_address != header.virtual_address {
+                return Err(ElfError::PhysicalVirtualAddressMismatch);
+            }
+
             let memory_end = header
                 .virtual_address
                 .checked_add(header.memory_size)
                 .ok_or(ElfError::SegmentAddressOverflow)?;
+
+            let page_start = header.physical_address & !(ELF_PAGE_SIZE - 1);
+            let page_end = memory_end
+                .checked_add(ELF_PAGE_SIZE - 1)
+                .ok_or(ElfError::PageRangeOverflow)?
+                & !(ELF_PAGE_SIZE - 1);
 
             if header.alignment > 1 {
                 if !header.alignment.is_power_of_two()
@@ -211,14 +225,27 @@ impl<'a> ElfFile<'a> {
 
                 if previous.is_loadable() {
                     let previous_end = previous
-                        .virtual_address
+                        .physical_address
                         .checked_add(previous.memory_size)
                         .ok_or(ElfError::SegmentAddressOverflow)?;
+
+                    let previous_page_start =
+                        previous.physical_address & !(ELF_PAGE_SIZE - 1);
+                    let previous_page_end = previous_end
+                        .checked_add(ELF_PAGE_SIZE - 1)
+                        .ok_or(ElfError::PageRangeOverflow)?
+                        & !(ELF_PAGE_SIZE - 1);
 
                     if header.virtual_address < previous_end
                         && previous.virtual_address < memory_end
                     {
                         return Err(ElfError::OverlappingLoadSegments);
+                    }
+
+                    if page_start < previous_page_end
+                        && previous_page_start < page_end
+                    {
+                        return Err(ElfError::OverlappingPageRanges);
                     }
                 }
             }
@@ -494,6 +521,53 @@ mod tests {
         assert_eq!(
             ElfFile::parse(&bytes.0),
             Err(ElfError::SegmentFileRangeOutOfBounds)
+        );
+    }
+
+
+    #[test]
+    fn rejects_physical_virtual_address_mismatch() {
+        let mut bytes = valid_elf();
+        put_u64(&mut bytes.0, PROGRAM_HEADER_OFFSET + 24, 0x20_0000);
+        assert_eq!(
+            ElfFile::parse(&bytes.0),
+            Err(ElfError::PhysicalVirtualAddressMismatch)
+        );
+    }
+
+    #[test]
+    fn rejects_segments_that_share_a_page_without_byte_overlap() {
+        let mut bytes = [0u8; 192];
+        bytes[0..4].copy_from_slice(&[0x7F, b'E', b'L', b'F']);
+        bytes[4] = 2;
+        bytes[5] = 1;
+        bytes[6] = 1;
+        put_u16(&mut bytes, 16, ET_EXEC);
+        put_u16(&mut bytes, 18, EM_X86_64);
+        put_u32(&mut bytes, 20, 1);
+        put_u64(&mut bytes, 24, 0x10_0000);
+        put_u64(&mut bytes, 32, PROGRAM_HEADER_OFFSET as u64);
+        put_u16(&mut bytes, 52, ELF_HEADER_SIZE as u16);
+        put_u16(&mut bytes, 54, ELF64_PROGRAM_HEADER_SIZE as u16);
+        put_u16(&mut bytes, 56, 2);
+
+        write_load_header(
+            &mut bytes,
+            PROGRAM_HEADER_OFFSET,
+            176,
+            0x10_0000,
+            PF_X,
+        );
+        write_load_header(
+            &mut bytes,
+            PROGRAM_HEADER_OFFSET + ELF64_PROGRAM_HEADER_SIZE,
+            184,
+            0x10_0010,
+            4,
+        );
+        assert_eq!(
+            ElfFile::parse(&bytes),
+            Err(ElfError::OverlappingPageRanges)
         );
     }
 

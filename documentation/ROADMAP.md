@@ -25,31 +25,38 @@
 ### P0.2 — Kernel file loading and ELF64 validation
 
 - [x] Locate the boot volume through the executing UEFI image handle.
-- [x] Read `/exhi-kernel.elf` from the EFI System Partition.
+- [x] Read `\\exhi-kernel.elf` from the EFI System Partition.
 - [x] Validate the ELF64 magic, class, byte order, version, executable type, and x86-64 machine.
 - [x] Bounds-check the program-header table and all loadable segment file ranges.
 - [x] Validate segment memory sizes, address overflow, alignment, W^X, and overlap.
 - [x] Require the entry point to lie inside an executable loadable segment.
 - [x] Add host unit tests for valid and malformed ELF images.
-- [ ] Build and run in QEMU; verify that the kernel file is read and accepted.
-
-**Current code limitation:** P0.2 only locates, reads, and validates the ELF image. It does not allocate physical pages, copy loadable segments, leave UEFI Boot Services, or transfer control to the kernel.
+- [x] Build and run in QEMU; confirmed the actual kernel ELF is read and accepted.
 
 ### P0.3 — Load segments and prepare the handoff
 
-- [ ] Allocate physical pages for each loadable segment.
-- [ ] Copy file-backed segment data and zero the memory tail.
-- [ ] Validate alignment, overlap, and arithmetic overflow.
-- [ ] Obtain the final memory map, GOP framebuffer information, and ACPI RSDP.
-- [ ] Populate the shared `BootInfo` structure.
+- [x] Require physical and virtual segment addresses to match for the initial identity-loaded kernel.
+- [x] Reject PT_LOAD segments whose page-rounded physical ranges overlap.
+- [x] Allocate the exact physical page ranges for each PT_LOAD segment as UEFI LoaderData.
+- [x] Copy file-backed segment contents and zero the memory tail through p_memsz.
+- [x] Verify copied bytes and zero-filled tails before accepting the loaded segment.
+- [x] Collect GOP framebuffer information when direct framebuffer access is available.
+- [x] Locate ACPI 2.0 RSDP, falling back to the ACPI 1.0 table.
+- [x] Allocate and populate a persistent BootInfo handoff structure.
+- [ ] Run the P0.3 segment-load path in QEMU and confirm all exact-address allocations and memory checks.
+- [ ] Confirm cleanup releases temporary allocations after the smoke test.
 
-### P0.4 — ExitBootServices and enter ExhiKernel
+**Current code limitation:** the P0.3 smoke test deliberately frees the temporary kernel and BootInfo allocations before returning to firmware. It does not enter the kernel. The final memory map is intentionally deferred until P0.4, after all allocations are complete.
 
-- [ ] Finalize all boot-service allocations before requesting the final memory map.
-- [ ] Exit UEFI Boot Services with the final memory-map key.
+### P0.4 — Final memory map, ExitBootServices and enter ExhiKernel
+
+- [ ] Reserve stable storage for the final memory map and BootInfo before requesting the map key.
+- [ ] Obtain the final memory map after all remaining UEFI allocations.
+- [ ] Populate BootInfo memory-map address, size, descriptor size, and descriptor version.
+- [ ] Exit UEFI Boot Services using the current memory-map key.
 - [ ] Transfer control using the x86-64 System V kernel entry ABI.
 - [ ] Verify the kernel banner through COM1 in QEMU.
-- [ ] Verify the passed `BootInfo` header and memory-map metadata.
+- [ ] Verify the passed BootInfo header and memory-map metadata.
 
 **P0 acceptance:** QEMU + OVMF starts the ExhiOS UEFI loader, the loader loads the project's ELF64 kernel, Boot Services are exited, and the kernel prints `ExhiOS Kernel 0.1` through COM1.
 
