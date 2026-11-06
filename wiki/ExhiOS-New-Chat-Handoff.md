@@ -31,7 +31,7 @@
 - QEMU debug-exit test sets RSP to the first byte of the mapped kernel stack and reads from the guard page. Page-fault frame delivery hits the same guard page and escalates to #DF; CPU switches to IST1.
 - Headless CI/OVMF runtime: [run 42256850017](https://github.com/mindwork64/exhiOS/actions/runs/42256850017) passed. Serial showed guard 0x1E6FF000, stack 0x1E700000..0x1E710000, exception stack pointer 0x16AFC8 inside IST1, P2.6 success marker and debug-exit 33.
 - P3.1 adds a reusable polling 16550 SerialPort driver in `arch/x86_64/serial.rs`. COM1 output is migrated from main.rs; RX adds non-blocking try_read_byte and polling read_byte_blocking. Boot prints the P3.1 readiness marker.
-- Build passed for RX-inclusive P3.1 commit; headless QEMU regression run [42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) was still running at this snapshot. Interactive RX has not yet been tested with local terminal input.
+- Build and headless QEMU regression for RX-inclusive P3.1 commit both passed: [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119). Boot log includes the P3.1 readiness marker and P2.6 guard-page/#DF/IST1 success. Interactive RX has not yet been tested with local terminal input.
 - Local Linux Mint/QEMU test for latest P2.6/P3.1 checkpoint is still pending. Do not mark P2.6 fully closed until that log is reviewed.
 
 ## Следующие действия
