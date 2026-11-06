@@ -9,7 +9,7 @@
 3. `exhi-elf` валидирует ELF64 и PT_LOAD.
 4. Loader размещает сегменты по точным физическим адресам, обнуляет zero-tail.
 5. Получает GOP framebuffer и ACPI RSDP.
-6. Резервирует BootInfo и 64 KiB stack.
+6. Резервирует BootInfo v2 и единый 17-page LOADER_DATA block: один guard page и 64 KiB kernel stack.
 7. Получает финальную UEFI memory map и выполняет ExitBootServices.
 8. Assembly trampoline отключает interrupts, переключает стек и вызывает `_start(BootInfo*)` по System V x86-64 ABI.
 9. Kernel устанавливает GDT, IDT и перенастраивает PIC.
@@ -26,12 +26,12 @@
 | `exhi-heap` | no_std first-fit heap allocator, host-tested |
 
 ## BootInfo
-Содержит magic/version/struct_size, физический адрес и размер memory map, descriptor size/version, framebuffer metadata и ACPI RSDP address. Начальная загрузка сохраняет UEFI identity mapping.
+BootInfo v2 содержит magic/version/struct_size, физический адрес и размер memory map, descriptor size/version, framebuffer metadata, ACPI RSDP address и физические base/size boot kernel stack. Magic: EXHIOS02, version: 2. Loader выделяет contiguous block из 17 страниц: первая — guard reservation, следующие 16 — 64 KiB stack. Начальная загрузка сохраняет UEFI identity mapping.
 
 ## CPU foundation
-**GDT:** null, code selector 0x08, data/stack selector 0x10; LGDT + far return; проверено в QEMU.
+**GDT:** null, code selector 0x08, data/stack selector 0x10, 64-bit TSS descriptor selector 0x18. TSS загружается через LTR; IST1 указывает на отдельный 16 KiB aligned stack in kernel BSS.
 
-**IDT:** 256 entries, stubs CPU exception vectors 0–31, общий нормализованный stack frame, diagnostics vector/error code/RIP/CS/RFLAGS, CR2 для page fault; INT3 проверен в QEMU.
+**IDT:** 256 entries, stubs CPU exception vectors 0–31, общий нормализованный stack frame, diagnostics vector/error code/RIP/CS/RFLAGS, CR2 для page fault. Vector 8 (#DF) использует IST1. Общий exception stub передаёт frame pointer как шестой SysV argument; #DF handler проверяет, что frame лежит внутри IST1. INT3 и реальный #DF/IST1 проверены в QEMU.
 
 **PIC:** legacy 8259 remapped на 0x20–0x2F; обе маски 0xFF. IF остаётся clear до готовности IRQ handlers. APIC/IOAPIC отложены до ACPI MADT и handlers.
 
@@ -67,7 +67,7 @@ New module: \`exhi-kernel/src/arch/x86_64/vmm.rs\`.
 - VMM separates virtual and physical bounds: lower canonical virtual addresses below 512 GiB are accepted; mapped physical frames remain below 4 GiB. Missing PDPT children are created on demand.
 - Local Linux Mint/QEMU run on 2026-11-06 confirmed NX, split, RW supervisor NX read/write, unmap/TLB invalidation, identity restore, table reclaim and debug-exit 33; CI runtime passed in run 42213581974.
 - Independent address spaces are now in initial implementation: separate PML4/PDPT, shared supervisor-only kernel entries 0..4, private user PDPT entries 8..511. CI QEMU verified two roots mapping the same VA to different physical frames; local verification pending.
-- Physical memory beyond 4 GiB, SMP TLB shootdown, TSS/IST and actual Ring 3 execution/permission fault tests remain future work.
+- Physical memory beyond 4 GiB, SMP TLB shootdown and actual Ring 3 execution/permission fault tests remain future work. TSS/IST and the boot-stack guard page are implemented; their CI runtime proof is recorded under P2.6.
 
 ## P2.4 — Kernel Heap (initial implementation)
 - `exhi-heap` provides no_std first-fit free-list allocation, alignment, splitting, deallocation, coalescing and reuse; four host unit tests pass.
@@ -91,10 +91,16 @@ Module: exhi-kernel/src/arch/x86_64/address_space.rs.
 
 
 
-## P2.6 — Exception and stack hardening (planned)
-- Add a kernel TSS and dedicated IST stack for double fault.
-- Route the #DF gate through IST so diagnostics do not depend on the possibly exhausted kernel stack.
-- Only after the IST path is active, unmap a guard page immediately below the boot kernel stack.
-- Test stack overflow and controlled double-fault reporting in QEMU; avoid an unrecoverable triple fault.
-- This work is not yet implemented. The existing CPU exception stubs and fatal Rust handler already report vector, error code, RIP, CS, RFLAGS and CR2 for page faults; the missing part is fault-stack isolation (IST/TSS).
+## P2.6 — TSS, double-fault IST and boot-stack guard page
+
+Code: [b46c870](https://github.com/mindwork64/exhiOS/commit/b46c8702e3725281e9a42654524649d1d04b4fe8). Headless CI/OVMF QEMU: [run 42256850017](https://github.com/mindwork64/exhiOS/actions/runs/42256850017).
+
+- GDT has a 64-bit TSS descriptor at selector 0x18, loaded with LTR. IST1 points to a dedicated 16 KiB page-aligned kernel BSS stack.
+- IDT vector 8 uses IST index 1. The common exception stub passes the normalized exception frame pointer to Rust; the #DF handler verifies it falls inside IST1.
+- BootInfo v2 carries boot stack base/size. UEFI allocates a contiguous 17-page LOADER_DATA block: first page is reserved as the guard, next 16 pages form the 64 KiB kernel stack.
+- Kernel reserves the guard physical frame in the allocator before subsequent allocations and removes its identity mapping through VMM after bootstrap paging and VMM initialization. It verifies the guard page is NotMapped and first/last stack pages remain supervisor mapped.
+- QEMU debug-exit test sets RSP to the first byte of the mapped stack and accesses the guard page. #PF delivery attempts to push its exception frame into the guard page, causing delivery failure and a processor-generated #DF. The CPU switches to IST1; the handler checks its frame pointer and debug-exits with status 33 only on success.
+- CI evidence: loader reports guard 0x1E6FF000 and stack 0x1E700000..0x1E710000; #DF frame pointer 0x16AFC8 lies within IST1; guard unmapping and stack mapping checks pass; debug-exit 33.
+
+Local Linux Mint/QEMU verification by the user is pending. Do not consider P2.6 fully closed until local runtime evidence is reviewed.
 
