@@ -126,4 +126,11 @@ The first implementation is intentionally conservative:
 
 The kernel startup performs an allocation/release/reuse smoke test without dereferencing the returned physical page. Mapping and accessing arbitrary physical pages is deferred until the kernel page-table subsystem exists.
 
-P2.1 remains open until the physical memory map and allocator smoke test have been observed in QEMU.
+P2.1 was verified in QEMU on 2026-11-06. The runtime map contained 127 descriptors with a 48-byte stride; the allocator managed 118,837 conventional pages, and the allocation/free/reuse smoke test returned frame 0x14C000 again. QEMU then exited successfully with status 33.
+
+
+## P2.2: bootstrap page tables — draft, not yet verified
+
+A preliminary four-level page-table builder exists in `exhi-kernel/src/arch/x86_64/paging.rs`. It is intended to allocate six table frames, build an identity map for 0–4 GiB with 2 MiB pages, switch CR3 and verify translations for kernel code, the current stack and the PML4 frame.
+
+At the current checkpoint this module is not exported by `arch/x86_64/mod.rs` and is not called by kernel startup. It has not yet been compiled as part of the kernel or tested in QEMU. Treat it as an implementation draft until it is reviewed, integrated, built and runtime-verified.

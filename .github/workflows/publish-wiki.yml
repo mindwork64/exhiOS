@@ -1,0 +1,88 @@
+name: Publish project context to Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "wiki/**"
+      - ".github/workflows/publish-wiki.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-exhios-wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out ExhiOS source
+        uses: actions/checkout@v4
+
+      - name: Check out the GitHub Wiki repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki-site
+          token: ${{ github.token }}
+          persist-credentials: true
+
+      - name: Merge managed Home section and sync project pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+
+          source = Path("wiki")
+          target = Path("wiki-site")
+          start_marker = "<!-- EXHIOS-CONTEXT-START -->"
+          end_marker = "<!-- EXHIOS-CONTEXT-END -->"
+
+          home_source = (source / "Home.md").read_text(encoding="utf-8").strip()
+          if start_marker not in home_source or end_marker not in home_source:
+              raise SystemExit("wiki/Home.md must contain both managed-section markers")
+
+          home_target = target / "Home.md"
+          existing = home_target.read_text(encoding="utf-8") if home_target.exists() else ""
+          start = existing.find(start_marker)
+          end = existing.find(end_marker)
+
+          if start >= 0 and end >= start:
+              end += len(end_marker)
+              updated = existing[:start] + home_source + existing[end:]
+          else:
+              separator = "\n\n" if existing.strip() else ""
+              updated = existing.rstrip() + separator + home_source + "\n"
+
+          home_target.write_text(updated, encoding="utf-8")
+
+          for page in source.glob("ExhiOS-*.md"):
+              shutil.copyfile(page, target / page.name)
+
+          print("Prepared managed pages; unrelated Wiki pages are preserved.")
+          PY
+
+      - name: Commit and publish Wiki pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C wiki-site config user.name "github-actions[bot]"
+          git -C wiki-site config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C wiki-site add -- 'Home.md' 'ExhiOS-*.md'
+
+          if git -C wiki-site diff --cached --quiet; then
+            echo "Wiki is already up to date."
+            exit 0
+          fi
+
+          git -C wiki-site commit -m "docs: sync ExhiOS project context"
+          wiki_branch="$(git -C wiki-site branch --show-current)"
+          if [[ -z "$wiki_branch" ]]; then
+            wiki_branch="$(git -C wiki-site symbolic-ref --short refs/remotes/origin/HEAD | sed 's#^origin/##')"
+          fi
+          git -C wiki-site push origin "HEAD:$wiki_branch"

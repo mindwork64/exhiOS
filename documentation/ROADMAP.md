@@ -94,9 +94,16 @@
 - [x] Reserve physical addresses below 1 MiB and cap the first bitmap allocator at 4 GiB.
 - [x] Add managed/allocated bitmaps, single-page allocation, release and reuse checks.
 - [x] Add host tests for descriptor stride, malformed ranges, overlaps, reserved types, allocation, release and reuse.
-- [ ] Verify memory-map initialization and allocation/reuse in QEMU.
+- [x] Verify memory-map initialization and allocation/reuse in QEMU (118,837 managed pages; frame 0x14C000 was freed and reused).
 
-- [ ] Kernel-owned page-table management.
+### P2.2 — Bootstrap page tables
+
+- [ ] Review and integrate the initial four-level page-table builder.
+- [ ] Build a 0–4 GiB identity map using 2 MiB pages.
+- [ ] Switch CR3 and verify kernel, stack and page-table translations in QEMU.
+- [ ] Add controlled failure/rollback checks.
+
+- [ ] Virtual memory manager.
 - [ ] Virtual memory manager.
 - [ ] Kernel heap allocator.
 - [ ] Tests for allocation, release, reuse, and invalid ranges.
