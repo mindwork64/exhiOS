@@ -92,7 +92,28 @@
 Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b46c8702e3725281e9a42654524649d1d04b4fe8).
 
 ## P3 — Basic devices
-- [ ] Serial abstraction, framebuffer console, timer, keyboard, driver registration.
+
+### P3.1 — Polling serial driver
+**Serial output is integrated and verified in headless QEMU CI; receive support is implemented, interactive input validation pending.**
+- [x] Reusable 16550-compatible `SerialPort` type with configurable base port.
+- [x] COM1 initialization (38400 baud, 8N1, FIFO), bounded polling TX and fixed-width hexadecimal output.
+- [x] Non-blocking `try_read_byte` and polling `read_byte_blocking` for the future serial shell.
+- [x] Kernel boot diagnostics use `serial::COM1`; direct COM1 port I/O was removed from `main.rs`.
+- [x] Headless QEMU/OVMF boot regression: [run 42257896620](https://github.com/mindwork64/exhiOS/actions/runs/42257896620), including the P2.6 guard-page/#DF/IST1 check.
+- [ ] Latest RX code CI runtime regression: [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) still running at this snapshot.
+- [ ] Local Linux Mint/QEMU and actual interactive serial receive test.
+
+### P3.2 — Framebuffer console
+- [ ] Pixel-format-aware framebuffer console with GOP stride support.
+
+### P3.3 — Timer
+- [ ] Initial timer source and monotonic tick interface.
+
+### P3.4 — Keyboard
+- [ ] Keyboard input driver and key event abstraction.
+
+### P3.5 — Driver registration
+- [ ] Initial driver registration model.
 
 ## P4 — Tasks and scheduling
 - [ ] Task representation/stacks, context switching, cooperative scheduler, timer preemption.
