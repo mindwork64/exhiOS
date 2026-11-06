@@ -33,6 +33,9 @@ jobs:
       - name: Build kernel exception smoke-test variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features exception-smoke-test
 
+      - name: Build kernel QEMU debug-exit variant
+        run: cargo build -p exhi-kernel --target x86_64-unknown-none --features qemu-debug-exit-smoke-test
+
       - name: Verify fixed-address kernel image
         run: |
           readelf -h target/x86_64-unknown-none/debug/exhi-kernel

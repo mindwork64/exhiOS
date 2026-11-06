@@ -53,7 +53,7 @@ Before exiting Boot Services, it closes the filesystem and drops temporary heap-
 
 The loader then switches to its dedicated kernel stack, disables interrupts, and calls the kernel entry point using the x86-64 System V ABI. No UEFI protocol, console, allocator or Boot Services API is used after the transition.
 
-## P1.1: install the kernel GDT
+## P1.1: kernel GDT — QEMU verified
 
 At kernel entry, ExhiOS replaces the firmware-provided GDT with its own three-entry table:
 
@@ -61,40 +61,51 @@ At kernel entry, ExhiOS replaces the firmware-provided GDT with its own three-en
 - selector 0x10: kernel data/stack segment;
 - selector 0x00: mandatory null descriptor.
 
-The GDT setup loads GDTR, performs a far return to reload CS, and reloads DS, ES and SS. The kernel reads CS, DS, ES and SS back and verifies the expected selector values. The QEMU runtime check is required before P1.1 is considered complete.
+The GDT setup loads GDTR, performs a far return to reload CS, and reloads DS, ES and SS. The kernel reads CS, DS, ES and SS back and verifies the expected selector values. This was confirmed in QEMU.
 
-Expected output includes:
+Expected output:
 
 ```text
-GDT: installing kernel GDT.
 GDT selectors: CS=0x0008 DS=0x0010 ES=0x0010 SS=0x0010
 GDT: installed and verified.
 ```
 
-## P1.2: kernel IDT and CPU exception diagnostics
+## P1.2: kernel IDT and CPU exception diagnostics — QEMU verified
 
 The kernel installs a 256-entry IDT with gates for the 32 x86 CPU exception vectors. Each assembly stub normalizes the stack layout so the common handler receives the vector, error code, RIP, CS and RFLAGS consistently. The fatal handler reports those values over COM1; for a page fault it also reads CR2 to show the faulting linear address.
 
-The default QEMU run verifies that LIDT/SIDT agree on the active IDT base and limit. To exercise the actual exception entry path, run the optional INT3 test:
+The normal QEMU run verified the active IDT base and 0x0FFF limit with LIDT/SIDT. The optional INT3 test also ran successfully:
 
 ```bash
 EXHIOS_EXCEPTION_TEST=1 ./scripts/run-qemu.sh
 ```
 
-The kernel deliberately executes INT3 after installing the IDT. The expected serial output includes:
+The kernel deliberately executes INT3 after installing the IDT. QEMU confirmed vector 3 (Breakpoint), error code 0, the kernel CS selector and the fatal halt path. This test intentionally halts the guest after printing diagnostics; stop QEMU with Ctrl+C.
 
-```text
-IDT smoke test: triggering INT3 breakpoint.
+## P1.3: PIC setup and controlled QEMU exit
 
-ExhiOS CPU EXCEPTION
-Vector: 0x0000000000000003 (Breakpoint)
-Error code: 0x0000000000000000
-RIP: 0x...
-CS: 0x0000000000000008
-RFLAGS: 0x...
-ExhiOS: CPU halted after fatal exception.
+The initial interrupt-controller strategy is deliberately conservative:
+
+- Remap the legacy dual 8259 PIC so IRQ0–7 use vectors 0x20–0x27 and IRQ8–15 use 0x28–0x2F, away from CPU exceptions.
+- Mask all 16 PIC inputs and keep IF cleared. The kernel must not enable interrupts until gates and handlers for the corresponding IRQ vectors are installed.
+- Keep local APIC/IOAPIC activation for the later ACPI MADT and device-interrupt stage. The current q35 QEMU profile uses the legacy PIC only as a masked compatibility baseline.
+
+To verify PIC mask readback and the QEMU debug-exit device, run:
+
+```bash
+EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh
 ```
 
-This test intentionally halts the guest after printing diagnostics. Stop QEMU with Ctrl+C in the terminal.
+The test build writes 0x10 to I/O port 0xF4, where the script attaches QEMU's `isa-debug-exit` device. QEMU exits with status 33; the script recognizes that exact status as a successful controlled shutdown and returns zero. A different exit status is reported as a failed test.
 
-P1.2 remains open until both the normal IDT installation and the optional exception smoke test have been observed in QEMU.
+The QEMU serial output should include:
+
+```text
+PIC: remapping legacy IRQs to vectors 0x20-0x2F.
+PIC master mask: 0x00000000000000FF slave mask: 0x00000000000000FF
+PIC: remapped and verified; all IRQ lines remain masked.
+QEMU debug-exit: requesting controlled shutdown.
+QEMU debug-exit confirmed (exit status 33).
+```
+
+P1.3 remains open until this runtime test has been observed in QEMU.

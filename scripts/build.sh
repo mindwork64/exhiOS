@@ -14,6 +14,11 @@ if ! command -v readelf >/dev/null 2>&1; then
     exit 1
 fi
 
+if [[ "${EXHIOS_EXCEPTION_TEST:-0}" == "1" && "${EXHIOS_QEMU_EXIT_TEST:-0}" == "1" ]]; then
+    echo "Choose either EXHIOS_EXCEPTION_TEST or EXHIOS_QEMU_EXIT_TEST, not both." >&2
+    exit 1
+fi
+
 rustup target add x86_64-unknown-uefi x86_64-unknown-none
 
 cargo test -p exhi-abi
@@ -22,11 +27,21 @@ cargo build -p exhi-boot --target x86_64-unknown-uefi
 
 KERNEL_FEATURES=()
 if [[ "${EXHIOS_EXCEPTION_TEST:-0}" == "1" ]]; then
-    KERNEL_FEATURES+=(--features exception-smoke-test)
+    KERNEL_FEATURES+=(exception-smoke-test)
     echo "Building the kernel with the optional INT3 exception smoke test."
 fi
+if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" == "1" ]]; then
+    KERNEL_FEATURES+=(qemu-debug-exit-smoke-test)
+    echo "Building the kernel with the QEMU debug-exit smoke test."
+fi
 
-cargo build -p exhi-kernel --target x86_64-unknown-none "${KERNEL_FEATURES[@]}"
+FEATURE_ARGS=()
+if (( ${#KERNEL_FEATURES[@]} > 0 )); then
+    FEATURE_LIST="$(IFS=,; printf '%s' "${KERNEL_FEATURES[*]}")"
+    FEATURE_ARGS+=(--features "$FEATURE_LIST")
+fi
+
+cargo build -p exhi-kernel --target x86_64-unknown-none "${FEATURE_ARGS[@]}"
 
 KERNEL_ELF="$ROOT_DIR/target/x86_64-unknown-none/debug/exhi-kernel"
 echo

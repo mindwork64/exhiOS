@@ -4,6 +4,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 cd "$ROOT_DIR"
 
+EXCEPTION_TEST="${EXHIOS_EXCEPTION_TEST:-0}"
+QEMU_EXIT_TEST="${EXHIOS_QEMU_EXIT_TEST:-0}"
+
+if [[ "$EXCEPTION_TEST" == "1" && "$QEMU_EXIT_TEST" == "1" ]]; then
+    echo "Choose either EXHIOS_EXCEPTION_TEST or EXHIOS_QEMU_EXIT_TEST, not both." >&2
+    exit 1
+fi
+
 "$ROOT_DIR/scripts/build.sh"
 
 for tool in qemu-system-x86_64 sgdisk mformat mmd mcopy; do
@@ -71,22 +79,43 @@ mcopy -i "$ESP_MTOOLS_IMAGE" \
 
 cp "$OVMF_VARS_PATH" "$VARS_COPY"
 
-if [[ "${EXHIOS_EXCEPTION_TEST:-0}" == "1" ]]; then
+QEMU_ARGS=(
+    -machine q35
+    -m 512M
+    -drive "if=pflash,format=raw,readonly=on,file=$OVMF_CODE_PATH"
+    -drive "if=pflash,format=raw,file=$VARS_COPY"
+    -drive "if=none,id=esp,format=raw,file=$ESP_IMAGE"
+    -device qemu-xhci,id=xhci
+    -device usb-storage,bus=xhci.0,drive=esp,bootindex=1
+    -net none
+    -serial stdio
+    -no-reboot
+    -no-shutdown
+)
+
+if [[ "$QEMU_EXIT_TEST" == "1" ]]; then
+    echo "Starting ExhiOS QEMU debug-exit test."
+    QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
+elif [[ "$EXCEPTION_TEST" == "1" ]]; then
     echo "Starting ExhiOS IDT/INT3 exception smoke test in QEMU."
 else
     echo "Starting ExhiOS kernel foundation test in QEMU."
 fi
+
 echo "EFI application and kernel ELF are on the same GPT EFI System Partition."
 
-qemu-system-x86_64 \
-    -machine q35 \
-    -m 512M \
-    -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE_PATH" \
-    -drive if=pflash,format=raw,file="$VARS_COPY" \
-    -drive if=none,id=esp,format=raw,file="$ESP_IMAGE" \
-    -device qemu-xhci,id=xhci \
-    -device usb-storage,bus=xhci.0,drive=esp,bootindex=1 \
-    -net none \
-    -serial stdio \
-    -no-reboot \
-    -no-shutdown
+set +e
+qemu-system-x86_64 "${QEMU_ARGS[@]}"
+QEMU_STATUS=$?
+set -e
+
+if [[ "$QEMU_EXIT_TEST" == "1" ]]; then
+    if [[ "$QEMU_STATUS" -eq 33 ]]; then
+        echo "QEMU debug-exit confirmed (exit status 33)."
+        exit 0
+    fi
+    echo "ERROR: expected QEMU debug-exit status 33, received $QEMU_STATUS." >&2
+    exit 1
+fi
+
+exit "$QEMU_STATUS"

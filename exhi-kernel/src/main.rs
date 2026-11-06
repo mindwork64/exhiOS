@@ -3,7 +3,7 @@
 
 mod arch;
 
-use arch::x86_64::{gdt, idt};
+use arch::x86_64::{gdt, idt, pic};
 use core::arch::asm;
 use core::hint::spin_loop;
 use core::panic::PanicInfo;
@@ -12,6 +12,8 @@ use exhi_abi::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
 
 const COM1: u16 = 0x3F8;
 const LINE_STATUS: u16 = COM1 + 5;
+const QEMU_DEBUG_EXIT_PORT: u16 = 0xF4;
+const QEMU_DEBUG_EXIT_VALUE: u32 = 0x10;
 const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
 
 #[no_mangle]
@@ -19,6 +21,12 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     serial_init();
     serial_write(b"ExhiOS Kernel 0.1\r\n");
     serial_write(b"Kernel entry point reached.\r\n");
+
+    // Firmware enters the kernel with IF clear. Keep it that way until the
+    // IDT contains handlers for every IRQ line that may be unmasked.
+    unsafe {
+        asm!("cli", options(nomem, nostack, preserves_flags));
+    }
 
     serial_write(b"GDT: installing kernel GDT.\r\n");
     gdt::initialize();
@@ -65,6 +73,22 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             asm!("int3", options(nomem, nostack));
         }
     }
+
+    serial_write(b"PIC: remapping legacy IRQs to vectors 0x20-0x2F.\r\n");
+    let pic_status = pic::initialize_and_mask();
+    serial_write(b"PIC master mask: 0x");
+    serial_write_hex(u64::from(pic_status.master_mask));
+    serial_write(b" slave mask: 0x");
+    serial_write_hex(u64::from(pic_status.slave_mask));
+    serial_write(b"\r\n");
+
+    if !pic_status.all_masked() {
+        serial_write(b"PIC: failed to mask all IRQ lines.\r\n");
+        halt_forever();
+    }
+
+    serial_write(b"PIC: remapped and verified; all IRQ lines remain masked.\r\n");
+    serial_write(b"Interrupt flag remains clear until IRQ handlers are installed.\r\n");
 
     if !boot_info.is_null() {
         // SAFETY: The bootloader passes a pointer to a dedicated LOADER_DATA
@@ -114,7 +138,24 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     }
 
     serial_write(b"ExhiOS: kernel handoff successful.\r\n");
-    serial_write(b"ExhiOS: interrupts remain disabled until interrupt controllers are configured.\r\n");
+
+    #[cfg(feature = "qemu-debug-exit-smoke-test")]
+    {
+        serial_write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
+        // SAFETY: The QEMU test script attaches isa-debug-exit at port 0xF4.
+        // Writing value 0x10 makes QEMU terminate with status (0x10 << 1) | 1.
+        unsafe {
+            asm!(
+                "out dx, eax",
+                in("dx") QEMU_DEBUG_EXIT_PORT,
+                in("eax") QEMU_DEBUG_EXIT_VALUE,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+        serial_write(b"QEMU debug-exit: device did not terminate the guest.\r\n");
+    }
+
+    serial_write(b"ExhiOS: interrupts remain disabled until IRQ handlers are installed.\r\n");
     serial_write(b"ExhiOS: halt loop entered.\r\n");
 
     halt_forever()

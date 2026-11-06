@@ -6,6 +6,7 @@ build = "build.rs"
 
 [features]
 exception-smoke-test = []
+qemu-debug-exit-smoke-test = []
 
 [[bin]]
 name = "exhi-kernel"

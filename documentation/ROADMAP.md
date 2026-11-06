@@ -66,7 +66,7 @@
 - [x] Load the kernel GDT with LGDT.
 - [x] Reload CS with a far return and reload DS, ES and SS.
 - [x] Read back and verify the active segment selectors.
-- [ ] Run the GDT installation and selector check in QEMU.
+- [x] Run the GDT installation and selector check in QEMU; CS/DS/ES/SS matched the expected selectors.
 
 ### P1.2 — IDT and CPU exceptions
 
@@ -75,12 +75,15 @@
 - [x] Normalize exception stack frames, including CPU-pushed error codes.
 - [x] Add fatal exception diagnostics with vector, name, error code, RIP, CS and RFLAGS.
 - [x] Report CR2 when a page fault occurs.
-- [ ] Verify the IDT in QEMU and trigger the optional INT3 smoke test.
+- [x] Verify IDT installation and SIDT readback in QEMU (base and 0x0FFF limit matched).
+- [x] Trigger INT3 in QEMU and verify vector 3 diagnostics and fatal halt.
 
 ### P1.3 — Interrupt controllers and test exit
 
-- [ ] Define the initial QEMU PIC/APIC interrupt strategy.
-- [ ] Add controlled test termination through QEMU's debug-exit device.
+- [x] Define the initial interrupt strategy: remap the legacy 8259 PIC to vectors 0x20–0x2F; defer local APIC/IOAPIC activation until ACPI MADT parsing and IRQ handlers exist.
+- [x] Initialize the PIC and mask all IRQ lines while keeping the CPU interrupt flag clear.
+- [x] Add controlled QEMU test termination through the isa-debug-exit device at I/O port 0xF4.
+- [ ] Verify PIC mask readback and QEMU debug-exit behavior in QEMU.
 
 ## P2 — Memory management
 
