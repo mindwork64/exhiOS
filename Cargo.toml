@@ -1,5 +1,5 @@
 [workspace]
-members = ["exhi-abi", "exhi-boot", "exhi-kernel"]
+members = ["exhi-abi", "exhi-elf", "exhi-boot", "exhi-kernel"]
 resolver = "2"
 
 [workspace.package]
@@ -7,8 +7,9 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace.dependencies]
-uefi = { version = "0.41.0", default-features = false, features = ["panic_handler"] }
+uefi = { version = "0.41.0", default-features = false, features = ["panic_handler", "alloc", "global_allocator"] }
 exhi-abi = { path = "exhi-abi" }
+exhi-elf = { path = "exhi-elf" }
 
 [profile.dev]
 panic = "abort"

@@ -19,17 +19,21 @@
 - [x] Add a minimal ELF64 kernel entry point and linker script.
 - [x] Define the initial shared `BootInfo` data layout.
 - [x] Add build, QEMU launch, and CI scripts.
-- [ ] Build and run on a developer machine; retain the first successful CI result.
-
-**Current code limitation:** the UEFI application only proves that firmware can enter the ExhiOS application. It does not yet load the kernel or leave UEFI Boot Services.
+- [x] Build both target images and pass the GitHub Actions checks.
+- [x] Run through QEMU + OVMF and confirm that the UEFI firmware enters Exhi Bootloader.
 
 ### P0.2 — Kernel file loading and ELF64 validation
 
-- [ ] Locate the ExhiOS kernel on the EFI System Partition.
-- [ ] Read the ELF64 image.
-- [ ] Validate the ELF header, machine type, program-header table, segment sizes, and address ranges.
-- [ ] Reject unsupported or malformed ELF images with a readable diagnostic.
-- [ ] Add parser tests using valid and deliberately malformed ELF fixtures.
+- [x] Locate the boot volume through the executing UEFI image handle.
+- [x] Read `/exhi-kernel.elf` from the EFI System Partition.
+- [x] Validate the ELF64 magic, class, byte order, version, executable type, and x86-64 machine.
+- [x] Bounds-check the program-header table and all loadable segment file ranges.
+- [x] Validate segment memory sizes, address overflow, alignment, W^X, and overlap.
+- [x] Require the entry point to lie inside an executable loadable segment.
+- [x] Add host unit tests for valid and malformed ELF images.
+- [ ] Build and run in QEMU; verify that the kernel file is read and accepted.
+
+**Current code limitation:** P0.2 only locates, reads, and validates the ELF image. It does not allocate physical pages, copy loadable segments, leave UEFI Boot Services, or transfer control to the kernel.
 
 ### P0.3 — Load segments and prepare the handoff
 

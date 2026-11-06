@@ -12,6 +12,7 @@ fi
 rustup target add x86_64-unknown-uefi x86_64-unknown-none
 
 cargo test -p exhi-abi
+cargo test -p exhi-elf
 cargo build -p exhi-boot --target x86_64-unknown-uefi
 cargo build -p exhi-kernel --target x86_64-unknown-none
 

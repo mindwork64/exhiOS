@@ -52,15 +52,12 @@ mkdir -p "$ROOT_DIR/target"
 rm -f "$ESP_IMAGE"
 truncate -s 128M "$ESP_IMAGE"
 
-# UEFI firmware expects a discoverable EFI System Partition. A bare FAT
-# filesystem without a partition table is not a reliable bootable disk.
 sgdisk --clear \
     --new=1:2048:0 \
     --typecode=1:EF00 \
     --change-name=1:EFI-System \
     "$ESP_IMAGE"
 
-# The EFI System Partition begins at LBA 2048 (1 MiB).
 ESP_MTOOLS_IMAGE="${ESP_IMAGE}@@${ESP_OFFSET}"
 mformat -i "$ESP_MTOOLS_IMAGE" -F ::
 mmd -i "$ESP_MTOOLS_IMAGE" ::/EFI
@@ -68,12 +65,14 @@ mmd -i "$ESP_MTOOLS_IMAGE" ::/EFI/BOOT
 mcopy -i "$ESP_MTOOLS_IMAGE" \
     "$ROOT_DIR/target/x86_64-unknown-uefi/debug/exhi-boot.efi" \
     ::/EFI/BOOT/BOOTX64.EFI
+mcopy -i "$ESP_MTOOLS_IMAGE" \
+    "$ROOT_DIR/target/x86_64-unknown-none/debug/exhi-kernel" \
+    ::/exhi-kernel.elf
 
 cp "$OVMF_VARS_PATH" "$VARS_COPY"
 
-echo "Starting ExhiOS UEFI entry smoke test in QEMU."
-echo "Boot device: GPT EFI System Partition on emulated USB storage."
-echo "The bootloader keeps its diagnostic message visible for 15 seconds."
+echo "Starting ExhiOS P0.2 ELF validation test in QEMU."
+echo "EFI application and kernel ELF are on the same GPT EFI System Partition."
 
 qemu-system-x86_64 \
     -machine q35 \

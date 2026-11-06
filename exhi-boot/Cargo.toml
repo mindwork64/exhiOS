@@ -11,3 +11,4 @@ bench = false
 
 [dependencies]
 uefi.workspace = true
+exhi-elf.workspace = true
