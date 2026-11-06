@@ -169,17 +169,26 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [ ] x86-64 kernel stacks, initial stack frames and actual register/RSP switching are P4.2.
 
 ### P4.2 — x86-64 cooperative context switching
-**Self-hosted CI QEMU runtime passed; local QEMU confirmation pending.**
-- [x] Two static kernel stacks, each with 16 KiB usable space and a separate 4 KiB unmapped guard page.
-- [x] Initial x86-64 context frame obeys SysV stack alignment; assembly saves/restores RBP, RBX, R12–R15 and RSP.
-- [x] First-task bootstrap calls the task entry point; a returning task is marked Finished and switched away from. The final task returns to the saved boot context.
-- [x] TSS.RSP0 follows the active task stack and is restored on return to the boot stack. The dedicated double-fault IST1 remains separate.
-- [x] Headless QEMU runtime: A/B tasks alternated A→B→A→B→A→B, preserved stack-local probes at different addresses, both reached Finished, and boot execution resumed. Self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157), QEMU debug-exit status 33.
-- [ ] Local Linux Mint/QEMU runtime log from the user; P4.2 remains open until this confirmation.
+**Завершено; self-hosted CI и локальный Linux Mint/QEMU подтверждены.**
+- [x] Две статические task stacks: по 4 KiB unmapped guard page + 16 KiB usable stack.
+- [x] SysV-совместимый initial frame; assembly сохраняет/восстанавливает RSP и RBP/RBX/R12–R15.
+- [x] Bootstrap вызывает task entry; завершившаяся задача получает Finished и не возобновляется; последняя задача возвращает выполнение на boot stack.
+- [x] TSS.RSP0 соответствует активному task stack; при возврате в boot context сбрасывается. Double-fault IST1 остаётся независимым.
+- [x] Self-hosted QEMU [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) и локальный пользовательский Linux Mint/QEMU log (2026-11-06) подтвердили A→B→A→B→A→B, сохранность stack-local данных на разных стеках, Finished=2, восстановление boot context/TSS.RSP0 и debug-exit 33.
 
-### P4.3 — Timer integration and preemption
-- [ ] Integrate monotonic PIT ticks with scheduler accounting.
-- [ ] Keep preemption separate from cooperative switching; the minimal IRQ0 assembly stub must not call Rust or the scheduler.
+### P4.3 — PIT-backed cooperative task runtime accounting
+**Реализация в main; CI и локальная QEMU-приёмка ожидаются.**
+- [x] Добавить per-task `runtime_ticks` в `exhi-task` и насыщающее накопление на безопасной границе планирования.
+- [x] Оставить IRQ0 stub минимальным: атомарный tick increment + EOI; никакого вызова Rust или scheduler из ISR.
+- [x] Добавить отдельный feature-gated QEMU test: две задачи ждут реальные PIT intervals, чередуются кооперативно и накапливают собственное время.
+- [ ] Проверить новые host tests, kernel build и headless QEMU runtime в self-hosted CI.
+- [ ] Проверить локально: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TASK_ACCOUNTING_TEST=1 ./scripts/run-qemu.sh`.
+
+### P4.4 — Timer-driven preemption (planned)
+- [ ] Спроектировать полный interrupt frame для безопасного переключения с IRQ0.
+- [ ] Сохранять/восстанавливать все необходимые general-purpose registers, interrupt return state и корректный task stack/TSS.RSP0.
+- [ ] Определить безопасный порядок scheduler mutation, EOI и interrupt return.
+- [ ] Не вызывать напрямую P4.2 call-based context switch из минимального IRQ0 stub.
 
 ## P5 — User-mode isolation
 - [ ] Ring 3, per-process address spaces, syscalls, user-pointer validation, capabilities.
