@@ -1,9 +1,9 @@
 #![no_std]
 
+//! Allocation-free, pixel-format-aware GOP text console.
+
 #[cfg(test)]
 extern crate std;
-
-//! Allocation-free, pixel-format-aware GOP text console.
 
 use core::convert::TryFrom;
 use core::ptr;
