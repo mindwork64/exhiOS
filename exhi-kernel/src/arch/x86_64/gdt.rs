@@ -1,6 +1,7 @@
 use core::arch::{asm, global_asm};
 use core::mem::size_of;
 use core::ptr;
+use core::sync::atomic::{compiler_fence, Ordering};
 
 pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
 const KERNEL_DATA_SELECTOR: u16 = 0x10;
@@ -227,3 +228,41 @@ exhi_load_gdt:
     ret
     "#
 );
+
+
+/// Updates the TSS RSP0 field for the currently active kernel task.
+///
+/// Zero clears the field for the early boot context. Non-zero values must be
+/// 16-byte aligned and remain inside the mapped kernel physical range.
+pub fn set_rsp0(stack_top: u64) -> bool {
+    if stack_top != 0 && (stack_top % 16 != 0 || stack_top >= PHYSICAL_LIMIT) {
+        return false;
+    }
+
+    // RSP0 is at byte offset 4 in the packed 104-byte TSS. Use unaligned
+    // accesses rather than creating a reference to its packed u64 field.
+    let rsp0_pointer = unsafe {
+        ptr::addr_of_mut!(TSS.0)
+            .cast::<u8>()
+            .add(size_of::<u32>())
+            .cast::<u64>()
+    };
+
+    unsafe {
+        ptr::write_unaligned(rsp0_pointer, stack_top);
+    }
+    compiler_fence(Ordering::SeqCst);
+    unsafe { ptr::read_unaligned(rsp0_pointer) == stack_top }
+}
+
+/// Reads the current TSS RSP0 value for boot-time diagnostics and tests.
+pub fn read_rsp0() -> u64 {
+    let rsp0_pointer = unsafe {
+        ptr::addr_of!(TSS.0)
+            .cast::<u8>()
+            .add(size_of::<u32>())
+            .cast::<u64>()
+    };
+    compiler_fence(Ordering::SeqCst);
+    unsafe { ptr::read_unaligned(rsp0_pointer) }
+}

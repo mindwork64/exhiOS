@@ -30,6 +30,13 @@ impl TaskContext {
     pub fn set_saved_stack_pointer(&mut self, saved_stack_pointer: usize) {
         self.saved_stack_pointer = saved_stack_pointer;
     }
+
+    /// Returns the address of the saved RSP slot for an architecture context
+    /// switch routine. The pointer is valid while this context remains inside
+    /// its owning Scheduler and must not be retained across task-table moves.
+    pub fn saved_stack_pointer_mut_ptr(&mut self) -> *mut usize {
+        core::ptr::addr_of_mut!(self.saved_stack_pointer)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

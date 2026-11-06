@@ -84,6 +84,9 @@ jobs:
       - name: Build kernel driver registry smoke-test variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features driver-registry-smoke-test
 
+      - name: Build kernel context-switch smoke-test variant
+        run: cargo build -p exhi-kernel --target x86_64-unknown-none --features context-switch-smoke-test
+
       - name: Verify fixed-address kernel image
         run: |
           LC_ALL=C readelf -h target/x86_64-unknown-none/debug/exhi-kernel
@@ -119,3 +122,6 @@ jobs:
 
       - name: Run headless driver registry smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_DRIVER_REGISTRY_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run headless cooperative context-switch smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_CONTEXT_SWITCH_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh

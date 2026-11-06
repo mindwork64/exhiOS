@@ -10,6 +10,7 @@ HEADLESS_TEST="${EXHIOS_HEADLESS:-0}"
 TIMER_TEST="${EXHIOS_TIMER_TEST:-0}"
 KEYBOARD_TEST="${EXHIOS_KEYBOARD_TEST:-0}"
 DRIVER_REGISTRY_TEST="${EXHIOS_DRIVER_REGISTRY_TEST:-0}"
+CONTEXT_SWITCH_TEST="${EXHIOS_CONTEXT_SWITCH_TEST:-0}"
 SERIAL_RX_TEST="${EXHIOS_SERIAL_RX_TEST:-0}"
 
 if [[ "$EXCEPTION_TEST" == "1" && "$QEMU_EXIT_TEST" == "1" ]]; then
@@ -32,6 +33,15 @@ if [[ "$KEYBOARD_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
 fi
 if [[ "$KEYBOARD_TEST" == "1" && ( "$EXCEPTION_TEST" == "1" || "$SERIAL_RX_TEST" == "1" || "$TIMER_TEST" == "1" ) ]]; then
     echo "EXHIOS_KEYBOARD_TEST cannot be combined with exception, serial RX or timer tests." >&2
+    exit 1
+fi
+
+if [[ "$CONTEXT_SWITCH_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
+    echo "EXHIOS_CONTEXT_SWITCH_TEST requires EXHIOS_QEMU_EXIT_TEST=1 for controlled QEMU shutdown." >&2
+    exit 1
+fi
+if [[ "$CONTEXT_SWITCH_TEST" == "1" && ( "$EXCEPTION_TEST" == "1" || "$SERIAL_RX_TEST" == "1" || "$TIMER_TEST" == "1" || "$KEYBOARD_TEST" == "1" || "$DRIVER_REGISTRY_TEST" == "1" ) ]]; then
+    echo "EXHIOS_CONTEXT_SWITCH_TEST cannot be combined with other smoke-test modes." >&2
     exit 1
 fi
 
@@ -128,7 +138,10 @@ if [[ "$HEADLESS_TEST" == "1" ]]; then
     QEMU_ARGS+=(-display none -monitor none)
 fi
 
-if [[ "$DRIVER_REGISTRY_TEST" == "1" ]]; then
+if [[ "$CONTEXT_SWITCH_TEST" == "1" ]]; then
+    echo "Starting ExhiOS x86-64 cooperative context-switch runtime smoke test."
+    QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
+elif [[ "$DRIVER_REGISTRY_TEST" == "1" ]]; then
     echo "Starting ExhiOS driver registry runtime smoke test."
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
 elif [[ "$KEYBOARD_TEST" == "1" ]]; then

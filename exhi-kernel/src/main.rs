@@ -537,7 +537,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 }
             }
 
-            #[cfg(all(feature = "qemu-debug-exit-smoke-test", not(any(feature = "timer-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test"))))]
+            #[cfg(all(feature = "qemu-debug-exit-smoke-test", not(any(feature = "timer-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test"))))]
             {
                 serial::COM1.write(b"P2.6: forcing an exception-frame write into the unmapped stack guard page.\r\n");
                 idt::trigger_double_fault_guard_stack_smoke_test(
@@ -675,12 +675,41 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         serial_rx_smoke_test()
     }
 
+    #[cfg(feature = "context-switch-smoke-test")]
+    {
+        kernel_console.write(b"P4.2: starting x86-64 cooperative context-switch smoke test.\r\n");
+        let passed = arch::x86_64::task::context_switch_smoke_test();
+        if passed {
+            kernel_console.write(b"P4.2: two tasks yielded to each other and preserved independent stacks.\r\n");
+            kernel_console.write(b"P4.2: cooperative context-switch runtime smoke test passed.\r\n");
+        } else {
+            kernel_console.write(b"P4.2: cooperative context-switch runtime smoke test failed.\r\n");
+        }
+
+        let exit_value = if passed {
+            QEMU_DEBUG_EXIT_VALUE
+        } else {
+            QEMU_DEBUG_EXIT_VALUE + 1
+        };
+        kernel_console.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
+        unsafe {
+            asm!(
+                "out dx, eax",
+                in("dx") QEMU_DEBUG_EXIT_PORT,
+                in("eax") exit_value,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+        kernel_console.write(b"QEMU debug-exit: device did not terminate the guest.\r\n");
+        halt_forever();
+    }
+
     #[cfg(feature = "keyboard-smoke-test")]
     {
         keyboard_smoke_test(&mut kernel_console, &mut driver_registry);
     }
 
-    #[cfg(not(any(feature = "serial-rx-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test")))]
+    #[cfg(not(any(feature = "serial-rx-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test")))]
     {
         #[cfg(feature = "qemu-debug-exit-smoke-test")]
         {
