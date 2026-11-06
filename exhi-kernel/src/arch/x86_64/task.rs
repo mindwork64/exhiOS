@@ -277,7 +277,10 @@ pub extern "sysv64" fn exhi_task_finished() -> ! {
     };
 
     match next {
-        Ok(Some(to)) => switch_between(from, to),
+        Ok(Some(to)) => {
+            switch_between(from, to);
+            task_fatal(b"P4.2: a Finished task was unexpectedly resumed.\\r\\n");
+        }
         Ok(None) => {
             if !gdt::set_rsp0(0) {
                 task_fatal(b"P4.2: failed to clear TSS.RSP0 before boot return.\r\n");
