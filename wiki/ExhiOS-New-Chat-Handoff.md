@@ -49,7 +49,7 @@
 
 ## Следующие действия
 1. P4.1 и P4.2 закрыты. P4.2 local acceptance: user serial log (2026-11-06), A/B alternation, Finished=2, TSS.RSP0 restored=yes, debug-exit 33; self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157).
-2. Продолжить P4.3 — PIT-backed cooperative runtime accounting. Код уже находится в `main`: `Task::runtime_ticks`, `Scheduler::account_current_ticks`, отдельный feature-gated QEMU тест и CI step. Текущий status: code pushed; CI и локальная runtime-приёмка ещё не подтверждены.
+2. P4.3 PIT-backed cooperative runtime accounting реализован; corrected self-hosted CI build + QEMU runtime passed в [run 42306726315](https://github.com/mindwork64/exhiOS/actions/runs/42306726315). Все 14 task tests прошли. Serial: elapsed=12 PIT ticks, task A runtime=9, task B runtime=9, Finished=2, IRQ0 masked=yes, TSS.RSP0 restored=yes, P4.3 pass marker, debug-exit 33. Осталось локальное подтверждение пользователя.
 3. Локальная проверка после получения актуального main:
    ```bash
    git fetch origin
@@ -59,7 +59,7 @@
    EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TASK_ACCOUNTING_TEST=1 ./scripts/run-qemu.sh
    ```
    Ожидается: две задачи по очереди выполняют PIT-интервалы; `P4.3: elapsed PIT ticks=` и отдельные `task A runtime` / `task B runtime`; обе задачи Finished=2; IRQ0 masked=yes; TSS.RSP0 restored=yes; pass marker; QEMU status 33.
-4. Не считать P4.3 принятым до self-hosted CI и local QEMU serial evidence. P4.3 — только учёт времени на безопасных кооперативных границах, не preemption.
+4. Self-hosted CI для P4.3 уже принят; не закрывать milestone до user-local QEMU serial evidence. P4.3 — только учёт времени на безопасных кооперативных границах, не preemption.
 5. P4.4 отдельно проектирует полный interrupt frame и timer-driven preemption. Не вызывать P4.2 call-based switch напрямую из IRQ0. Оставить IRQ0 stub assembly-only; Ring 3/syscalls остаются в P5.
 
 ## Правила работы
