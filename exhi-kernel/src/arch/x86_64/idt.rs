@@ -182,25 +182,22 @@ unsafe extern "sysv64" {
 /// so #PF delivery faults and the processor must escalate to #DF on IST1.
 #[cfg(feature = "qemu-debug-exit-smoke-test")]
 pub fn trigger_double_fault_guard_stack_smoke_test(stack_bottom: u64, guard_page: u64) {
-    const UNMAPPED_PROBE: u64 = 0x0000_007F_FFFF_F000;
-
     if guard_page.checked_add(4096) != Some(stack_bottom)
         || super::vmm::query_page(guard_page) != Err(super::vmm::VmmError::NotMapped)
         || super::vmm::query_page(stack_bottom).is_err()
-        || super::vmm::query_page(UNMAPPED_PROBE).is_ok()
     {
         unsafe {
             asm!("ud2", options(nomem, nostack));
         }
     }
 
-    // SAFETY: The test verifies that stack_bottom is mapped, guard_page is
-    // exactly the unmapped page immediately below it, and fault_address is
-    // unmapped. The assembly switches RSP to stack_bottom, faults on
-    // fault_address, then never returns. #PF frame construction writes into
-    // guard_page and deliberately escalates to #DF through the IST1 gate.
+    // SAFETY: The test verifies that stack_bottom is mapped and guard_page is
+    // the immediately preceding unmapped page. The assembly sets RSP to the
+    // bottom of the mapped stack, then reads from guard_page. The resulting
+    // #PF cannot push its exception frame below RSP because those writes also
+    // hit guard_page, so delivery escalates to #DF through IST1.
     unsafe {
-        exhi_trigger_guard_stack_overflow(stack_bottom, UNMAPPED_PROBE);
+        exhi_trigger_guard_stack_overflow(stack_bottom, guard_page);
     }
 }
 
