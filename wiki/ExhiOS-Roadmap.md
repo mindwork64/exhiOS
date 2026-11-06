@@ -107,15 +107,16 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 
 
 ### P3.2 — Framebuffer console
-**Инициализация подтверждена CI и локальным QEMU serial log; визуальная проверка изображения ожидает скриншот.**
+**Первая реализация функционально подтверждена CI и локальным Linux Mint/QEMU; вывод на экран подтверждён описанием скриншота пользователя.**
 - [x] Новый `no_std` crate `exhi-console`: 5x7 ASCII bitmap font rendered into 12x16 cells; clear, write, decimal output, CR/LF/tab, wrap and one-row scroll.
 - [x] GOP format 0 (RGB-reserved) and 1 (BGR-reserved) packing; other GOP formats are rejected explicitly.
 - [x] Every write respects `pixels_per_scan_line`, uses volatile pixel accesses and checks framebuffer size/stride/dimensions.
 - [x] Kernel validates that the GOP buffer lies inside the currently mapped 0..4 GiB identity range before creating the console.
 - [x] Host tests: RGB/BGR byte order, stride padding, invalid stride/format/buffer, wrap/scroll and decimal output.
 - [x] Headless QEMU/OVMF boot regression [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662): framebuffer initialization marker printed; prior address-space and P2.6 IST1/debug-exit tests also passed (status 33).
-- [x] Local Linux Mint/QEMU serial evidence (2026-11-06): GOP framebuffer 1280x800, stride 1280, format 1; P3.2 initialization marker printed; kernel reached handoff and halt loop.
-- [ ] Visual inspection of the rendered framebuffer (screenshot/link).
+- [x] Local Linux Mint/QEMU serial evidence (2026-11-06): GOP framebuffer 0x80000000, 1280x800, stride 1280, format 1; initialization marker printed; kernel reached handoff and halt loop.
+- [x] Screenshot description supplied by user (2026-11-06) confirms all expected on-screen strings: kernel banner, console ready, 1280x800, stride 1280, BGRX, COM1 ready and kernel handoff success.
+- [ ] Detailed inspection of glyph sharpness, spacing and visual artifacts was not possible from the textual image description alone.
 - [ ] BitMask/BltOnly pixel formats, Unicode fonts and framebuffer cache policy remain future work.
 
 ### P3.3 — Timer
