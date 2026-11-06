@@ -18,6 +18,12 @@ if [[ "${EXHIOS_EXCEPTION_TEST:-0}" == "1" && "${EXHIOS_QEMU_EXIT_TEST:-0}" == "
     echo "Choose either EXHIOS_EXCEPTION_TEST or EXHIOS_QEMU_EXIT_TEST, not both." >&2
     exit 1
 fi
+if [[ "${EXHIOS_SERIAL_RX_TEST:-0}" == "1" ]] && {
+    [[ "${EXHIOS_EXCEPTION_TEST:-0}" == "1" ]] || [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" == "1" ]];
+}; then
+    echo "EXHIOS_SERIAL_RX_TEST cannot be combined with exception or debug-exit tests." >&2
+    exit 1
+fi
 
 rustup target add x86_64-unknown-uefi x86_64-unknown-none
 
@@ -34,6 +40,10 @@ fi
 if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" == "1" ]]; then
     KERNEL_FEATURES+=(qemu-debug-exit-smoke-test)
     echo "Building the kernel with the QEMU debug-exit smoke test."
+fi
+if [[ "${EXHIOS_SERIAL_RX_TEST:-0}" == "1" ]]; then
+    KERNEL_FEATURES+=(serial-rx-smoke-test)
+    echo "Building the kernel with the interactive COM1 RX smoke test."
 fi
 
 FEATURE_ARGS=()

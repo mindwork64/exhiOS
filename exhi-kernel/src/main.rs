@@ -508,6 +508,9 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial::COM1.write(b"ExhiOS: kernel handoff successful.\r\n");
 
+    #[cfg(feature = "serial-rx-smoke-test")]
+    serial_rx_smoke_test();
+
     #[cfg(feature = "qemu-debug-exit-smoke-test")]
     {
         serial::COM1.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
@@ -649,6 +652,44 @@ fn heap_test_error_message(error: heap::HeapTestError) -> &'static [u8] {
         heap::HeapTestError::DataMismatch => b"alignment or memory contents mismatch",
         heap::HeapTestError::ReuseMismatch => b"freed allocation was not reused",
         heap::HeapTestError::FreeListNotCoalesced => b"free blocks did not coalesce",
+    }
+}
+
+#[cfg(feature = "serial-rx-smoke-test")]
+fn serial_rx_smoke_test() -> ! {
+    serial::COM1.write(
+        b"\r\nP3.1 RX test ready. Type text to see it echoed; press Ctrl+D to stop.\r\nRX> ",
+    );
+
+    let mut received_bytes = 0u64;
+    let mut previous_was_cr = false;
+
+    loop {
+        let byte = serial::COM1.read_byte_blocking();
+        if byte == 0x04 {
+            serial::COM1.write(b"\r\nP3.1: received input bytes: 0x");
+            serial::COM1.write_hex(received_bytes);
+            serial::COM1.write(b"\r\nP3.1: interactive COM1 RX test ended.\r\n");
+            halt_forever();
+        }
+
+        received_bytes = received_bytes.saturating_add(1);
+
+        if byte == b'\n' && previous_was_cr {
+            previous_was_cr = false;
+            continue;
+        }
+        previous_was_cr = byte == b'\r';
+
+        match byte {
+            b'\r' | b'\n' => serial::COM1.write(b"\r\nRX> "),
+            0x08 | 0x7F => serial::COM1.write(b"\x08 \x08"),
+            0x20..=0x7E => {
+                let _ = serial::COM1.write_byte(byte);
+            }
+            b'\t' => serial::COM1.write(b"    "),
+            _ => {}
+        }
     }
 }
 
