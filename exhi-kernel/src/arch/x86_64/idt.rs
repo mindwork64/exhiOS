@@ -468,6 +468,7 @@ exhi_exception_common:
         mov rdx, [r12 + 16]
         mov rcx, [r12 + 24]
         mov r8,  [r12 + 32]
+        mov r9,  r12
 
         # An exception may arrive at any instruction, so do not assume the
         # interrupted RSP has ABI alignment. Align the new call stack explicitly.
