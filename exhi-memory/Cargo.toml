@@ -1,0 +1,6 @@
+[package]
+name = "exhi-memory"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

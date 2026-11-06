@@ -1,5 +1,5 @@
 [workspace]
-members = ["exhi-abi", "exhi-elf", "exhi-boot", "exhi-kernel"]
+members = ["exhi-abi", "exhi-elf", "exhi-boot", "exhi-kernel", "exhi-memory"]
 resolver = "2"
 
 [workspace.package]
@@ -10,12 +10,10 @@ edition = "2021"
 uefi = { version = "0.41.0", default-features = false, features = ["panic_handler", "alloc", "global_allocator"] }
 exhi-abi = { path = "exhi-abi" }
 exhi-elf = { path = "exhi-elf" }
+exhi-memory = { path = "exhi-memory" }
 
 [profile.dev]
 panic = "abort"
 
 [profile.release]
 panic = "abort"
-lto = true
-codegen-units = 1
-opt-level = "s"

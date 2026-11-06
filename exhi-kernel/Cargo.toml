@@ -16,3 +16,4 @@ bench = false
 
 [dependencies]
 exhi-abi.workspace = true
+exhi-memory.workspace = true
