@@ -148,17 +148,33 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] Local Linux Mint/QEMU (2026-11-06): i8042 config 0x65, IRQ1 ready, 28 key transitions from letters/Enter/Backspace/navigation/Ctrl+D, zero dropped scan codes, IRQ1 remasked and debug-exit status 33. Ctrl state was visible on D; no separate Shift usage event was present in this log (decoder Shift handling is covered by host tests).
 
 ### P3.5 — Driver registration
-**Реализация и CI runtime завершены; локальная проверка ожидается.**
+**Завершено; локальный Linux Mint/QEMU и self-hosted CI подтверждены 2026-11-07.**
 - [x] New no_std `exhi-driver` crate with static descriptors, stable driver IDs/classes and lifecycle states.
 - [x] Fixed-capacity registry; no heap allocation, duplicate-ID and capacity checks, lookup/iteration and lifecycle transition validation.
 - [x] COM1, PIT channel 0 and PS/2 keyboard expose static descriptors and are registered during kernel startup.
 - [x] Boot diagnostics report registered/initialized/failed counts and each registered driver.
 - [x] Serial is marked Initialized after its early init; PIT and PS/2 become Initialized only after their respective hardware init succeeds; failures are tracked as Failed.
 - [x] CI: 8/8 registry host tests, all kernel build variants, shell syntax checks and headless QEMU tests (standard boot, PIT timer and driver registry) passed in [run 42299723267](https://github.com/mindwork64/exhiOS/actions/runs/42299723267).
-- [ ] Local Linux Mint/QEMU boot log: expected 3 registered, 1 initialized, 0 failed, followed by the registry runtime smoke-test pass marker and debug-exit status 33.
+- [x] Local Linux Mint/QEMU (2026-11-06): registered=3, initialized=1, failed=0; COM1 Initialized, PIT and PS/2 Registered; registry runtime smoke test passed; QEMU debug-exit status 33.
+- [x] Self-hosted CI build and headless QEMU standard/PIT/registry tests passed in [run 42301446350](https://github.com/mindwork64/exhiOS/actions/runs/42301446350).
 
 ## P4 — Tasks and scheduling
-- [ ] Task representation/stacks, context switching, cooperative scheduler, timer preemption.
+
+### P4.1 — Task model and scheduler policy
+**Код реализован; ожидает self-hosted CI.**
+- [x] New no_std `exhi-task` crate: fixed-capacity task table, monotonic TaskId, opaque saved-RSP context and Ready/Running/Blocked/Finished lifecycle.
+- [x] Cooperative round-robin policy: spawn/start/yield/block/wake/finish/reap, no heap allocation.
+- [ ] Self-hosted CI host tests and full kernel regression.
+- [ ] x86-64 kernel stacks, initial stack frames and actual register/RSP switching are P4.2.
+
+### P4.2 — x86-64 cooperative context switching
+- [ ] Per-task kernel stacks and SysV-aligned initial stack frames.
+- [ ] Save/restore callee-saved registers and RSP; first-task bootstrap and controlled task exit.
+- [ ] QEMU runtime test with at least two tasks yielding to each other and independent stack-local state.
+
+### P4.3 — Timer integration and preemption
+- [ ] Integrate monotonic PIT ticks with scheduler accounting.
+- [ ] Keep preemption separate from cooperative switching; the minimal IRQ0 assembly stub must not call Rust or the scheduler.
 
 ## P5 — User-mode isolation
 - [ ] Ring 3, per-process address spaces, syscalls, user-pointer validation, capabilities.

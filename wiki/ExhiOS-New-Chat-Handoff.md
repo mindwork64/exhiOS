@@ -12,12 +12,13 @@
 - Основная ветка `main`.
 - Wiki source pages находятся в `wiki/` основного репозитория; GitHub Actions публикует их в Wiki.
 - Пользователь работает в Linux Mint + QEMU/OVMF.
+- Основной CI использует self-hosted runner labels `[self-hosted, linux, x64]`; runner уже имеет Rust/binutils/QEMU/OVMF/disk tools, поэтому job не устанавливает пакеты через apt. Fork pull requests не исполняют код на self-hosted runner.
 - Обновление локального репозитория: `git fetch origin` и `git reset --hard origin/main`. Не предлагать `git pull --ff-only`.
 - QEMU запускать из корня: `./scripts/run-qemu.sh`.
 - Пользователь присылает serial output для runtime проверки. Не объявлять этап закрытым без него.
 
 ## Последняя подтверждённая точка
-- P0/P1, P2.1, P2.2, P2.3, P2.4, P2.5, P2.5.1 и P2.6 прошли локальную + CI runtime проверку.
+- P0/P1, P2.1, P2.2, P2.3, P2.4, P2.5, P2.5.1, P2.6 и P3.1–P3.5 закрыты по применимым локальным + CI runtime/host evidence.
 - P2.5.1: use-after-destroy, idempotent destroy, active-destroy rejection, W^X, invalid/duplicate mappings, double-unmap, page-table frame validation and retry-safe teardown.
 - P2.5.1 CI QEMU/OVMF: [run 42238977281](https://github.com/mindwork64/exhiOS/actions/runs/42238977281); local Linux Mint/QEMU log also passed with debug-exit 33.
 - P2.5 is Ring 0 address-space management only; actual CPL3 execution, syscalls and hardware-enforced user/supervisor fault tests are not implemented.
@@ -37,20 +38,17 @@
 - P3.2 initial GOP framebuffer console is implemented in `exhi-console` and kernel startup. It supports GOP formats 0/1, visible width + separate scanline stride, ASCII text, wrap and scroll. Host tests, build variants and headless QEMU runtime passed in CI [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662). User's local QEMU serial log (2026-11-06) confirms GOP framebuffer 0x80000000, 1280x800, stride 1280, pixel format 1, successful console initialization, kernel handoff and halt loop. User-provided screenshot description confirms the expected visible strings for kernel banner, framebuffer ready, 1280x800, stride 1280, BGRX, COM1 ready and kernel handoff success. Fine visual details (font sharpness, spacing, artifacts) were not independently assessed. P3.2 initial functional acceptance is complete.
 - Follow-up commits [c3d2b8c](https://github.com/mindwork64/exhiOS/commit/c3d2b8ccaa34c6b399b7f12905ae11658455916b) and [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a) add an allocation-free `KernelConsole` writer. After GOP setup it mirrors byte and formatted output to COM1 + framebuffer; on GOP failure it remains serial-only. Early startup diagnostics remain COM1-only. `write_fmt` uses `core::fmt` without heap allocation. CI build + headless QEMU runtime passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072); local QEMU serial output confirms unified-writer readiness and final handoff/halt messages.
 
+## Последняя подтверждённая точка — P3.5 закрыт
+
+- User local QEMU log (2026-11-06): registry summary `registered=3 initialized=1 failed=0`; COM1/Serial/Initialized, PIT/Clock/Registered, i8042 PS/2/Input/Registered; runtime pass marker and debug-exit status 33.
+- Self-hosted CI workflow migration commit [f161f2a](https://github.com/mindwork64/exhiOS/commit/f161f2a967b4fe0194c05ea968ebab87ed814202). Run [42301446350](https://github.com/mindwork64/exhiOS/actions/runs/42301446350) passed build, host tests, standard boot, PIT and registry QEMU runtime.
+- P3.5 is fully closed.
+
 ## Следующие действия
-1. P3.3 PIT timer and P3.4 PS/2 keyboard are closed with local + CI runtime evidence. P3.4 local QEMU log (2026-11-06) reports i8042 config 0x65, IRQ1 gate valid, key-down/key-up events, Ctrl+D recognition, 28 transitions, zero dropped scan codes, IRQ1 remasked and QEMU status 33. Shift was not independently visible in this log; decoder Shift tests passed on host.
-2. P3.5 static driver registry is implemented in [fc72e1c](https://github.com/mindwork64/exhiOS/commit/fc72e1c789a49f9efdaf8698f91b645ec8db3dda); the dedicated runtime smoke mode is in [8fca30b](https://github.com/mindwork64/exhiOS/commit/8fca30b78eac0a2267ec27f7163bf98b4586bb5e). The no_std `exhi-driver` crate stores immutable descriptors, IDs/classes and Registered/Initialized/Failed states in a fixed-capacity array. COM1/PIT/PS2 publish descriptors; startup registers all three and prints summary. Host tests (8/8), shell syntax checks, all build variants and headless standard/PIT/registry QEMU runtime tests passed CI [run 42299723267](https://github.com/mindwork64/exhiOS/actions/runs/42299723267); local registry runtime remains pending.
-3. P3.5 local verification:
-   ```bash
-   git fetch origin
-   git reset --hard origin/main
-   cargo fmt
-   cargo test
-   EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_DRIVER_REGISTRY_TEST=1 ./scripts/run-qemu.sh
-   ```
-   Expect `P3.5: driver registry ready; registered=3 initialized=1 failed=0`, COM1/PIT/keyboard entries and `P3.5: driver registry runtime smoke test passed.` Normal boot should show the same summary; timer/keyboard smoke modes should transition their respective entries to Initialized.
-4. Once P3.5 has local runtime evidence, proceed to P4 task representation and cooperative scheduling. Keep scheduler work separate from user-mode/Ring 3.
-5. APIC/IOAPIC, HPET/TSC calibration and scheduler timer preemption remain later work. Ring 3, syscalls and hardware user/supervisor fault tests remain a later milestone. P2.6 guard page is locally and CI verified; do not remove or bypass it.
+1. P4.1: validate the host-testable `exhi-task` no_std model and round-robin policy on self-hosted CI.
+2. P4.2: implement per-task kernel stacks, x86-64 context switch (callee-saved registers + RSP, SysV alignment), first-task bootstrap and a two-task cooperative QEMU runtime test.
+3. P4.3: integrate tick accounting and later preemption separately; do not call Rust or scheduler from the minimal IRQ0 assembly stub.
+4. Ring 3, syscalls, user-pointer validation and hardware-enforced user/supervisor fault tests remain P5. TSS.RSP0 must be updated when per-task kernel stacks arrive; keep dedicated double-fault IST1 and boot-stack guard separate.
 
 ## Правила работы
 - Русский язык общения.

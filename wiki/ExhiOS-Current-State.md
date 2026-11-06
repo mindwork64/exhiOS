@@ -1,9 +1,9 @@
 # ExhiOS — текущее состояние
 
-Снимок: **2026-11-06**  
+Снимок: **2026-11-07**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: [8fca30b](https://github.com/mindwork64/exhiOS/commit/8fca30b78eac0a2267ec27f7163bf98b4586bb5e) adds a QEMU runtime smoke mode for P3.5. P3.3 PIT timer and P3.4 PS/2 keyboard are locally and CI runtime-verified. P3.5 host tests (8/8), kernel variants and dedicated headless QEMU registry runtime passed CI [run 42299723267](https://github.com/mindwork64/exhiOS/actions/runs/42299723267); local Linux Mint/QEMU verification remains pending.
+Кодовый checkpoint: P3.5 закрыт по локальному и CI runtime evidence. Основной CI переведён на self-hosted Linux x64 runner; build + standard/PIT/registry headless QEMU passed in [run 42301446350](https://github.com/mindwork64/exhiOS/actions/runs/42301446350). Начат P4.1: no_std task model и round-robin scheduler core в crate `exhi-task`.
 
 ## Закрыто и проверено в QEMU
 
@@ -245,7 +245,8 @@ New no_std crate: `exhi-driver`.
 - COM1, PIT channel 0 and the i8042 PS/2 keyboard expose descriptors from their own driver modules. The boot path registers all three after PIC initialization; COM1 is marked initialized after early UART setup. Timer/keyboard states transition to Initialized only after their hardware setup succeeds, or Failed on an initialization error.
 - The registry is an inventory/lifecycle layer only. It does not call hardware initialization callbacks; boot order remains explicit so IDT/PIC/device dependencies are visible.
 - Boot diagnostics print registry totals and each driver's ID/class/state. Dedicated runtime mode: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_DRIVER_REGISTRY_TEST=1 ./scripts/run-qemu.sh`.
-- CI registry host tests: 8/8 passed; all kernel build variants and shell syntax checks passed. Headless standard boot, PIT timer and driver-registry runtime smoke tests passed in [run 42299723267](https://github.com/mindwork64/exhiOS/actions/runs/42299723267). Local Linux Mint/QEMU registry verification remains pending.
+- CI registry host tests: 8/8 passed; all kernel build variants and shell syntax checks passed. Headless standard boot, PIT timer and driver-registry runtime smoke tests passed on the self-hosted runner in [run 42301446350](https://github.com/mindwork64/exhiOS/actions/runs/42301446350).
+- Local Linux Mint/QEMU (2026-11-06): registered=3, initialized=1, failed=0; COM1 is Initialized, PIT and i8042 PS/2 keyboard are Registered. Registry runtime pass marker printed and QEMU exited with status 33.
 
 
 New no_std crate: `exhi-input`; hardware driver: `exhi-kernel/src/arch/x86_64/keyboard.rs`.
@@ -256,3 +257,15 @@ New no_std crate: `exhi-input`; hardware driver: `exhi-kernel/src/arch/x86_64/ke
 - Host unit tests: 6/6 passed. CI also built the keyboard-enabled kernel variant in [run 42278708100](https://github.com/mindwork64/exhiOS/actions/runs/42278708100).
 - Interactive mode: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_KEYBOARD_TEST=1 ./scripts/run-qemu.sh`. Click the QEMU display, type keys, then hold Ctrl and press D. The kernel prints event transitions and dropped-byte count, masks IRQ1 and requests QEMU debug-exit.
 - Local Linux Mint/QEMU runtime (2026-11-06): i8042 config 0x65, IRQ1 gate valid, keyboard events received for letters, Enter, Backspace and arrows; Ctrl+D was decoded with ctrl=true, 28 transitions total, zero dropped scan codes, IRQ1 masked again and QEMU status 33. No separate Shift event appears in this log; Shift decoding has host-test coverage. This initial driver supports legacy PS/2 only; USB HID enumeration and keyboard-layout/character translation are future work.
+
+
+## P4.1 — Task model and scheduler core (CI validation pending)
+
+New no_std crate: `exhi-task`.
+- `TaskId` is monotonically assigned within a scheduler. A reaped task slot may be reused, but an identifier is never reused.
+- Each fixed-size task record stores a static name, lifecycle state and opaque `TaskContext` containing the architecture-prepared saved stack pointer.
+- `Scheduler<const CAPACITY>` is a fixed-capacity, allocation-free round-robin policy core.
+- States: Ready, Running, Blocked and Finished. APIs cover spawn, start, cooperative yield, block/wake, finish and reap.
+- Invalid zero stack pointers, capacity overflow, unknown tasks and illegal state transitions are rejected.
+- This slice does not allocate kernel stacks or switch CPU registers. x86-64 initial stack frames/context switching and two-task QEMU proof are P4.2.
+- Tasks remain Ring 0 and share the kernel address space. No user-mode isolation or timer preemption is claimed.

@@ -14,7 +14,7 @@
 - Registry validates capacity, duplicate IDs, unknown IDs and state transitions; supports lookup, iteration and counts without heap allocation.
 - COM1, PIT channel 0 and PS/2 keyboard now expose descriptors. Kernel startup registers all three; serial is initialized early, while PIT and keyboard transition only after their respective hardware init succeeds.
 - Boot diagnostics print registry summary and each entry.
-- Host tests passed 8/8; CI `bash -n` validation, all kernel feature variants and headless QEMU smoke tests (standard boot, PIT timer and registry runtime) passed in [run 42299723267](https://github.com/mindwork64/exhiOS/actions/runs/42299723267). Local Linux Mint/QEMU registry confirmation remains pending.
+- Host tests passed 8/8; CI `bash -n` validation, all kernel feature variants and headless QEMU smoke tests (standard boot, PIT timer and registry runtime) passed in [run 42299723267](https://github.com/mindwork64/exhiOS/actions/runs/42299723267). User local Linux Mint/QEMU log (2026-11-06): registered=3/initialized=1/failed=0; COM1 Initialized, PIT and PS/2 Registered; registry runtime pass marker and QEMU status 33. P3.5 is closed.
 
 
 
@@ -354,3 +354,17 @@ Implementation:
 - `EXHIOS_TIMER_TEST=1` combined with `EXHIOS_QEMU_EXIT_TEST=1` selects the isolated timer test variant and controlled QEMU shutdown. It deliberately skips the P2.6 guard-fault trigger so the timer can execute; the ordinary debug-exit variant continues to run the full P2.6 guard/#DF/IST1 test.
 - CI run [42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072) passed all host tests, all kernel build variants, the standard headless P2.6 runtime test and the second PIT IRQ0 timer runtime test. Timer output confirmed five delivered ticks, IRQ0 remasked, and debug-exit status 33.
 - User-local Linux Mint/QEMU validation of P3.3 remains pending.
+
+
+## 2026-11-07 — P3.5 local acceptance and self-hosted CI
+
+- User supplied the P3.5 QEMU serial log: exactly three registered drivers, one Initialized (COM1) and zero Failed; PIT and PS/2 stay Registered in registry-only mode.
+- The dedicated registry smoke test printed its pass marker and QEMU exited with expected status 33. P3.5 is now closed locally and in CI.
+- Main CI moved from GitHub-hosted ubuntu-latest to the user's self-hosted Linux x64 runner. Per-job apt installation was removed; preflight checks verify installed dependencies. ELF inspection uses LC_ALL=C to avoid host locale differences.
+- Self-hosted run [42301446350](https://github.com/mindwork64/exhiOS/actions/runs/42301446350) passed host tests/build variants and headless standard, PIT and registry QEMU tests.
+
+## 2026-11-07 — P4.1 task model and scheduler core
+
+- Added the host-testable no_std `exhi-task` crate.
+- Added monotonic TaskId allocation, fixed-capacity task table, opaque saved-RSP contexts and Ready/Running/Blocked/Finished lifecycle.
+- Added round-robin cooperative yield, block/wake, finish and reap policy. This slice does not yet allocate task stacks or switch CPU context; those belong to P4.2.
