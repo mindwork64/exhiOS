@@ -11,7 +11,9 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use exhi_task::{ScheduleDecision, Scheduler, TaskContext, TaskId};
 
-use super::{gdt, paging, serial, timer, vmm};
+use super::{gdt, paging, serial, vmm};
+#[cfg(feature = "task-accounting-smoke-test")]
+use super::timer;
 
 const TASK_COUNT: usize = 2;
 const PAGE_SIZE: usize = 4096;
@@ -260,10 +262,11 @@ pub fn timer_accounting_smoke_test() -> bool {
     }
 
     serial::COM1.write(b"P4.3: starting two tasks with IRQ0 enabled; no IRQ-side scheduling.\r\n");
+    // Keep IF clear while the assembly switch restores another task context.
+    // Individual tasks enable interrupts only while waiting for PIT ticks.
     // SAFETY: The PIT is programmed, IRQ0 has a valid IDT gate and the PIC
-    // unmasks only IRQ0. The ISR only updates the atomic tick count and EOI.
+    // unmasks only IRQ0. Its ISR only updates the atomic tick count and EOI.
     unsafe {
-        asm!("sti", options(nomem, nostack, preserves_flags));
         exhi_context_switch(ptr::addr_of_mut!(BOOT_STACK_POINTER), a_initial_rsp);
         asm!("cli", options(nomem, nostack, preserves_flags));
     }
@@ -419,10 +422,18 @@ fn account_current_runtime() -> bool {
 
 #[cfg(feature = "task-accounting-smoke-test")]
 fn yield_current_accounted() {
+    // Do not permit IRQ0 to interrupt the register/stack restore sequence.
+    // The resumed task re-enables interrupts after its context switch returns.
+    unsafe {
+        asm!("cli", options(nomem, nostack, preserves_flags));
+    }
     if !account_current_runtime() {
         task_fatal(b"P4.3: could not account current task runtime.\r\n");
     }
     yield_current();
+    unsafe {
+        asm!("sti", options(nomem, nostack, preserves_flags));
+    }
 }
 
 #[cfg(feature = "task-accounting-smoke-test")]
@@ -449,6 +460,11 @@ fn yield_current() {
 /// Called by the assembly bootstrap after a task entry function returns.
 #[no_mangle]
 pub extern "sysv64" fn exhi_task_finished() -> ! {
+    #[cfg(feature = "task-accounting-smoke-test")]
+    unsafe {
+        asm!("cli", options(nomem, nostack, preserves_flags));
+    }
+
     #[cfg(feature = "task-accounting-smoke-test")]
     if !account_current_runtime() {
         task_fatal(b"P4.3: could not account final task runtime.\r\n");
