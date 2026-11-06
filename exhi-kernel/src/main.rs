@@ -509,10 +509,14 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     serial::COM1.write(b"ExhiOS: kernel handoff successful.\r\n");
 
     #[cfg(feature = "serial-rx-smoke-test")]
-    serial_rx_smoke_test();
-
-    #[cfg(feature = "qemu-debug-exit-smoke-test")]
     {
+        serial_rx_smoke_test()
+    }
+
+    #[cfg(not(feature = "serial-rx-smoke-test"))]
+    {
+        #[cfg(feature = "qemu-debug-exit-smoke-test")]
+        {
         serial::COM1.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
         // SAFETY: The QEMU test script attaches isa-debug-exit at port 0xF4.
         // Writing value 0x10 makes QEMU terminate with status (0x10 << 1) | 1.
@@ -527,10 +531,11 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         serial::COM1.write(b"QEMU debug-exit: device did not terminate the guest.\r\n");
     }
 
-    serial::COM1.write(b"ExhiOS: interrupts remain disabled until IRQ handlers are installed.\r\n");
-    serial::COM1.write(b"ExhiOS: halt loop entered.\r\n");
+        serial::COM1.write(b"ExhiOS: interrupts remain disabled until IRQ handlers are installed.\r\n");
+        serial::COM1.write(b"ExhiOS: halt loop entered.\r\n");
 
-    halt_forever()
+        halt_forever()
+    }
 }
 
 /// Fatal CPU-exception entry called by the assembly stubs.
