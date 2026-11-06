@@ -36,7 +36,7 @@
 - P2.6 is closed; only the P3.1 typed-byte RX test remains pending.
 
 ## Следующие действия
-1. Проверить результат текущего CI для commit 6014dec: сборка обычного ядра и нового `serial-rx-smoke-test` варианта, затем headless QEMU regression.
+1. CI build job для commit 6014dec уже прошёл, включая новую сборку `serial-rx-smoke-test` ([run 42268731034](https://github.com/mindwork64/exhiOS/actions/runs/42268731034)); дождаться завершения headless QEMU regression job.
 2. Пользовательская проверка latest main:
    ```bash
    git fetch origin

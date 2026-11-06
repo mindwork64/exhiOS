@@ -173,7 +173,7 @@ Driver implementation: [d1ea614](https://github.com/mindwork64/exhiOS/commit/d1e
 - TX: write_byte, write and fixed-width hexadecimal output. Local boot log (2026-11-06) confirms COM1 output.
 - RX: non-blocking try_read_byte and polling read_byte_blocking.
 - Opt-in diagnostic mode: set EXHIOS_SERIAL_RX_TEST=1 before ./scripts/run-qemu.sh. It echoes printable bytes, handles Enter/Backspace and exits the test loop on Ctrl+D after reporting the received byte count.
-- CI confirms the ordinary and debug-exit kernel variants; interactive RX variant compilation is pending its newly triggered CI run. CI QEMU doesn't inject terminal bytes, so successful compilation isn't RX runtime proof.
+- CI's build job passed for the ordinary, exception, debug-exit and interactive RX kernel variants in [run 42268731034](https://github.com/mindwork64/exhiOS/actions/runs/42268731034). Its headless QEMU regression job is still running. CI QEMU doesn't inject terminal bytes, so successful compilation isn't RX runtime proof.
 - Actual local typed input remains unverified.
 
 ## Wiki и автоматическая синхронизация

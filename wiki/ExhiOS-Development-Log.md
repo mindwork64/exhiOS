@@ -267,4 +267,4 @@ Commits:
 
 The opt-in mode blocks on `SerialPort::read_byte_blocking`, echoes printable ASCII, supports Enter and Backspace echo, and reports the number of received bytes when Ctrl+D is received. It is intentionally a diagnostic byte-echo loop, not a command shell or line editor. Normal boot and automated QEMU debug-exit behavior remain separate.
 
-The user's 2026-11-06 local log confirms COM1 TX and the full P2.6 guard/#DF/IST1 test. Actual typed-byte RX validation is still pending. CI compilation of the new feature and the latest QEMU regression are tracked by workflow run [42268731034](https://github.com/mindwork64/exhiOS/actions/runs/42268731034); this entry must not be interpreted as an RX runtime pass.
+The user's 2026-11-06 local log confirms COM1 TX and the full P2.6 guard/#DF/IST1 test. Actual typed-byte RX validation is still pending. The interactive RX feature build passed in workflow run [42268731034](https://github.com/mindwork64/exhiOS/actions/runs/42268731034); its headless QEMU regression job is still in progress. Neither build nor headless regression validates receipt of keyboard bytes.

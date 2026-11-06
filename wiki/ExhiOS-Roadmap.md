@@ -102,7 +102,7 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] Local Linux Mint/QEMU boot log (2026-11-06) shows the P3.1 readiness marker and successful COM1 diagnostic output.
 - [x] Headless QEMU/OVMF regression: [run 42257896620](https://github.com/mindwork64/exhiOS/actions/runs/42257896620), including the P2.6 guard-page/#DF/IST1 check.
 - [x] RX-inclusive driver build + headless QEMU/OVMF regression: [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) passed; CI does not inject serial input.
-- [x] Added opt-in interactive byte-echo test mode: `EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh`; it echoes printable input, handles Enter/Backspace and reports the received byte count on Ctrl+D. CI compilation and local RX runtime are tracked separately.
+- [x] Added opt-in interactive byte-echo test mode: `EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh`; it echoes printable input, handles Enter/Backspace and reports the received byte count on Ctrl+D. The feature build passed in CI run [42268731034](https://github.com/mindwork64/exhiOS/actions/runs/42268731034); local RX runtime remains pending.
 - [ ] Local Linux Mint/QEMU test with actual typed input.
 
 ### P3.2 — Framebuffer console
