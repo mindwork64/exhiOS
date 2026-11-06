@@ -9,7 +9,6 @@ QEMU_EXIT_TEST="${EXHIOS_QEMU_EXIT_TEST:-0}"
 HEADLESS_TEST="${EXHIOS_HEADLESS:-0}"
 TIMER_TEST="${EXHIOS_TIMER_TEST:-0}"
 KEYBOARD_TEST="${EXHIOS_KEYBOARD_TEST:-0}"
-KEYBOARD_TEST="${EXHIOS_KEYBOARD_TEST:-0}"
 DRIVER_REGISTRY_TEST="${EXHIOS_DRIVER_REGISTRY_TEST:-0}"
 SERIAL_RX_TEST="${EXHIOS_SERIAL_RX_TEST:-0}"
 
@@ -129,10 +128,6 @@ if [[ "$HEADLESS_TEST" == "1" ]]; then
     QEMU_ARGS+=(-display none -monitor none)
 fi
 
-if [[ "$KEYBOARD_TEST" == "1" ]]; then
-    echo "Starting ExhiOS interactive PS/2 keyboard IRQ1 smoke test."
-    QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
-elif [[ "$TIMER_TEST" == "1" ]]; then
 if [[ "$DRIVER_REGISTRY_TEST" == "1" ]]; then
     echo "Starting ExhiOS driver registry runtime smoke test."
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
