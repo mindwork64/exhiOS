@@ -173,7 +173,7 @@ pub fn initialize() -> IdtStatus {
 /// The faulting address is in the reserved, unmapped upper part of the current
 /// lower-canonical kernel window. This function never returns on success.
 #[cfg(feature = "qemu-debug-exit-smoke-test")]
-pub fn trigger_double_fault_smoke_test() -> ! {
+pub fn trigger_double_fault_smoke_test() {
     const UNMAPPED_PROBE: u64 = 0x0000_007F_FFFF_F000;
 
     // Confirm the probe is absent before disabling the #PF gate. A mistaken
