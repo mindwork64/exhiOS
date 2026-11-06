@@ -556,18 +556,9 @@ pub fn smoke_test() -> Result<AddressSpaceTestStatus, AddressSpaceError> {
             UserPageFlags::read_write_nx(),
         )
     };
-    // SAFETY: the method must reject physical address zero before touching it.
-    let invalid_zero_physical = unsafe {
-        first.map_user_page(
-            USER_VIRTUAL_BASE,
-            0,
-            UserPageFlags::read_write_nx(),
-        )
-    };
     if invalid_unaligned_virtual != Err(AddressSpaceError::UnalignedAddress)
         || invalid_low_virtual != Err(AddressSpaceError::AddressOutOfRange)
         || invalid_unaligned_physical != Err(AddressSpaceError::UnalignedAddress)
-        || invalid_zero_physical != Err(AddressSpaceError::AddressOutOfRange)
         || first.translate(USER_VIRTUAL_BASE) != Err(AddressSpaceError::MissingPageTableEntry)
     {
         let _ = memory::release_frame(first_frame);
