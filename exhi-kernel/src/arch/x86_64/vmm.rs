@@ -107,6 +107,7 @@ pub enum VmmError {
     UnsupportedOneGiBPage,
     OutOfPhysicalFrames,
     InvalidPhysicalFrame,
+    PhysicalFrameReleaseFailed,
     NxNotSupported,
 }
 
@@ -125,6 +126,7 @@ impl VmmError {
             Self::UnsupportedOneGiBPage => b"1 GiB page entries are not supported by this VMM",
             Self::OutOfPhysicalFrames => b"physical frame allocator cannot provide a page-table frame",
             Self::InvalidPhysicalFrame => b"physical allocator returned an invalid page-table frame",
+            Self::PhysicalFrameReleaseFailed => b"page-table frame could not be safely returned to the allocator",
             Self::NxNotSupported => b"CPU does not support the NX page-table permission",
         }
     }
@@ -318,6 +320,98 @@ pub fn query_page(virtual_address: u64) -> Result<PageMapping, VmmError> {
         physical_page: entry & PAGE_TABLE_ADDRESS_MASK,
         flags: flags_from_entry(entry),
     })
+}
+
+
+/// Attempts to collapse a complete 2 MiB region of equivalent 4 KiB entries.
+///
+/// The operation succeeds only when all 512 leaves are present, physically
+/// contiguous, 2 MiB aligned and have identical permissions/cache attributes.
+/// Accessed and dirty bits may differ and are merged. After installing the
+/// huge-page entry, every 4 KiB address in the region is invalidated before
+/// the now-unreferenced page-table frame is returned to the physical allocator.
+pub fn try_coalesce_large_page(virtual_address: u64) -> Result<bool, VmmError> {
+    ensure_ready()?;
+    ensure_interrupts_disabled()?;
+    if virtual_address >= IDENTITY_MAP_LIMIT {
+        return Err(VmmError::AddressOutOfRange);
+    }
+
+    let path = walk_to_directory(virtual_address)?;
+    if path.directory_entry & PRESENT == 0 {
+        return Ok(false);
+    }
+    if path.directory_entry & PAGE_SIZE_BIT != 0 {
+        return Ok(true);
+    }
+
+    let table_address = path.directory_entry & PAGE_TABLE_ADDRESS_MASK;
+    if table_address == 0 || table_address % PAGE_SIZE != 0 {
+        return Err(VmmError::InvalidPhysicalFrame);
+    }
+
+    // A 4 KiB PAT bit is bit 7; in a 2 MiB PDE, PAT moves to bit 12.
+    const LEAF_ATTRIBUTES: u64 =
+        PRESENT | WRITABLE | USER | WRITE_THROUGH | CACHE_DISABLE | GLOBAL | NO_EXECUTE | PAGE_PAT;
+    const HARDWARE_STATUS: u64 = ACCESSED | DIRTY;
+
+    let first = unsafe { read_entry(table_address, 0) };
+    if first & PRESENT == 0 {
+        return Ok(false);
+    }
+
+    let physical_base = first & PAGE_TABLE_ADDRESS_MASK;
+    if physical_base % TWO_MIB != 0 {
+        return Ok(false);
+    }
+
+    let common_attributes = first & LEAF_ATTRIBUTES;
+    let mut hardware_status = first & HARDWARE_STATUS;
+
+    for index in 0..512usize {
+        let entry = unsafe { read_entry(table_address, index) };
+        if entry & PRESENT == 0 {
+            return Ok(false);
+        }
+
+        let expected_physical = physical_base + index as u64 * PAGE_SIZE;
+        if entry & PAGE_TABLE_ADDRESS_MASK != expected_physical {
+            return Ok(false);
+        }
+
+        if entry & LEAF_ATTRIBUTES != common_attributes {
+            return Ok(false);
+        }
+
+        hardware_status |= entry & HARDWARE_STATUS;
+    }
+
+    let mut large_entry = physical_base
+        | (common_attributes & !PAGE_PAT)
+        | hardware_status
+        | PAGE_SIZE_BIT;
+    if common_attributes & PAGE_PAT != 0 {
+        large_entry |= LARGE_PAGE_PAT;
+    }
+
+    write_entry(
+        path.directory_address,
+        path.directory_index,
+        large_entry,
+    );
+
+    let virtual_base = virtual_address & !(TWO_MIB - 1);
+    for index in 0..512u64 {
+        invalidate_page(virtual_base + index * PAGE_SIZE);
+    }
+
+    // The PDE no longer references the table and no translation in this
+    // 2 MiB region can retain a walk through it. This kernel is single-core;
+    // IF is clear, so no concurrent page walker can be using the old table.
+    memory::release_frame(table_address)
+        .map_err(|_| VmmError::PhysicalFrameReleaseFailed)?;
+
+    Ok(true)
 }
 
 struct DirectoryPath {

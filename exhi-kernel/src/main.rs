@@ -352,7 +352,24 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
 
             serial_write(b"P2.3: 2 MiB page split into 4 KiB entries.\r\n");
             serial_write(b"P2.3: RW supervisor NX map, read/write, unmap and TLB invalidation verified.\r\n");
-            serial_write(b"P2.3: original identity mapping restored; page-table frame retained.\r\n");
+            match vmm::try_coalesce_large_page(VMM_SMOKE_VIRTUAL_PAGE) {
+                Ok(true) => {}
+                Ok(false) => {
+                    serial_write(b"P2.3: equivalent 4 KiB entries could not be coalesced.\r\n");
+                    halt_forever();
+                }
+                Err(error) => {
+                    serial_write(b"P2.3: safe page-table reclamation failed: ");
+                    serial_write(error.message());
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            }
+            if paging::translate_current(VMM_SMOKE_VIRTUAL_PAGE) != Ok(original_frame) {
+                serial_write(b"P2.3: huge-page coalescing changed the physical mapping.\r\n");
+                halt_forever();
+            }
+            serial_write(b"P2.3: original identity mapping restored; page-table frame safely reclaimed.\r\n");
             serial_write(b"P2.3: virtual memory manager 4 KiB mapping smoke test passed.\r\n");
 
         } else {
