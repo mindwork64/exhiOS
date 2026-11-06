@@ -2,6 +2,7 @@
 #![no_std]
 
 mod arch;
+mod heap;
 mod memory;
 
 use arch::x86_64::{gdt, idt, paging, pic, vmm};

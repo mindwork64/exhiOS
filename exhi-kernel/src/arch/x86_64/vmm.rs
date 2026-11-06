@@ -625,12 +625,12 @@ fn ensure_interrupts_disabled() -> Result<(), VmmError> {
 }
 
 fn enable_nx() -> bool {
-    let maximum = unsafe { __cpuid(0x8000_0000) };
+    let maximum = __cpuid(0x8000_0000);
     if maximum.eax < 0x8000_0001 {
         return false;
     }
 
-    let features = unsafe { __cpuid(0x8000_0001) };
+    let features = __cpuid(0x8000_0001);
     if features.edx & (1 << 20) == 0 {
         return false;
     }
