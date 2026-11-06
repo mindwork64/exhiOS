@@ -234,6 +234,8 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial_write(if vmm_status.nx_enabled { b"enabled" } else { b"unavailable" });
             serial_write(b"\r\nVMM identity-map limit: 0x");
             serial_write_hex(vmm_status.identity_map_limit);
+            serial_write(b"\r\nVMM virtual-address limit: 0x");
+            serial_write_hex(vmm_status.virtual_address_limit);
             serial_write(b"\r\n");
 
             // Exercise a page inside an otherwise unused 1 GiB virtual range.
@@ -475,6 +477,28 @@ fn exception_name(vector: u64) -> &'static [u8] {
         30 => b"Security Exception",
         31 => b"Reserved",
         _ => b"Unknown CPU exception",
+    }
+}
+
+
+fn heap_init_error_message(error: heap::HeapInitError) -> &'static [u8] {
+    match error {
+        heap::HeapInitError::AlreadyInitialized => b"heap was already initialized",
+        heap::HeapInitError::OutOfVirtualSpace => b"heap virtual range exhausted",
+        heap::HeapInitError::OutOfPhysicalFrames => b"physical frame allocator exhausted",
+        heap::HeapInitError::InvalidPhysicalFrame => b"physical allocator returned an invalid frame",
+        heap::HeapInitError::Vmm(error) => error.message(),
+        heap::HeapInitError::Heap(_) => b"heap region registration failed",
+    }
+}
+
+fn heap_test_error_message(error: heap::HeapTestError) -> &'static [u8] {
+    match error {
+        heap::HeapTestError::NotInitialized => b"heap is not initialized",
+        heap::HeapTestError::AllocationFailed => b"allocation returned null",
+        heap::HeapTestError::DataMismatch => b"alignment or memory contents mismatch",
+        heap::HeapTestError::ReuseMismatch => b"freed allocation was not reused",
+        heap::HeapTestError::FreeListNotCoalesced => b"free blocks did not coalesce",
     }
 }
 

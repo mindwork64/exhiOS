@@ -1,5 +1,5 @@
 [workspace]
-members = ["exhi-abi", "exhi-elf", "exhi-boot", "exhi-kernel", "exhi-memory"]
+members = ["exhi-abi", "exhi-elf", "exhi-boot", "exhi-kernel", "exhi-memory", "exhi-heap"]
 resolver = "2"
 
 [workspace.package]
@@ -11,6 +11,7 @@ uefi = { version = "0.41.0", default-features = false, features = ["panic_handle
 exhi-abi = { path = "exhi-abi" }
 exhi-elf = { path = "exhi-elf" }
 exhi-memory = { path = "exhi-memory" }
+exhi-heap = { path = "exhi-heap" }
 
 [profile.dev]
 panic = "abort"

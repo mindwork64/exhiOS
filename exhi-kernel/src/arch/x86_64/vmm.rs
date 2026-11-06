@@ -8,6 +8,7 @@ use crate::memory;
 const PAGE_SIZE: u64 = 4096;
 const TWO_MIB: u64 = 0x20_0000;
 const IDENTITY_MAP_LIMIT: u64 = 0x1_0000_0000;
+const VIRTUAL_ADDRESS_LIMIT: u64 = 0x0000_0080_0000_0000;
 
 const PRESENT: u64 = 1 << 0;
 const WRITABLE: u64 = 1 << 1;
@@ -91,6 +92,7 @@ pub struct VmmStatus {
     pub page_size: u64,
     pub nx_enabled: bool,
     pub identity_map_limit: u64,
+    pub virtual_address_limit: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -118,7 +120,7 @@ impl VmmError {
             Self::AlreadyInitialized => b"virtual memory manager is already initialized",
             Self::PagingNotReady => b"bootstrap paging is not active",
             Self::InterruptsEnabled => b"interrupts must remain disabled during VMM operations",
-            Self::AddressOutOfRange => b"virtual or physical address is outside the initial 4 GiB range",
+            Self::AddressOutOfRange => b"virtual address is outside the lower 512 GiB window or physical address is outside the first 4 GiB",
             Self::UnalignedAddress => b"page mapping address is not 4 KiB aligned",
             Self::AlreadyMapped => b"virtual page is already mapped",
             Self::NotMapped => b"virtual page is not mapped",
@@ -134,8 +136,9 @@ impl VmmError {
 
 /// Enables the VMM after bootstrap paging has installed the kernel CR3.
 ///
-/// The initial implementation manages 4 KiB leaves within the bootstrap
-/// identity-mapped 0..4 GiB range. It deliberately retains page-table frames
+/// Physical frames remain restricted to the bootstrap identity-mapped 0..4 GiB
+/// range, while virtual mappings may use the lower canonical 512 GiB window.
+/// Missing PDPT entries are created on demand. It deliberately retains page-table frames
 /// after unmapping: reclaiming a table is safe only after proving that every
 /// entry is empty and no CPU can still walk or cache it.
 pub fn initialize() -> Result<VmmStatus, VmmError> {
@@ -163,6 +166,7 @@ pub fn initialize() -> Result<VmmStatus, VmmError> {
         page_size: PAGE_SIZE,
         nx_enabled,
         identity_map_limit: IDENTITY_MAP_LIMIT,
+        virtual_address_limit: VIRTUAL_ADDRESS_LIMIT,
     })
 }
 
@@ -178,8 +182,8 @@ pub fn map_page(
 ) -> Result<(), VmmError> {
     ensure_ready()?;
     ensure_interrupts_disabled()?;
-    validate_page_address(virtual_address)?;
-    validate_page_address(physical_address)?;
+    validate_virtual_page_address(virtual_address)?;
+    validate_physical_page_address(physical_address)?;
 
     // NX is opt-in at the leaf. Do not set the reserved bit on CPUs that lack
     // NX support or have not enabled EFER.NXE.
@@ -187,7 +191,7 @@ pub fn map_page(
         return Err(VmmError::NxNotSupported);
     }
 
-    let path = walk_to_directory(virtual_address)?;
+    let path = walk_to_directory_for_mapping(virtual_address)?;
     if path.directory_entry & PRESENT != 0 && path.directory_entry & PAGE_SIZE_BIT != 0 {
         // A 2 MiB leaf already covers this address. The caller must explicitly
         // unmap the 4 KiB page first; silently replacing it would hide a map.
@@ -259,7 +263,7 @@ pub fn map_page(
 pub fn unmap_page(virtual_address: u64) -> Result<u64, VmmError> {
     ensure_ready()?;
     ensure_interrupts_disabled()?;
-    validate_page_address(virtual_address)?;
+    validate_virtual_page_address(virtual_address)?;
 
     let path = walk_to_directory(virtual_address)?;
     if path.directory_entry & PRESENT == 0 {
@@ -287,7 +291,7 @@ pub fn unmap_page(virtual_address: u64) -> Result<u64, VmmError> {
 /// Returns the current 4 KiB mapping and effective leaf flags for an address.
 pub fn query_page(virtual_address: u64) -> Result<PageMapping, VmmError> {
     ensure_ready()?;
-    if virtual_address >= IDENTITY_MAP_LIMIT {
+    if virtual_address >= VIRTUAL_ADDRESS_LIMIT {
         return Err(VmmError::AddressOutOfRange);
     }
 
@@ -333,7 +337,7 @@ pub fn query_page(virtual_address: u64) -> Result<PageMapping, VmmError> {
 pub fn try_coalesce_large_page(virtual_address: u64) -> Result<bool, VmmError> {
     ensure_ready()?;
     ensure_interrupts_disabled()?;
-    if virtual_address >= IDENTITY_MAP_LIMIT {
+    if virtual_address >= VIRTUAL_ADDRESS_LIMIT {
         return Err(VmmError::AddressOutOfRange);
     }
 
@@ -426,8 +430,50 @@ struct DirectoryPath {
     directory_entry: u64,
 }
 
+fn walk_to_directory_for_mapping(virtual_address: u64) -> Result<DirectoryPath, VmmError> {
+    if virtual_address >= VIRTUAL_ADDRESS_LIMIT {
+        return Err(VmmError::AddressOutOfRange);
+    }
+
+    let root_address = read_cr3() & PAGE_TABLE_ADDRESS_MASK;
+    let pml4_index = ((virtual_address >> 39) & 0x1FF) as usize;
+    let pdpt_index = ((virtual_address >> 30) & 0x1FF) as usize;
+    let directory_index = ((virtual_address >> 21) & 0x1FF) as usize;
+
+    let pml4_entry = unsafe { read_entry(root_address, pml4_index) };
+    if pml4_entry & PRESENT == 0 {
+        return Err(VmmError::MissingPageTableEntry);
+    }
+
+    let pdpt_address = pml4_entry & PAGE_TABLE_ADDRESS_MASK;
+    let mut pdpt_entry = unsafe { read_entry(pdpt_address, pdpt_index) };
+    if pdpt_entry & PRESENT == 0 {
+        let directory_frame = allocate_zeroed_table()?;
+        pdpt_entry = directory_frame | PRESENT | WRITABLE;
+        write_entry(pdpt_address, pdpt_index, pdpt_entry);
+    }
+    if pdpt_entry & PAGE_SIZE_BIT != 0 {
+        return Err(VmmError::UnsupportedOneGiBPage);
+    }
+
+    let directory_address = pdpt_entry & PAGE_TABLE_ADDRESS_MASK;
+    let directory_entry = unsafe { read_entry(directory_address, directory_index) };
+
+    Ok(DirectoryPath {
+        root_address,
+        pml4_index,
+        pml4_entry,
+        pdpt_address,
+        pdpt_index,
+        pdpt_entry,
+        directory_address,
+        directory_index,
+        directory_entry,
+    })
+}
+
 fn walk_to_directory(virtual_address: u64) -> Result<DirectoryPath, VmmError> {
-    if virtual_address >= IDENTITY_MAP_LIMIT {
+    if virtual_address >= VIRTUAL_ADDRESS_LIMIT {
         return Err(VmmError::AddressOutOfRange);
     }
 
@@ -530,7 +576,17 @@ fn allocate_zeroed_table() -> Result<u64, VmmError> {
     Ok(frame)
 }
 
-fn validate_page_address(address: u64) -> Result<(), VmmError> {
+fn validate_virtual_page_address(address: u64) -> Result<(), VmmError> {
+    if address % PAGE_SIZE != 0 {
+        return Err(VmmError::UnalignedAddress);
+    }
+    if address >= VIRTUAL_ADDRESS_LIMIT {
+        return Err(VmmError::AddressOutOfRange);
+    }
+    Ok(())
+}
+
+fn validate_physical_page_address(address: u64) -> Result<(), VmmError> {
     if address % PAGE_SIZE != 0 {
         return Err(VmmError::UnalignedAddress);
     }
