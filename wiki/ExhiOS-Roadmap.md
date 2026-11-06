@@ -65,23 +65,29 @@
 Границы текущего результата: smoke test проверяет раздельные mappings, CR3 switching и supervisor-only policy на Ring 0. Он ещё не доказывает выполнение кода в CPL3 или аппаратное блокирование доступа пользователя к supervisor pages.
 
 ### P2.5.1 Address-space lifecycle and mapping hardening
-**Реализация закоммичена; CI и локальный QEMU runtime ещё не подтверждены.**
+**Завершено; headless CI/OVMF и локальный Linux Mint/QEMU подтверждены 2026-11-06.**
 - [x] Guard для вызовов после уничтожения AddressSpace: методы не должны разыменовывать освобождённый root; повторный destroy идемпотентен.
 - [x] Запрет destroy активного CR3.
 - [x] Отказ от writable+executable user mappings (W^X).
 - [x] Негативные smoke tests: unaligned/out-of-window virtual address, unaligned physical address, W+X, duplicate mapping, double unmap, use-after-destroy.
 - [x] Валидация диапазона и выравнивания физических кадров вложенных page tables перед обходом.
 - [x] Двухпроходный teardown: сначала validate всего private дерева, затем освобождение с unlink-after-success и возможностью безопасной повторной попытки.
-- [ ] CI build + headless QEMU/OVMF runtime.
-- [ ] Локальный Linux Mint/QEMU runtime пользователя.
+- [x] CI build + headless QEMU/OVMF runtime: [run 42238977281](https://github.com/mindwork64/exhiOS/actions/runs/42238977281) — build и QEMU runtime jobs прошли.
+- [x] Локальный Linux Mint/QEMU пользователя (2026-11-06): все P2.5.1 negative cases завершились без ошибки внутри address-space smoke test; normal address-space test passed; debug-exit status 33.
 
-Кодовый checkpoint: [e19db15](https://github.com/mindwork64/exhiOS/commit/e19db15bf891805c2e22cb3251ebade7872bf515). Изменения P2.5.1 пока считаются незавершёнными до успешной runtime проверки.
+Кодовый checkpoint P2.5.1: [e19db15](https://github.com/mindwork64/exhiOS/commit/e19db15bf891805c2e22cb3251ebade7872bf515).
 
 ### P2.6 Exception and stack hardening
-- [ ] Kernel TSS and dedicated IST stack for double fault.
-- [ ] IDT double-fault gate uses IST; verify the fatal handler can print diagnostics without relying on the failing kernel stack.
-- [ ] Guard page below the boot kernel stack, installed only after TSS/IST is live.
-- [ ] QEMU tests for guard-page overflow and controlled double-fault handling; no triple fault.
+**TSS/IST1 and controlled double-fault test code committed; runtime validation pending.**
+- [x] Kernel 64-bit TSS descriptor in GDT; LTR installs TR; dedicated aligned 16 KiB IST1 stack.
+- [x] IDT vector 8 (#DF) gate selects IST1; status readback checks IST index.
+- [x] Exception assembly passes the normalized exception-frame pointer to the handler; #DF handler verifies that it lies inside IST1.
+- [x] QEMU debug-exit variant deliberately disables the #PF gate and touches a verified-unmapped VA, requiring the CPU to raise #DF and enter through IST1.
+- [ ] Headless CI QEMU/OVMF runtime must print the IST1 success marker and exit with status 33.
+- [ ] Local Linux Mint/QEMU confirmation.
+- [ ] Guard page below boot kernel stack — deliberately deferred until the IST path is runtime-verified.
+
+Latest implementation checkpoint: [8afcc70](https://github.com/mindwork64/exhiOS/commit/8afcc700db48047ed40314dd5ac8ffad656507fa).
 
 ## P3 — Basic devices
 - [ ] Serial abstraction, framebuffer console, timer, keyboard, driver registration.
