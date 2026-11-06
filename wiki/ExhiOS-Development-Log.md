@@ -290,4 +290,4 @@ Commits in this implementation:
 
 The console currently supports GOP format 0 (RGB-reserved) and 1 (BGR-reserved), uses the firmware stride rather than assuming stride equals visible width, validates the framebuffer byte range against the current 4 GiB identity map and writes pixels with volatile stores. The first boot screen reports the kernel banner, resolution, stride and pixel format. BitMask/BltOnly modes and cache policy are not implemented in this first slice.
 
-Host tests and all kernel build variants passed in CI workflow run [42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662); its headless QEMU runtime job is still in progress. Local visual confirmation remains pending.
+Host tests, all kernel build variants and headless QEMU/OVMF runtime passed in [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662). The serial trace printed `P3.2: framebuffer console initialized; GOP format and stride validated`, then confirmed P2.6 Double Fault/IST1 and debug-exit status 33. Local visual confirmation remains pending.
