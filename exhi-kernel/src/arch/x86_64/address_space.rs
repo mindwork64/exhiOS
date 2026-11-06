@@ -148,6 +148,7 @@ pub fn initialize() -> Result<u64, AddressSpaceError> {
     }
 
     let kernel_pdpt = pml4_entry & PAGE_TABLE_ADDRESS_MASK;
+    validate_table_frame(kernel_pdpt)?;
     for index in 0..SHARED_PDPT_ENTRIES {
         if unsafe { read_entry(kernel_pdpt, index) } & PRESENT == 0 {
             return Err(AddressSpaceError::KernelMappingMissing);
@@ -283,6 +284,7 @@ impl AddressSpace {
         }
 
         let directory_frame = pdpt_entry & PAGE_TABLE_ADDRESS_MASK;
+        validate_table_frame(directory_frame)?;
         let mut directory_entry = unsafe { read_entry(directory_frame, directory_index) };
         let mut allocated_table = false;
         if directory_entry & PRESENT == 0 {
@@ -304,6 +306,7 @@ impl AddressSpace {
         }
 
         let table_frame = directory_entry & PAGE_TABLE_ADDRESS_MASK;
+        validate_table_frame(table_frame)?;
         let existing = unsafe { read_entry(table_frame, page_index) };
         if existing & PRESENT != 0 {
             if allocated_table {
@@ -360,6 +363,7 @@ impl AddressSpace {
         }
 
         let directory_frame = pdpt_entry & PAGE_TABLE_ADDRESS_MASK;
+        validate_table_frame(directory_frame)?;
         let directory_entry = unsafe { read_entry(directory_frame, directory_index) };
         if directory_entry & PRESENT == 0 {
             return Err(AddressSpaceError::NotMapped);
@@ -369,6 +373,7 @@ impl AddressSpace {
         }
 
         let table_frame = directory_entry & PAGE_TABLE_ADDRESS_MASK;
+        validate_table_frame(table_frame)?;
         let leaf = unsafe { read_entry(table_frame, page_index) };
         if leaf & PRESENT == 0 {
             return Err(AddressSpaceError::NotMapped);
@@ -448,6 +453,7 @@ impl AddressSpace {
             }
 
             let directory_frame = pdpt_entry & PAGE_TABLE_ADDRESS_MASK;
+            validate_table_frame(directory_frame)?;
             for directory_index in 0..PAGE_ENTRIES {
                 let directory_entry = unsafe { read_entry(directory_frame, directory_index) };
                 if directory_entry & PRESENT == 0 {
@@ -458,6 +464,7 @@ impl AddressSpace {
                 }
 
                 let table_frame = directory_entry & PAGE_TABLE_ADDRESS_MASK;
+                validate_table_frame(table_frame)?;
                 release_table(table_frame)?;
             }
             release_table(directory_frame)?;
@@ -771,6 +778,7 @@ fn translate_from_root(
     }
 
     let pdpt_frame = pml4_entry & PAGE_TABLE_ADDRESS_MASK;
+    validate_table_frame(pdpt_frame)?;
     let pdpt_entry = unsafe { read_entry(pdpt_frame, pdpt_index) };
     if pdpt_entry & PRESENT == 0 {
         return Err(AddressSpaceError::MissingPageTableEntry);
@@ -780,6 +788,7 @@ fn translate_from_root(
     }
 
     let directory_frame = pdpt_entry & PAGE_TABLE_ADDRESS_MASK;
+    validate_table_frame(directory_frame)?;
     let directory_entry = unsafe { read_entry(directory_frame, directory_index) };
     if directory_entry & PRESENT == 0 {
         return Err(AddressSpaceError::MissingPageTableEntry);
@@ -803,6 +812,7 @@ fn translate_from_root(
     }
 
     let table_frame = directory_entry & PAGE_TABLE_ADDRESS_MASK;
+    validate_table_frame(table_frame)?;
     let leaf = unsafe { read_entry(table_frame, page_index) };
     if leaf & PRESENT == 0 {
         return Err(AddressSpaceError::NotMapped);
@@ -843,6 +853,13 @@ fn validate_physical_address(address: u64) -> Result<(), AddressSpaceError> {
     }
     if address == 0 || address >= PHYSICAL_LIMIT {
         return Err(AddressSpaceError::AddressOutOfRange);
+    }
+    Ok(())
+}
+
+fn validate_table_frame(frame: u64) -> Result<(), AddressSpaceError> {
+    if frame == 0 || frame >= PHYSICAL_LIMIT || frame % PAGE_SIZE != 0 {
+        return Err(AddressSpaceError::InvalidPhysicalFrame);
     }
     Ok(())
 }
