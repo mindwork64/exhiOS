@@ -113,7 +113,7 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] Every write respects `pixels_per_scan_line`, uses volatile pixel accesses and checks framebuffer size/stride/dimensions.
 - [x] Kernel validates that the GOP buffer lies inside the currently mapped 0..4 GiB identity range before creating the console.
 - [x] Host tests: RGB/BGR byte order, stride padding, invalid stride/format/buffer, wrap/scroll and decimal output.
-- [ ] Headless QEMU/OVMF boot regression for the first integrated framebuffer initialization.
+- [x] Headless QEMU/OVMF boot regression [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662): framebuffer initialization marker printed; prior address-space and P2.6 IST1/debug-exit tests also passed (status 33).
 - [ ] Local Linux Mint/QEMU visual confirmation.
 - [ ] BitMask/BltOnly pixel formats, Unicode fonts and framebuffer cache policy remain future work.
 
