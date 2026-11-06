@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: d1ea6145e4fa2c10a04e03725d7677b679cbede0 (P3.1 COM1 serial driver with polling TX/RX; kernel build passed, latest QEMU regression pending).
+Кодовый checkpoint: d1ea6145e4fa2c10a04e03725d7677b679cbede0 (P3.1 COM1 polling TX/RX; CI build + headless QEMU pass, local QEMU pending).
 
 ## Закрыто и проверено в QEMU
 
@@ -168,7 +168,7 @@ Code: [d1ea614](https://github.com/mindwork64/exhiOS/commit/d1ea6145e4fa2c10a04e
 - write/write_byte and fixed-width hexadecimal output are implemented.
 - RX: non-blocking try_read_byte and polling read_byte_blocking are implemented for the later serial shell.
 - main.rs uses serial::COM1 for all early boot and exception diagnostics; direct COM1 I/O helpers were removed from main.rs.
-- CI build for normal, exception and QEMU debug-exit kernel variants passed. The RX-inclusive headless QEMU regression run [42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) is pending in this snapshot.
+- CI build for normal, exception and QEMU debug-exit kernel variants passed. RX-inclusive headless QEMU regression [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) also passed; boot log includes the P3.1 readiness marker and the P2.6 guard-page/#DF/IST1 success marker.
 - Interactive byte reception through the user's local QEMU serial terminal has not yet been tested.
 
 ## Wiki и автоматическая синхронизация
