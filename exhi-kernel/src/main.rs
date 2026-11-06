@@ -537,7 +537,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 }
             }
 
-            #[cfg(all(feature = "qemu-debug-exit-smoke-test", not(any(feature = "timer-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test"))))]
+            #[cfg(all(feature = "qemu-debug-exit-smoke-test", not(any(feature = "timer-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test", feature = "task-accounting-smoke-test"))))]
             {
                 serial::COM1.write(b"P2.6: forcing an exception-frame write into the unmapped stack guard page.\r\n");
                 idt::trigger_double_fault_guard_stack_smoke_test(
