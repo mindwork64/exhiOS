@@ -34,10 +34,12 @@
 
 ## Paging
 - UEFI page tables сохраняются до подготовки kernel-owned tables.
-- Первый переходный map обязан сохранять доступ к kernel, stack, BootInfo, memory map, table frames и используемым framebuffer/ACPI адресам.
-- Bootstrap identity mapping 0–4 GiB через 2 MiB pages — временное решение, не конечная защита.
-- W^X, user/supervisor isolation и process address spaces пока не реализованы.
-- `paging.rs` в HEAD 572cce506… — черновик, ещё не экспортирован и не запущен.
+- Первая карта identity-maps первые 4 GiB; все используемые kernel/firmware handoff ranges должны укладываться в этот диапазон.
+- Bootstrap tables живут в выровненном kernel .bss, поскольку произвольные Conventional Memory frames нельзя безопасно разыменовывать до первого kernel-owned mapping.
+- CR3 switch выполняется при IF=0; перед и после него проверяются code, stack, BootInfo, memory map, framebuffer, ACPI, GDT, IDT и таблицы.
+- Bootstrap identity mapping использует 2 MiB RW supervisor pages и является временной, не конечной защитой.
+- W^X, user/supervisor isolation, cache attributes и process address spaces — будущие этапы.
+- Физический allocator может снабжать динамические таблицы после включения kernel identity map.
 
 ## Правила разработки
 - Не закрывать этап только по CI.

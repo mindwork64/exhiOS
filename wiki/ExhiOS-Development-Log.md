@@ -24,8 +24,17 @@ PIC masks master/slave прочитаны как 0xFF. isa-debug-exit завер
 ## P2.1 — Physical allocator
 Отдельный no_std crate `exhi-memory`; descriptor version 1, реальный stride 48; 7 host tests. QEMU: 127 descriptors, 118 837 managed Conventional pages, 159 low pages ignored, frame 0x14C000 выделен/освобождён/повторно выдан. Debug-exit status 33.
 
-## P2.2 — Bootstrap page tables (draft)
-HEAD `572cce506098b2465497a34cc0b00b7fa5b1aefd` добавил `exhi-kernel/src/arch/x86_64/paging.rs`: PML4+PDPT+4 PD, 2 MiB identity map 0–4 GiB, CR3 switch и translation probes. На момент этой записи модуль не экспортирован, не вызывается и не тестировался.
+## P2.2 — Bootstrap page tables (integrated; runtime pending)
+Commit [6ae6826](https://github.com/mindwork64/exhiOS/commit/6ae6826ac5e9ad9969efa907d438571444942dec) экспортирует paging module и подключает его к kernel startup после P2.1.
+- Six 4 KiB page-table pages in aligned kernel BSS (not allocator frames).
+- PML4 → PDPT → 4 PD; 2 MiB identity map of 0..4 GiB.
+- Preflight checks: CPU paging state, IF clear and bounds for code, stack, BootInfo, UEFI map, framebuffer, ACPI RSDP, GDT, IDT and table storage.
+- Build/translate checks run before CR3 switch; the same ranges are checked again after switch.
+- Kernel reports CR3/root and separately translates its entry point.
+
+CI run 42204902818 succeeded for ABI, ELF, memory allocator tests, UEFI build, default kernel, exception variant, debug-exit variant and ET_EXEC check. The first successful run showed one redundant assignment warning and two unused allocator helper warnings; a cleanup commit removes them.
+
+No QEMU runtime evidence yet. P2.2 stays open until the user's QEMU debug-exit run confirms the serial translation checks and exit status 33.
 
 
 ## 2026-11-06 — Project Wiki initialized and published
@@ -35,3 +44,11 @@ HEAD `572cce506098b2465497a34cc0b00b7fa5b1aefd` добавил `exhi-kernel/src/
 - Existing Home page content outside the managed ExhiOS block is preserved; unrelated Wiki pages are not deleted.
 - First publication succeeded. Wiki branch `master`, commit `4181995`.
 - Main repository commit: `e3804349338541486fc6b305ed05ca4f1d3700f2`.
+
+
+## 2026-11-06 — P2.2 Paging integration
+- Replaced unsafe assumption that any allocated physical frame can be dereferenced under unknown UEFI page tables.
+- Bootstrap page tables now occupy six page-aligned pages in kernel BSS, which is already part of the loaded kernel image.
+- Connected paging module to _start after physical allocator initialization.
+- Added pre-switch checks for all kernel/firmware handoff ranges and post-switch translation verification.
+- CI run 42204902818 succeeded; QEMU runtime confirmation remains required.

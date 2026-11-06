@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-HEAD основного репозитория: `e3804349338541486fc6b305ed05ca4f1d3700f2` (обновление документации и публикации Wiki). Черновой paging builder добавлен коммитом `572cce506098b2465497a34cc0b00b7fa5b1aefd`.
+Кодовый checkpoint P2.2: 6ae6826ac5e9ad9969efa907d438571444942dec (Paging подключён к старту ядра). Последующие изменения этой записи фиксируются отдельным Wiki/docs-коммитом.
 
 ## Закрыто и проверено в QEMU
 
@@ -28,18 +28,26 @@ Loader читает и валидирует ELF64, загружает PT_LOAD п
 
 P2.1 закрыт по runtime evidence. В дорожной карте основного репозитория это отмечено.
 
-## Текущая задача — P2.2 page tables
+## P2.2 — Bootstrap page tables: код подключён, QEMU pending
 
-В HEAD добавлен черновик `exhi-kernel/src/arch/x86_64/paging.rs`:
-- PML4 → PDPT → четыре Page Directory;
-- identity map 0–4 GiB страницами 2 MiB;
-- шесть физических страниц для таблиц;
-- CR3 switch;
-- проверки трансляции kernel code, stack и PML4.
+В коммите [6ae6826](https://github.com/mindwork64/exhiOS/commit/6ae6826ac5e9ad9969efa907d438571444942dec):
+- paging.rs экспортирован из arch/x86_64/mod.rs и вызывается во время kernel startup после P2.1.
+- Собирается четырёхуровневая структура PML4 → PDPT → четыре Page Directory.
+- Первые 4 GiB identity-mapped страницами 2 MiB.
+- Шесть страниц таблиц размещены в выровненном kernel .bss, а не взяты из physical allocator. Это намеренно: до первого CR3 switch нельзя считать, что произвольный физический кадр доступен под firmware mappings.
+- До switch проверяются CPU state, IF=0, адреса kernel code, stack, BootInfo, UEFI memory map, framebuffer, ACPI RSDP, GDT, IDT и storage таблиц.
+- После CR3 switch повторно проверяются те же диапазоны; отдельный translate_current() проверяет kernel entry.
+- Kernel serial output сообщает root/CR3, размер карты, размер huge page, число проверенных диапазонов и translation entrypoint.
 
-**Важно:** файл пока не экспортирован из `arch/x86_64/mod.rs`, не вызывается при старте и не имеет CI/QEMU подтверждения. Считать его готовой подсистемой нельзя. CI для HEAD e380434 прошёл, но поскольку paging.rs пока не экспортирован, этот CI не компилирует сам paging builder. Следующий шаг — ревью, интеграция, сборка, затем QEMU.
+CI run 42204902818 прошёл успешно: ABI, ELF parser, physical allocator tests, UEFI build, default kernel build, exception smoke-test build, QEMU debug-exit build и ET_EXEC check. После первого прохода выявлены и удаляются три warning в cleanup-коммите.
 
-Первая карта широкая и временная: пока нет W^X, user/supervisor isolation, 4 KiB mappings, отдельных process address spaces и управления cache attributes.
+QEMU runtime пока не подтверждён. Следующая проверка пользователем после обновления локальной копии:
+```bash
+EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh
+```
+Ожидаем serial строки "P2.2: kernel page tables active; CR3 and identity mappings verified." и нормальный QEMU debug-exit status 33. До этого P2.2 остаётся незакрытым.
+
+Bootstrap map — временная карта RWX/supervisor для первых 4 GiB. W^X, user/supervisor isolation, 4 KiB mappings, per-device cache attributes и process address spaces не реализованы.
 
 ## Wiki и автоматическая синхронизация
 

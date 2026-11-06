@@ -42,10 +42,17 @@
 - Page size 4096 bytes; bitmap managed + allocated.
 - Физический frame пока выдаётся как адрес; arbitrary dereference откладывается до page tables.
 
-## P2.2 — черновой paging builder
-Файл `exhi-kernel/src/arch/x86_64/paging.rs` содержит предварительную четырёхуровневую схему: PML4, PDPT, четыре PD, 2 MiB huge pages и identity map 0–4 GiB. Планируется CR3 switch и проверка адресов кода, стека и PML4. Файл пока не экспортирован/не подключён и не runtime-tested.
+## P2.2 — Bootstrap paging
 
-Это bootstrap map, не конечный VMM. Позже нужны 4 KiB mappings, permissions, cache attributes и process address spaces.
+Файл exhi-kernel/src/arch/x86_64/paging.rs подключён к kernel startup после инициализации P2.1. Строит четырёхуровневые таблицы: PML4 → PDPT → четыре PD, identity map 0–4 GiB через 2 MiB supervisor RW pages, переключает CR3.
+
+Шесть страниц таблиц размещены как выровненная статическая область kernel .bss. Не используем физические кадры allocator до первого switch: firmware page tables не обязаны отображать произвольные conventional frames по identity address. После включения kernel map такие кадры станут доступны для динамических таблиц будущего VMM.
+
+До и после CR3 switch проверяются kernel code, stack, BootInfo, UEFI memory map, framebuffer, ACPI RSDP, GDTR, IDTR и сами page-table pages. Отдельная проверка translate_current проверяет kernel entry identity translation.
+
+CI run 42204902818 собрал default kernel и оба smoke-test варианта. QEMU runtime ещё не подтверждён.
+
+Ограничения bootstrap map: RWX, supervisor-only, 2 MiB granularity; нет W^X, user mappings, per-device cache attributes, process address spaces и общей VMM.
 
 ## Устройства
 COM1 base `0x3F8` используется для serial output. GOP framebuffer приходит через BootInfo, но текстовая framebuffer console ещё не реализована. QEMU: q35, OVMF, 512 MiB RAM, ESP на USB storage, serial stdio.

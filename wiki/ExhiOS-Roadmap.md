@@ -18,13 +18,14 @@
 **Проверено в QEMU.** Descriptor version 1, stride 48; Conventional Memory only; первые 1 MiB зарезервированы; limit 4 GiB; managed/allocated bitmaps; allocate/free/reuse. 7 host tests прошли. QEMU показал 118 837 managed pages и повторно выдал frame 0x14C000.
 
 ### P2.2 Bootstrap page tables
-**В работе.**
-- [ ] Ревью `paging.rs`: flags, masks, safety, rollback, CPU state assumptions.
-- [ ] Экспортировать модуль и вызвать после P2.1 при IF=0.
-- [ ] Создать PML4 → PDPT → 4 PD.
-- [ ] Identity map 0–4 GiB через 2 MiB pages.
-- [ ] Switch CR3 и проверить kernel code, current stack и page-table frames.
-- [ ] QEMU serial smoke test и runtime confirmation.
+**Код подключён и успешно собран в CI; QEMU runtime pending.**
+- [x] Ревью и безопасная схема bootstrap storage.
+- [x] Экспортировать модуль и вызвать после P2.1 при IF=0.
+- [x] Создать PML4 → PDPT → 4 PD в выровненном kernel .bss.
+- [x] Identity map 0–4 GiB через 2 MiB pages.
+- [x] Переключить CR3; проверять критические ranges до и после.
+- [ ] QEMU serial smoke test: увидеть CR3/root, успешные translations и debug-exit status 33.
+- [ ] Только после runtime evidence закрыть P2.2.
 
 ### P2.3 Virtual memory manager
 - [ ] 4 KiB map/unmap и translation.

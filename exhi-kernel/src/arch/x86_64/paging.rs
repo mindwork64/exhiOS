@@ -143,7 +143,7 @@ pub fn initialize_identity_map_4g(boot_info: &BootInfo) -> Result<PagingStatus, 
     let kernel_code_address = initialize_identity_map_4g as *const () as u64;
     let stack_address = read_stack_pointer();
 
-    let mut ranges = [
+    let ranges = [
         (kernel_code_address, 1u64),
         (stack_address, 8u64),
         (boot_info_address, core::mem::size_of::<BootInfo>() as u64),
@@ -244,10 +244,6 @@ pub fn initialize_identity_map_4g(boot_info: &BootInfo) -> Result<PagingStatus, 
             }
         }
     }
-
-    // Keep the range array live across the switch so the values used for
-    // verification are not recomputed from potentially changed state.
-    ranges[0] = (kernel_code_address, 1);
 
     // SAFETY: Startup is single-threaded with IF clear. The static tables stay
     // reserved as part of the kernel image for the lifetime of the kernel.

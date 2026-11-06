@@ -67,17 +67,3 @@ pub fn allocation_reuse_smoke_test() -> Result<u64, MemoryError> {
 }
 
 
-/// Allocates one physical frame for kernel-owned paging structures.
-pub fn allocate_frame() -> Result<u64, MemoryError> {
-    let allocator = core::ptr::addr_of_mut!(PHYSICAL_ALLOCATOR);
-    // SAFETY: Kernel initialization is single-threaded and IF remains clear.
-    unsafe { (&mut *allocator).allocate_page() }
-}
-
-/// Returns a frame to the physical allocator. The caller must ensure that no
-/// active page table, stack, code or live object still uses the frame.
-pub fn release_frame(address: u64) -> Result<(), MemoryError> {
-    let allocator = core::ptr::addr_of_mut!(PHYSICAL_ALLOCATOR);
-    // SAFETY: Kernel initialization is single-threaded and IF remains clear.
-    unsafe { (&mut *allocator).free_page(address) }
-}
