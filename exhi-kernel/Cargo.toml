@@ -22,4 +22,5 @@ exhi-abi.workspace = true
 exhi-memory.workspace = true
 exhi-heap.workspace = true
 exhi-console.workspace = true
+exhi-input.workspace = true
 exhi-driver.workspace = true
