@@ -54,6 +54,7 @@ pub struct Task {
     name: &'static str,
     state: TaskState,
     context: TaskContext,
+    runtime_ticks: u64,
 }
 
 impl Task {
@@ -62,6 +63,7 @@ impl Task {
     pub const fn state(&self) -> TaskState { self.state }
     pub const fn context(&self) -> TaskContext { self.context }
     pub fn context_mut(&mut self) -> &mut TaskContext { &mut self.context }
+    pub const fn runtime_ticks(&self) -> u64 { self.runtime_ticks }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -127,6 +129,7 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
             name,
             state: TaskState::Ready,
             context,
+            runtime_ticks: 0,
         });
         self.task_count += 1;
         Ok(id)
@@ -227,6 +230,20 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
         self.slots[index] = None;
         self.task_count -= 1;
         Ok(())
+    }
+
+    /// Adds elapsed PIT ticks to the currently running task.
+    ///
+    /// The architecture layer calls this only at a safe cooperative
+    /// scheduling boundary; the IRQ handler itself never accesses Scheduler.
+    pub fn account_current_ticks(&mut self, elapsed_ticks: u64) -> Result<u64, SchedulerError> {
+        let current = self.current_index.ok_or(SchedulerError::NotStarted)?;
+        let task = self.slots[current].as_mut().ok_or(SchedulerError::NotFound)?;
+        if task.state != TaskState::Running {
+            return Err(SchedulerError::InvalidStateTransition);
+        }
+        task.runtime_ticks = task.runtime_ticks.saturating_add(elapsed_ticks);
+        Ok(task.runtime_ticks)
     }
 
     pub fn current(&self) -> Option<&Task> {
@@ -404,5 +421,42 @@ mod tests {
         assert_eq!(scheduler.blocked_count(), 1);
         assert_eq!(scheduler.finished_count(), 0);
         assert!(scheduler.get(first).is_some());
+    }
+
+    #[test]
+    fn accounts_runtime_ticks_to_each_task_independently() {
+        let mut scheduler = Scheduler::<2>::new();
+        let first = scheduler.spawn("first", context(0x1000)).unwrap();
+        let second = scheduler.spawn("second", context(0x2000)).unwrap();
+        assert_eq!(scheduler.start(), Ok(first));
+        assert_eq!(scheduler.account_current_ticks(7), Ok(7));
+        assert_eq!(scheduler.yield_current(), Ok(ScheduleDecision::Switch {
+            from: first,
+            to: second,
+        }));
+        assert_eq!(scheduler.account_current_ticks(3), Ok(3));
+        assert_eq!(scheduler.get(first).map(Task::runtime_ticks), Some(7));
+        assert_eq!(scheduler.get(second).map(Task::runtime_ticks), Some(3));
+    }
+
+    #[test]
+    fn runtime_accounting_saturates_instead_of_wrapping() {
+        let mut scheduler = Scheduler::<1>::new();
+        let only = scheduler.spawn("only", context(0x1000)).unwrap();
+        scheduler.start().unwrap();
+        assert_eq!(scheduler.account_current_ticks(u64::MAX - 1), Ok(u64::MAX - 1));
+        assert_eq!(scheduler.account_current_ticks(10), Ok(u64::MAX));
+        assert_eq!(scheduler.get(only).map(Task::runtime_ticks), Some(u64::MAX));
+    }
+
+    #[test]
+    fn runtime_accounting_requires_a_running_task() {
+        let mut scheduler = Scheduler::<1>::new();
+        assert_eq!(scheduler.account_current_ticks(1), Err(SchedulerError::NotStarted));
+        let only = scheduler.spawn("only", context(0x1000)).unwrap();
+        scheduler.start().unwrap();
+        assert_eq!(scheduler.finish_current(), Ok(None));
+        assert_eq!(scheduler.account_current_ticks(1), Err(SchedulerError::NotStarted));
+        assert_eq!(scheduler.get(only).map(Task::runtime_ticks), Some(0));
     }
 }
