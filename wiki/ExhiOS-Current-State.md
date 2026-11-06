@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: [eee4895](https://github.com/mindwork64/exhiOS/commit/eee489589c0b79416ac4753e181dfd1656b8deed) — P2.6 и P3.1 закрыты локально + CI; P3.2 прошла CI и локальную проверку инициализации GOP, визуальная проверка содержимого экрана ожидает доступного скриншота.
+Кодовый checkpoint: [eee4895](https://github.com/mindwork64/exhiOS/commit/eee489589c0b79416ac4753e181dfd1656b8deed) — P2.6, P3.1 и первая реализация P3.2 подтверждены локально + CI. Пользователь подтвердил ожидаемый текст на framebuffer-экране по скриншоту.
 
 ## Закрыто и проверено в QEMU
 
@@ -204,5 +204,5 @@ Code checkpoint: [eee4895](https://github.com/mindwork64/exhiOS/commit/eee489589
 - Kernel-side initialization checks dimensions, alignment, buffer byte count and that the framebuffer range lies within the current 4 GiB identity map. On success the first screen shows the kernel banner, resolution, scanline stride and pixel format.
 - Host tests, all target build variants and headless QEMU/OVMF runtime passed in [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662). Serial output confirms framebuffer initialization; the P2.6 IST1/debug-exit regression also passed (status 33).
 - Local Linux Mint/QEMU serial evidence (2026-11-06): GOP framebuffer 0x80000000, 1280x800, stride 1280, pixel format 1 (BGR-reserved); console initialization marker printed and kernel reached handoff + halt loop.
-- The supplied screenshot URL could not be fetched from the assistant's runtime (DNS resolution/network access failure); actual rendered glyphs and layout remain visually unverified.
+- The user supplied a screenshot description confirming all expected on-screen strings: kernel banner, console ready, 1280x800 resolution, stride 1280, BGRX format, COM1 ready and successful kernel handoff. Fine visual details (glyph sharpness, spacing and artifacts) were not assessed from the text description.
 - Known first-version limits: ASCII-only glyphs, GOP formats 0/1 only, no framebuffer cache policy setup (PAT/MTRR) yet.
