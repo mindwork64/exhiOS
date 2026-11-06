@@ -24,6 +24,7 @@
 | `exhi-kernel` | Freestanding kernel |
 | `exhi-memory` | no_std физический frame allocator |
 | `exhi-heap` | no_std first-fit heap allocator, host-tested |
+| `exhi-driver` | no_std fixed-capacity driver inventory and lifecycle registry |
 
 ## BootInfo
 BootInfo v2 содержит magic/version/struct_size, физический адрес и размер memory map, descriptor size/version, framebuffer metadata, ACPI RSDP address и физические base/size boot kernel stack. Magic: EXHIOS02, version: 2. Loader выделяет contiguous block из 17 страниц: первая — guard reservation, следующие 16 — 64 KiB stack. Начальная загрузка сохраняет UEFI identity mapping.
@@ -125,6 +126,17 @@ Module: `exhi-kernel/src/arch/x86_64/timer.rs`; code checkpoint [d2ed6b2](https:
 - This is the initial legacy PIT/PIC implementation; APIC/IOAPIC, HPET/TSC calibration, SMP delivery and scheduler integration are deferred.
 
 ## P3.4 — PS/2 keyboard and input events
+## P3.5 — Static driver registry
+
+The registry lives in the host-testable no_std `exhi-driver` crate. Hardware modules publish immutable `DriverDescriptor` constants; startup registers them in a bounded `DriverRegistry`.
+- Stable IDs distinguish COM1, PIT channel 0 and the i8042 PS/2 keyboard. Classes are descriptive (Serial, Clock, Input); this is not yet a device-bus model.
+- Registry entries move through `Registered`, `Initialized` and `Failed`. Duplicate IDs, full capacity, unknown IDs and illegal transitions are explicit errors. Failed is terminal for the current boot.
+- The registry is fixed-capacity and allocation-free. It offers lookup, iteration and state counts.
+- The registry records lifecycle but does not invoke init callbacks. The kernel keeps hardware initialization in the explicit boot path to preserve ordering constraints and make interrupt dependencies auditable.
+- Normal boot reports three registered drivers: COM1 initialized, PIT and PS/2 registered. Timer and keyboard smoke modes mark their own driver initialized after successful setup.
+- Eight host tests passed and CI compiled the registry-smoke kernel mode in [run 42299327751](https://github.com/mindwork64/exhiOS/actions/runs/42299327751). Headless QEMU and local runtime evidence remain pending.
+- Dedicated test: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_DRIVER_REGISTRY_TEST=1 ./scripts/run-qemu.sh`.
+
 
 The hardware driver is `exhi-kernel/src/arch/x86_64/keyboard.rs`; pure queue/event decoding lives in the host-testable no_std `exhi-input` crate.
 - The i8042 command byte enables IRQ1, disables IRQ12, enables the keyboard clock, disables the auxiliary clock and enables translated Set 1 output. The keyboard's F4 ACK is validated before IRQ1 is unmasked.

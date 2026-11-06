@@ -138,17 +138,24 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [ ] APIC/IOAPIC, HPET/TSC calibration and scheduler integration remain future work.
 
 ### P3.4 — Keyboard
-**Реализация и CI build/host tests прошли; локальная интерактивная проверка ожидается.**
+**Завершено; CI и локальная интерактивная проверка подтверждены 2026-11-06.**
 - [x] i8042 initialization: keyboard port enabled, auxiliary port disabled, IRQ1 enabled, Set 2-to-Set 1 translation selected, keyboard scanning enabled and ACK checked.
 - [x] PIC IRQ1 mask/unmask preserves IRQ0 and all other PIC mask bits.
 - [x] IDT vector 0x21 gate installed and read-back validated.
 - [x] Assembly-only IRQ1 handler reads port 0x60, writes to a fixed SPSC queue, counts overflow and sends master PIC EOI; no Rust call or allocation in ISR.
 - [x] no_std exhi-input decoder maps Set 1 make/break to HID-usage KeyEvents and tracks modifiers/lock keys.
 - [x] CI host tests: 6/6 passed; keyboard-enabled kernel variant compiled successfully in [run 42278708100](https://github.com/mindwork64/exhiOS/actions/runs/42278708100).
-- [ ] Local QEMU interactive test: press several keys and use Ctrl+D to finish; runtime log must show key-down/key-up events, zero dropped scan codes and QEMU exit status 33.
+- [x] Local Linux Mint/QEMU (2026-11-06): i8042 config 0x65, IRQ1 ready, 28 key transitions from letters/Enter/Backspace/navigation/Ctrl+D, zero dropped scan codes, IRQ1 remasked and debug-exit status 33. Ctrl state was visible on D; no separate Shift usage event was present in this log (decoder Shift handling is covered by host tests).
 
 ### P3.5 — Driver registration
-- [ ] Initial driver registration model.
+**Первая реализация добавлена; host tests и все build-варианты CI прошли, QEMU runtime-smoke ожидает завершения CI.**
+- [x] New no_std `exhi-driver` crate with static descriptors, stable driver IDs/classes and lifecycle states.
+- [x] Fixed-capacity registry; no heap allocation, duplicate-ID and capacity checks, lookup/iteration and lifecycle transition validation.
+- [x] COM1, PIT channel 0 and PS/2 keyboard expose static descriptors and are registered during kernel startup.
+- [x] Boot diagnostics report registered/initialized/failed counts and each registered driver.
+- [x] Serial is marked Initialized after its early init; PIT and PS/2 become Initialized only after their respective hardware init succeeds; failures are tracked as Failed.
+- [x] CI: 8/8 registry host tests and registry-smoke kernel build passed in [run 42299327751](https://github.com/mindwork64/exhiOS/actions/runs/42299327751).
+- [ ] CI headless QEMU registry runtime smoke test and local Linux Mint/QEMU boot log.
 
 ## P4 — Tasks and scheduling
 - [ ] Task representation/stacks, context switching, cooperative scheduler, timer preemption.

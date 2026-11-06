@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: P3.3 PIT/IRQ0 timer locally and CI runtime-verified on 2026-11-06. P3.4 PS/2 keyboard, IRQ1 and input decoder are implemented; CI host tests and all build variants passed, local interactive keyboard validation is pending.
+Кодовый checkpoint: [8fca30b](https://github.com/mindwork64/exhiOS/commit/8fca30b78eac0a2267ec27f7163bf98b4586bb5e) adds a QEMU runtime smoke mode for P3.5. P3.3 PIT timer and P3.4 PS/2 keyboard are locally and CI runtime-verified. P3.5 host tests (8/8), kernel variants and smoke-mode build passed CI; headless runtime is pending.
 
 ## Закрыто и проверено в QEMU
 
@@ -236,6 +236,18 @@ Code checkpoint: [d2ed6b2](https://github.com/mindwork64/exhiOS/commit/d2ed6b2d4
 
 ## P3.4 — PS/2 keyboard and input events
 
+## P3.5 — Static driver registry
+
+New no_std crate: `exhi-driver`.
+- `DriverDescriptor` is immutable metadata: stable `DriverId`, broad `DriverClass`, and static name.
+- `DriverRegistry<const CAPACITY>` stores a fixed-size array of optional entries. Registration, lookup, iteration, state counting and transitions require no heap allocation.
+- Duplicate IDs, full capacity, unknown IDs and invalid lifecycle transitions return explicit errors. States are `Registered`, `Initialized`, and `Failed`; a failed state is terminal for this boot.
+- COM1, PIT channel 0 and the i8042 PS/2 keyboard expose descriptors from their own driver modules. The boot path registers all three after PIC initialization; COM1 is marked initialized after early UART setup. Timer/keyboard states transition to Initialized only after their hardware setup succeeds, or Failed on an initialization error.
+- The registry is an inventory/lifecycle layer only. It does not call hardware initialization callbacks; boot order remains explicit so IDT/PIC/device dependencies are visible.
+- Boot diagnostics print registry totals and each driver's ID/class/state. Dedicated runtime mode: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_DRIVER_REGISTRY_TEST=1 ./scripts/run-qemu.sh`.
+- CI registry host tests: 8/8 passed; ordinary/registry kernel variants built successfully in [run 42299327751](https://github.com/mindwork64/exhiOS/actions/runs/42299327751). Headless QEMU smoke test and local runtime remain pending.
+
+
 New no_std crate: `exhi-input`; hardware driver: `exhi-kernel/src/arch/x86_64/keyboard.rs`.
 - The i8042 controller is configured with IRQ1 enabled, IRQ12 disabled, keyboard clock enabled, auxiliary clock disabled and translated Set 1 output. The keyboard receives the F4 enable-scanning command and its ACK is checked before PIC IRQ1 is unmasked.
 - IDT vector 0x21 points to a dedicated IRQ1 stub. PIC exposes IRQ1-only mask/unmask operations preserving all other lines.
@@ -243,4 +255,4 @@ New no_std crate: `exhi-input`; hardware driver: `exhi-kernel/src/arch/x86_64/ke
 - Foreground decoding maps Set 1 make/break bytes to USB HID keyboard usage IDs. KeyEvent contains physical key identity, down/up state and modifier snapshot; left/right Shift, Control, Alt and Meta are tracked independently, and Caps/Num/Scroll Lock toggle on make.
 - Host unit tests: 6/6 passed. CI also built the keyboard-enabled kernel variant in [run 42278708100](https://github.com/mindwork64/exhiOS/actions/runs/42278708100).
 - Interactive mode: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_KEYBOARD_TEST=1 ./scripts/run-qemu.sh`. Click the QEMU display, type keys, then hold Ctrl and press D. The kernel prints event transitions and dropped-byte count, masks IRQ1 and requests QEMU debug-exit.
-- Local interactive QEMU validation remains pending. This initial driver supports legacy PS/2 only; USB HID enumeration and keyboard-layout/character translation are future work.
+- Local Linux Mint/QEMU runtime (2026-11-06): i8042 config 0x65, IRQ1 gate valid, keyboard events received for letters, Enter, Backspace and arrows; Ctrl+D was decoded with ctrl=true, 28 transitions total, zero dropped scan codes, IRQ1 masked again and QEMU status 33. No separate Shift event appears in this log; Shift decoding has host-test coverage. This initial driver supports legacy PS/2 only; USB HID enumeration and keyboard-layout/character translation are future work.

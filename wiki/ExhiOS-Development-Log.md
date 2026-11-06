@@ -6,7 +6,16 @@
 - Added the no_std `exhi-input` crate: fixed-capacity SPSC scan-code queue, overflow counter, Set 1 make/break decoder, HID-usage key identifiers, modifier snapshots and lock-key state.
 - Added the x86-64 i8042 driver. It configures translated Set 1 mode, enables scanning after validating keyboard ACK, and unmasks only PIC IRQ1.
 - Added IDT vector 0x21 gate with read-back validation and an assembly-only IRQ1 handler that reads port 0x60, publishes a byte to the queue, counts overflow and sends EOI. No Rust call or heap allocation occurs in the ISR.
-- Host tests passed 6/6 and the keyboard-enabled kernel build passed CI [run 42278708100](https://github.com/mindwork64/exhiOS/actions/runs/42278708100). Interactive QEMU validation by the user remains pending.
+- Host tests passed 6/6 and the keyboard-enabled kernel build passed CI [run 42278708100](https://github.com/mindwork64/exhiOS/actions/runs/42278708100). User QEMU log (2026-11-06): config 0x65, IDT IRQ1 valid, 28 key transitions, Ctrl+D recognized, zero dropped scan codes, IRQ1 remasked and debug-exit 33. No standalone Shift event was visible in that log; modifier decoding is host-tested.
+
+## 2026-11-07 — P3.5 initial driver registry
+
+- Added the no_std `exhi-driver` crate with immutable descriptors, stable IDs/classes, Registered/Initialized/Failed lifecycle and a fixed-capacity registry.
+- Registry validates capacity, duplicate IDs, unknown IDs and state transitions; supports lookup, iteration and counts without heap allocation.
+- COM1, PIT channel 0 and PS/2 keyboard now expose descriptors. Kernel startup registers all three; serial is initialized early, while PIT and keyboard transition only after their respective hardware init succeeds.
+- Boot diagnostics print registry summary and each entry.
+- Host tests passed 8/8 and all kernel feature variants, including the dedicated registry smoke-test variant, built in [run 42299327751](https://github.com/mindwork64/exhiOS/actions/runs/42299327751). CI headless QEMU runtime and local Linux Mint/QEMU confirmation remain pending.
+
 
 
 ## P0.1 — Repository and firmware entry

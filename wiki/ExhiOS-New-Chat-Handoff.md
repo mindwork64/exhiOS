@@ -38,29 +38,19 @@
 - Follow-up commits [c3d2b8c](https://github.com/mindwork64/exhiOS/commit/c3d2b8ccaa34c6b399b7f12905ae11658455916b) and [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a) add an allocation-free `KernelConsole` writer. After GOP setup it mirrors byte and formatted output to COM1 + framebuffer; on GOP failure it remains serial-only. Early startup diagnostics remain COM1-only. `write_fmt` uses `core::fmt` without heap allocation. CI build + headless QEMU runtime passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072); local QEMU serial output confirms unified-writer readiness and final handoff/halt messages.
 
 ## Следующие действия
-1. P3.2 unified writer is implemented and CI/local QEMU runtime-verified. The user's local serial logs show the unified-writer-ready marker, kernel handoff and halt messages.
-2. P3.3 PIT timer implementation is in [d2ed6b2](https://github.com/mindwork64/exhiOS/commit/d2ed6b2d40260340396af1db8284b607eba1c4ad). CI build/headless QEMU and local Linux Mint/QEMU passed on 2026-11-06: five real IRQ0 ticks, IRQ0 remasked and debug-exit status 33.
-3. User's local P3.3 validation:
+1. P3.3 PIT timer and P3.4 PS/2 keyboard are closed with local + CI runtime evidence. P3.4 local QEMU log (2026-11-06) reports i8042 config 0x65, IRQ1 gate valid, key-down/key-up events, Ctrl+D recognition, 28 transitions, zero dropped scan codes, IRQ1 remasked and QEMU status 33. Shift was not independently visible in this log; decoder Shift tests passed on host.
+2. P3.5 static driver registry is implemented in [fc72e1c](https://github.com/mindwork64/exhiOS/commit/fc72e1c789a49f9efdaf8698f91b645ec8db3dda); the dedicated runtime smoke mode is in [8fca30b](https://github.com/mindwork64/exhiOS/commit/8fca30b78eac0a2267ec27f7163bf98b4586bb5e). The no_std `exhi-driver` crate stores immutable descriptors, IDs/classes and Registered/Initialized/Failed states in a fixed-capacity array. COM1/PIT/PS2 publish descriptors; startup registers all three and prints summary. Host tests (8/8) and all build variants passed CI [run 42299327751](https://github.com/mindwork64/exhiOS/actions/runs/42299327751); headless runtime remains pending.
+3. P3.5 local verification:
    ```bash
    git fetch origin
    git reset --hard origin/main
    cargo fmt
    cargo test
-   EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_TEST=1 ./scripts/run-qemu.sh
+   EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_DRIVER_REGISTRY_TEST=1 ./scripts/run-qemu.sh
    ```
-   The timer variant uses isa-debug-exit and should finish with status 33. Expect `P3.3: PIT initialized at 100 Hz (divisor 11932)`, `P3.3: monotonic timer advanced by 5 ticks; IRQ0 masked again`, and `P3.3: PIT IRQ0 runtime smoke test passed`.
-4. P3.4 keyboard implementation is committed in [993b651](https://github.com/mindwork64/exhiOS/commit/993b651b7dd4cffa9aeffb6331e325dd1d8b190a) with a syntax fix in [eafdbd1](https://github.com/mindwork64/exhiOS/commit/eafdbd1305ec7f3ae5b1f29f26d85bf317662310). Host tests (6/6), standard kernel and keyboard smoke-test variant passed CI run [42278708100](https://github.com/mindwork64/exhiOS/actions/runs/42278708100). Interactive keyboard runtime is still pending.
-5. Run the local interactive keyboard test:
-   ```bash
-   git fetch origin
-   git reset --hard origin/main
-   cargo fmt
-   cargo test
-   EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_KEYBOARD_TEST=1 ./scripts/run-qemu.sh
-   ```
-   Click the QEMU display, type ordinary keys, Shift, Ctrl and arrows. Finish by holding Ctrl and pressing D. Expect key down/up records, zero dropped scan codes, IRQ1 remasked and debug-exit status 33. This test is separate from the timer test.
-6. APIC/IOAPIC, HPET/TSC calibration and scheduler integration remain later work.
-5. Ring 3, syscalls and hardware user/supervisor fault tests remain a later user-mode milestone. P2.6 guard page is locally and CI verified; do not remove or bypass it.
+   Expect `P3.5: driver registry ready; registered=3 initialized=1 failed=0`, COM1/PIT/keyboard entries and `P3.5: driver registry runtime smoke test passed.` Normal boot should show the same summary; timer/keyboard smoke modes should transition their respective entries to Initialized.
+4. Once P3.5 has local runtime evidence, proceed to P4 task representation and cooperative scheduling. Keep scheduler work separate from user-mode/Ring 3.
+5. APIC/IOAPIC, HPET/TSC calibration and scheduler timer preemption remain later work. Ring 3, syscalls and hardware user/supervisor fault tests remain a later milestone. P2.6 guard page is locally and CI verified; do not remove or bypass it.
 
 ## Правила работы
 - Русский язык общения.
