@@ -102,11 +102,12 @@ pub fn initialize() -> IdtStatus {
         exhi_isr_31 as *const () as usize as u64,
     ];
 
+    let entries = ptr::addr_of_mut!(IDT.0).cast::<IdtEntry>();
+
     // SAFETY: IDT is a 16-byte-aligned static table in the kernel image.
     // Each handler is a kernel text symbol and each entry is written before
     // LIDT makes the table visible to the processor.
     unsafe {
-        let entries = ptr::addr_of_mut!(IDT.0).cast::<IdtEntry>();
         for (index, handler) in handlers.iter().copied().enumerate() {
             // Vector 8 (double fault) is the only initial exception gate that
             // uses IST. Its stack is prepared and loaded in the TSS by GDT init.
