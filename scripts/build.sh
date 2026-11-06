@@ -30,6 +30,7 @@ rustup target add x86_64-unknown-uefi x86_64-unknown-none
 cargo test -p exhi-abi
 cargo test -p exhi-elf
 cargo test -p exhi-memory
+cargo test -p exhi-console
 cargo build -p exhi-boot --target x86_64-unknown-uefi
 
 KERNEL_FEATURES=()
