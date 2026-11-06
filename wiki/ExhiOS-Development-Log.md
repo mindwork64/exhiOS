@@ -190,3 +190,16 @@ User ran the safety-hardened address-space implementation (code checkpoint [a856
 The local addresses differ from CI addresses as expected because UEFI memory allocation/layout varies between boots. The relationships and tested behavior match CI. P2.5's initial address-space layer is closed with both CI and user-local runtime evidence. This test runs at Ring 0; it does not claim CPL3 execution or hardware-enforced user/supervisor isolation.
 
 Next hardening: add lifecycle/error-path and negative permission tests; keep TSS/IST double-fault stack work in P2.6 ahead of any kernel-stack guard page. Ring 3 remains a later user-mode milestone.
+
+## 2026-11-06 — P2.5.1 address-space lifecycle and mapping hardening (runtime pending)
+
+Commits:
+- [dae333c](https://github.com/mindwork64/exhiOS/commit/dae333cf9cee1bcfd9fc0a76ef35a96177291eac) — reject use-after-destroy, make destroy idempotent, reject destruction of the active address space; add QEMU negative checks.
+- [9650df1](https://github.com/mindwork64/exhiOS/commit/9650df1c5a2a3fc63e02752cbef53cde39c8cdda) — reject writable+executable user mappings (W^X).
+- [3ed5994](https://github.com/mindwork64/exhiOS/commit/3ed599473023912940c20f45f0a1e054824caa46) and [b8e16b9](https://github.com/mindwork64/exhiOS/commit/b8e16b9b05916bba8cbe4d417c613d5e9ad3f4be) — cover invalid/alignment, duplicate map and double-unmap rejection paths; keep test frame ownership valid.
+- [ba18080](https://github.com/mindwork64/exhiOS/commit/ba180801d1d33f0a6821e8730f7c7e46c091bd4e) — validate physical table-frame range/alignment before nested page-table dereferences.
+- [e19db15](https://github.com/mindwork64/exhiOS/commit/e19db15bf891805c2e22cb3251ebade7872bf515) — preflight complete private tree before teardown; unlink child entries only after successful frame release; support retry if final PML4 release fails.
+
+QEMU startup smoke test now exercises invalid virtual alignment/range, invalid physical alignment, W+X denial before table allocation, duplicate mapping, active-space destroy rejection, double unmap, post-destroy translate/unmap/activate/map rejection and idempotent destroy. It also exercises the normal two-space map/switch/read/reclaim path.
+
+This is a code checkpoint only. CI build, headless QEMU/OVMF and user-local QEMU output have not yet been confirmed for P2.5.1. Do not mark this substage complete until runtime evidence is reviewed.
