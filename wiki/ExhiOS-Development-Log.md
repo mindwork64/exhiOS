@@ -26,3 +26,12 @@ PIC masks master/slave прочитаны как 0xFF. isa-debug-exit завер
 
 ## P2.2 — Bootstrap page tables (draft)
 HEAD `572cce506098b2465497a34cc0b00b7fa5b1aefd` добавил `exhi-kernel/src/arch/x86_64/paging.rs`: PML4+PDPT+4 PD, 2 MiB identity map 0–4 GiB, CR3 switch и translation probes. На момент этой записи модуль не экспортирован, не вызывается и не тестировался.
+
+
+## 2026-11-06 — Project Wiki initialized and published
+
+- Added durable context pages: Current State, Architecture, Roadmap, Decisions, Development Log and New Chat Handoff.
+- Added `.github/workflows/publish-wiki.yml`, which mirrors managed Markdown pages from `wiki/` into the repository's separate `.wiki.git` using the workflow GITHUB_TOKEN with `contents: write`.
+- Existing Home page content outside the managed ExhiOS block is preserved; unrelated Wiki pages are not deleted.
+- First publication succeeded. Wiki branch `master`, commit `4181995`.
+- Main repository commit: `e3804349338541486fc6b305ed05ca4f1d3700f2`.

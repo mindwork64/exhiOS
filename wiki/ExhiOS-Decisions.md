@@ -44,3 +44,12 @@
 - Runtime логи QEMU фиксировать в Current State и Development Log.
 - Не освобождать firmware/loader ranges на основании догадок.
 - Не разыменовывать произвольный физический адрес до подтверждённого mapping.
+
+
+## Project documentation policy
+
+- Wiki page sources of truth are Markdown files under `wiki/` in the main repository.
+- Changes to `wiki/**` on `main` trigger `.github/workflows/publish-wiki.yml`.
+- The publisher uses the repository-scoped workflow token with `contents: write`, and pushes to the paired `.wiki.git` repository.
+- The managed block in Wiki `Home.md` is replaced idempotently. Other pages are upserted; unrelated Wiki pages are not deleted.
+- Update Current State, Roadmap, Development Log and New Chat Handoff as milestones change.

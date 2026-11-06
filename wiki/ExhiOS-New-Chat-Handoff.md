@@ -20,7 +20,7 @@
 P0 и P1 закрыты в QEMU. P2.1 проверен с настоящей UEFI memory map: 127 descriptors, stride 48, 118 837 managed pages, frame 0x14C000 повторно использован, debug-exit status 33.
 
 ## Следующая задача
-HEAD `572cce506098b2465497a34cc0b00b7fa5b1aefd` содержит черновой `exhi-kernel/src/arch/x86_64/paging.rs`.
+Текущий HEAD основного репозитория: `e3804349338541486fc6b305ed05ca4f1d3700f2`. Черновой paging builder внесён коммитом `572cce506098b2465497a34cc0b00b7fa5b1aefd` и находится `exhi-kernel/src/arch/x86_64/paging.rs`.
 
 Начать с ревью: page-table flags/masks, address calculations, CR3, identity assumptions, rollback и unsafe access. Затем экспортировать модуль, вызвать после P2.1, собрать CI, проверить в QEMU:
 - page tables allocated from frame allocator;
@@ -29,6 +29,8 @@ HEAD `572cce506098b2465497a34cc0b00b7fa5b1aefd` содержит черново�
 - translation probes возвращают identity physical addresses.
 
 Текущая заготовка использует 4-level paging, 2 MiB huge pages и карту 0–4 GiB. Она не является законченным VMM.
+
+Wiki автоматически публикуется из `wiki/` при изменениях этой директории; не создавать дубли страниц вручную. Первый publish подтверждён GitHub Actions, wiki commit `4181995`.
 
 ## Правила работы
 - Русский язык общения.
