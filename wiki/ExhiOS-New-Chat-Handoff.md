@@ -34,21 +34,12 @@
 - RX-inclusive driver build + headless QEMU regression [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) passed before the interactive test harness was added. The CI boot trace proves TX/boot regression, not receipt of input bytes.
 - Commits [a58220e](https://github.com/mindwork64/exhiOS/commit/a58220e5fda9afb069b71f08529ebc68f95a4d36) and [6014dec](https://github.com/mindwork64/exhiOS/commit/6014dec505682a4d91ff7165d222f274a15561da) add the opt-in interactive RX byte-echo mode. Run `EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh`; type ASCII, test Enter/Backspace, then press Ctrl+D to print the received-byte count. This mode has not yet been locally exercised.
 - P2.6 and P3.1 are closed with local + CI evidence. P3.1 local RX log: `hello exhiOS` echoed, Enter produced a new prompt, Ctrl+D printed byte count 0x0D.
-- P3.2 initial GOP framebuffer console is implemented in `exhi-console` and kernel startup. It supports GOP formats 0/1, visible width + separate scanline stride, ASCII text, wrap and scroll. Host tests and kernel build variants passed in CI; headless QEMU runtime and local visual confirmation remain pending.
+- P3.2 initial GOP framebuffer console is implemented in `exhi-console` and kernel startup. It supports GOP formats 0/1, visible width + separate scanline stride, ASCII text, wrap and scroll. Host tests, build variants and headless QEMU runtime passed in CI [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662). User's local QEMU serial log (2026-11-06) confirms GOP framebuffer 0x80000000, 1280x800, stride 1280, pixel format 1, successful console initialization, kernel handoff and halt loop. Actual rendered glyphs/layout remain visually unverified: supplied media.exhi.ru screenshot URL could not be fetched because DNS/network access failed in assistant runtime.
 
 ## Следующие действия
-1. Headless QEMU/OVMF runtime для P3.2 checkpoint [2cffee5](https://github.com/mindwork64/exhiOS/commit/2cffee513eda6c63c6cc1d0bd8ee9be0a14c1be9) прошёл в CI [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662); осталось подтвердить картинку локально.
-2. Пользовательская проверка latest main:
-   ```bash
-   git fetch origin
-   git reset --hard origin/main
-   cargo fmt
-   cargo test
-   EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh
-   ./scripts/run-qemu.sh
-   ```
-   Автоматический запуск должен завершиться status 33. В обычном QEMU-окне ожидается тёмный экран с текстом `EXHIOS KERNEL 0.1`, `P3.2 FRAMEBUFFER CONSOLE READY`, разрешением 1280x800, stride 1280 и форматом BGRX. В serial log ожидается `P3.2: framebuffer console initialized`.
-3. После визуального подтверждения добавить нормальное API вывода ядра (общий console writer), затем отдельными этапами переходить к timer и keyboard.
+1. P3.2 headless QEMU/OVMF runtime passed in CI [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662), and the user supplied a local serial log confirming GOP initialization and kernel handoff. The screenshot URL `https://media.exhi.ru/f/a9cba69c-6d5d-4530-9282-cf2a667cadc7.png` was not retrievable from the assistant runtime (DNS/network failure), so visual inspection is the only P3.2 acceptance item still pending.
+2. To complete visual acceptance, inspect an image attached directly in chat or otherwise accessible from the assistant runtime; do not ask the user to rerun the already-passing QEMU test merely for serial evidence.
+3. After visual confirmation, add a proper shared kernel-console writer that mirrors formatted output to framebuffer and COM1, then proceed to timer and keyboard in separate steps. A previous draft writer was removed because its integration into `main.rs` was blocked; it is not part of the current code.
 4. Ring 3, syscalls and hardware user/supervisor fault tests remain a later user-mode milestone. P2.6 guard page is locally and CI verified; do not remove or bypass it.
 
 ## Правила работы
