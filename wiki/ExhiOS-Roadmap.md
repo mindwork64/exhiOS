@@ -85,7 +85,7 @@
 - [x] UEFI loader allocates one contiguous 17-page block: one reserved guard page followed by the 16-page (64 KiB) boot kernel stack. BootInfo v2 carries the exact stack bounds.
 - [x] Physical allocator reserves the guard frame before later allocations; VMM removes its supervisor identity mapping and confirms the stack pages remain mapped.
 - [x] QEMU debug-exit variant switches RSP to the bottom of the mapped stack and faults on the guard page. The CPU's #PF frame push faults into the same guard page, raising #DF on IST1; handler verifies its frame pointer is inside IST1.
-- [x] Headless CI QEMU/OVMF run [42256795134](https://github.com/mindwork64/exhiOS/actions/runs/42256795134): loader reports guard 0x1E6FF000, stack 0x1E700000..0x1E710000; guard is unmapped, stack remains supervisor-only, #DF reaches IST1, debug-exit status 33.
+- [x] Headless CI QEMU/OVMF run [42256850017](https://github.com/mindwork64/exhiOS/actions/runs/42256850017): loader reports guard 0x1E6FF000, stack 0x1E700000..0x1E710000; guard is unmapped, stack remains supervisor-only, #DF reaches IST1, debug-exit status 33.
 - [ ] Local Linux Mint/QEMU confirmation.
 - [ ] Additional deliberate stack exhaustion/guard-page variants beyond the controlled #DF probe.
 
