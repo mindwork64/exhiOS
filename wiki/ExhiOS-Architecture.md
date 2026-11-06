@@ -54,7 +54,7 @@ CI build и headless QEMU/OVMF runtime прошли: root/CR3 0x14E000, map 4 Gi
 Ограничения bootstrap map: RWX, supervisor-only, 2 MiB granularity; нет W^X, user mappings, per-device cache attributes, process address spaces и общей VMM.
 
 ## Устройства
-COM1 base `0x3F8` используется для serial output. GOP framebuffer приходит через BootInfo, но текстовая framebuffer console ещё не реализована. QEMU: q35, OVMF, 512 MiB RAM, ESP на USB storage, serial stdio.
+COM1 base `0x3F8` обслуживается модулем `arch/x86_64/serial.rs`: reusable 16550-compatible `SerialPort`, 38400 baud, 8N1, FIFO, bounded polling TX, non-blocking `try_read_byte` и polling `read_byte_blocking`. Основной boot/exception logging использует `serial::COM1`; raw COM1 I/O удалён из `main.rs`. QEMU подключает UART как `-serial stdio`, поэтому этот же интерфейс станет transport для диагностического shell. Interactive RX ещё не проверен локально. GOP framebuffer приходит через BootInfo, текстовая framebuffer console ещё не реализована. QEMU: q35, OVMF, 512 MiB RAM, ESP на USB storage, serial stdio.
 
 ## P2.3 — Initial Virtual Memory Manager
 
@@ -86,10 +86,20 @@ Module: exhi-kernel/src/arch/x86_64/address_space.rs.
 - The root PML4 USER bit is enabled when a user mapping is added. Shared kernel/heap entries retain U/S=0 at lower page-table levels and stay supervisor-only.
 - API: create, unsafe map_user_page (caller owns and scrubs frame), translate, unmap_user_page, activate, restore_kernel and destroy. Empty private page tables are reclaimed; data frames remain caller-owned.
 - Headless QEMU/OVMF CI [run 42217123278](https://github.com/mindwork64/exhiOS/actions/runs/42217123278) verified two roots: same VA 0x200000000 maps to distinct frames, byte A1/B2 survives CR3 switches, kernel and heap translations persist, page tables/data frames are reclaimed, debug-exit 33.
-- Latest safety-hardening commit a856090 adds supervisor-only checks for kernel code, stack and heap, plus an explicit unsafe caller ownership/scrub contract. Headless QEMU/OVMF CI [run 42217369804](https://github.com/mindwork64/exhiOS/actions/runs/42217369804) passed; user-local QEMU test is pending.
-- Ring 3 execution, syscalls, user-pointer validation, TSS/IST, and privilege-fault tests are not implemented yet.
+- Safety hardening includes supervisor-only checks for kernel code, stack and heap, unsafe caller ownership/scrub contract, use-after-destroy guards, active-destroy rejection, W^X denial, invalid/duplicate map and double-unmap rejection, page-table frame validation and retry-safe teardown. P2.5.1 passed local QEMU and CI [run 42238977281](https://github.com/mindwork64/exhiOS/actions/runs/42238977281).
+- Ring 3 execution, syscalls, user-pointer validation and hardware-enforced user/supervisor fault tests are not implemented yet. TSS/IST and boot-stack guard are implemented under P2.6; latest CI proof is [run 42256850017](https://github.com/mindwork64/exhiOS/actions/runs/42256850017), local QEMU verification pending.
 
 
+
+## P3.1 — Polling serial driver
+
+Module: `exhi-kernel/src/arch/x86_64/serial.rs`.
+- Reusable `SerialPort` accepts a UART base I/O port; `COM1` is configured at 0x3F8.
+- Initialize as 38400 baud, 8N1, FIFO enabled; transmit bytes with bounded polling.
+- TX API: `write_byte`, `write`, `write_hex`.
+- RX API: non-blocking `try_read_byte` and polling `read_byte_blocking`.
+- Driver is single-core and polling; no UART IRQs or shared-console locking yet. Early kernel diagnostics use COM1.
+- Headless CI build and QEMU regression passed [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119). Actual interactive byte reception via local QEMU stdio remains to be tested.
 
 ## P2.6 — TSS, double-fault IST and boot-stack guard page
 
