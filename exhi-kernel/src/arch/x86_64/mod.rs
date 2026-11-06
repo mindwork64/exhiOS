@@ -8,3 +8,4 @@ pub mod stack_guard;
 pub mod serial;
 pub mod framebuffer;
 pub mod timer;
+pub mod keyboard;

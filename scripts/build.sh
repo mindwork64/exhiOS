@@ -34,6 +34,16 @@ if [[ "${EXHIOS_TIMER_TEST:-0}" == "1" ]]; then
     fi
 fi
 
+if [[ "${EXHIOS_KEYBOARD_TEST:-0}" == "1" ]]; then
+    if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]] ||
+       [[ "${EXHIOS_EXCEPTION_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_SERIAL_RX_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_TIMER_TEST:-0}" == "1" ]]; then
+        echo "EXHIOS_KEYBOARD_TEST requires EXHIOS_QEMU_EXIT_TEST and cannot be combined with exception, serial RX or timer tests." >&2
+        exit 1
+    fi
+fi
+
 rustup target add x86_64-unknown-uefi x86_64-unknown-none
 
 cargo test -p exhi-abi
@@ -58,6 +68,11 @@ fi
 if [[ "${EXHIOS_TIMER_TEST:-0}" == "1" ]]; then
     KERNEL_FEATURES+=(timer-smoke-test)
     echo "Building the kernel with the PIT IRQ0 timer smoke test."
+fi
+
+if [[ "${EXHIOS_KEYBOARD_TEST:-0}" == "1" ]]; then
+    KERNEL_FEATURES+=(keyboard-smoke-test)
+    echo "Building the kernel with the interactive PS/2 keyboard smoke test."
 fi
 
 FEATURE_ARGS=()

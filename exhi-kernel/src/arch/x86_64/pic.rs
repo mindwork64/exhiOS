@@ -55,6 +55,26 @@ pub fn mask_irq0() -> PicStatus {
     }
 }
 
+/// Unmasks only master PIC IRQ1 while preserving every other line.
+pub fn unmask_irq1() -> PicStatus {
+    // SAFETY: Called with IF clear after the keyboard IDT gate is installed.
+    unsafe {
+        let master = inb(MASTER_DATA) & !0x02;
+        outb(MASTER_DATA, master);
+        PicStatus { master_mask: inb(MASTER_DATA), slave_mask: inb(SLAVE_DATA) }
+    }
+}
+
+/// Masks IRQ1 without changing the state of any other PIC line.
+pub fn mask_irq1() -> PicStatus {
+    // SAFETY: Called with IF clear while changing keyboard interrupt policy.
+    unsafe {
+        let master = inb(MASTER_DATA) | 0x02;
+        outb(MASTER_DATA, master);
+        PicStatus { master_mask: inb(MASTER_DATA), slave_mask: inb(SLAVE_DATA) }
+    }
+}
+
 pub fn initialize_and_mask() -> PicStatus {
     // SAFETY: This code runs in ring 0 during single-CPU kernel startup.
     // Maskable interrupts remain disabled while the PIC is reprogrammed.

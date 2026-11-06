@@ -9,6 +9,7 @@ exception-smoke-test = []
 qemu-debug-exit-smoke-test = []
 serial-rx-smoke-test = []
 timer-smoke-test = []
+keyboard-smoke-test = ["qemu-debug-exit-smoke-test"]
 
 [[bin]]
 name = "exhi-kernel"
@@ -21,3 +22,4 @@ exhi-abi.workspace = true
 exhi-memory.workspace = true
 exhi-heap.workspace = true
 exhi-console.workspace = true
+exhi-input.workspace = true

@@ -62,6 +62,7 @@ pub struct IdtStatus {
     pub limit: u16,
     pub double_fault_ist: u8,
     pub timer_irq_valid: bool,
+    pub keyboard_irq_valid: bool,
     pub valid: bool,
 }
 
@@ -131,6 +132,14 @@ pub fn initialize() -> IdtStatus {
         );
     }
 
+    let keyboard_irq_handler = super::keyboard::irq1_stub_address();
+    unsafe {
+        ptr::write_volatile(
+            entries.add(usize::from(super::keyboard::IRQ1_VECTOR)),
+            IdtEntry::interrupt_gate(keyboard_irq_handler, 0),
+        );
+    }
+
     let expected_base = ptr::addr_of!(IDT) as u64;
     let expected_limit = (size_of::<InterruptDescriptorTable>() - 1) as u16;
     let descriptor = IdtRegister {
@@ -180,15 +189,28 @@ pub fn initialize() -> IdtStatus {
         && timer_irq_gate.ist & 0x7 == 0
         && timer_irq_gate.attributes == INTERRUPT_GATE_ATTRIBUTES;
 
+    let keyboard_irq_gate = unsafe {
+        ptr::read_volatile(entries.add(usize::from(super::keyboard::IRQ1_VECTOR)))
+    };
+    let keyboard_irq_gate_address = u64::from(keyboard_irq_gate.offset_low)
+        | (u64::from(keyboard_irq_gate.offset_middle) << 16)
+        | (u64::from(keyboard_irq_gate.offset_high) << 32);
+    let keyboard_irq_valid = keyboard_irq_gate_address == keyboard_irq_handler
+        && keyboard_irq_gate.selector == KERNEL_CODE_SELECTOR
+        && keyboard_irq_gate.ist & 0x7 == 0
+        && keyboard_irq_gate.attributes == INTERRUPT_GATE_ATTRIBUTES;
+
     IdtStatus {
         base: active_base,
         limit: active_limit,
         double_fault_ist,
         timer_irq_valid,
+        keyboard_irq_valid,
         valid: active_base == expected_base
             && active_limit == expected_limit
             && double_fault_ist == 1
-            && timer_irq_valid,
+            && timer_irq_valid
+            && keyboard_irq_valid,
     }
 }
 

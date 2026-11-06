@@ -6,7 +6,7 @@ mod console;
 mod heap;
 mod memory;
 
-use arch::x86_64::{address_space, framebuffer, gdt, idt, paging, pic, serial, stack_guard, timer, vmm};
+use arch::x86_64::{address_space, framebuffer, gdt, idt, keyboard, paging, pic, serial, stack_guard, timer, vmm};
 use console::KernelConsole;
 use exhi_console::Color;
 use core::arch::asm;
@@ -83,6 +83,8 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     serial::COM1.write(b"IDT: installed and verified (CPU exceptions 0-31).\r\n");
     serial::COM1.write(b"IDT IRQ0 timer gate: ");
     serial::COM1.write(if idt_status.timer_irq_valid { b"valid" } else { b"bad  " });
+    serial::COM1.write(b"\r\nIDT IRQ1 keyboard gate: ");
+    serial::COM1.write(if idt_status.keyboard_irq_valid { b"valid" } else { b"bad  " });
     serial::COM1.write(b"\r\n");
 
     #[cfg(feature = "exception-smoke-test")]
@@ -526,7 +528,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 }
             }
 
-            #[cfg(all(feature = "qemu-debug-exit-smoke-test", not(feature = "timer-smoke-test")))]
+            #[cfg(all(feature = "qemu-debug-exit-smoke-test", not(any(feature = "timer-smoke-test", feature = "keyboard-smoke-test"))))]
             {
                 serial::COM1.write(b"P2.6: forcing an exception-frame write into the unmapped stack guard page.\r\n");
                 idt::trigger_double_fault_guard_stack_smoke_test(
@@ -594,7 +596,12 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         serial_rx_smoke_test()
     }
 
-    #[cfg(not(feature = "serial-rx-smoke-test"))]
+    #[cfg(feature = "keyboard-smoke-test")]
+    {
+        keyboard_smoke_test(&mut kernel_console);
+    }
+
+    #[cfg(not(any(feature = "serial-rx-smoke-test", feature = "keyboard-smoke-test")))]
     {
         #[cfg(feature = "qemu-debug-exit-smoke-test")]
         {
@@ -738,6 +745,79 @@ fn heap_test_error_message(error: heap::HeapTestError) -> &'static [u8] {
         heap::HeapTestError::DataMismatch => b"alignment or memory contents mismatch",
         heap::HeapTestError::ReuseMismatch => b"freed allocation was not reused",
         heap::HeapTestError::FreeListNotCoalesced => b"free blocks did not coalesce",
+    }
+}
+
+#[cfg(feature = "serial-rx-smoke-test")]
+fn serial_rx_smoke_test() -> ! {
+#[cfg(feature = "keyboard-smoke-test")]
+fn keyboard_smoke_test(console: &mut KernelConsole) -> ! {
+    let status = match keyboard::initialize() {
+        Ok(status) => status,
+        Err(error) => {
+            console.write(b"P3.4: keyboard initialization failed: ");
+            console.write(error.message());
+            if let Some(response) = error.response() {
+                console.write_fmt(format_args!(" (response 0x{:02X})", response));
+            }
+            console.write(b"\r\n");
+            halt_forever();
+        }
+    };
+    if !status.is_valid() {
+        console.write(b"P3.4: keyboard status verification failed.\r\n");
+        halt_forever();
+    }
+    console.write_fmt(format_args!(
+        "P3.4: PS/2 keyboard ready; i8042 config=0x{:02X}, IRQ1 unmasked.\r\n",
+        status.controller_config
+    ));
+    console.write(b"P3.4: press keys; hold Ctrl and press D to finish this test.\r\n");
+
+    let mut event_count = 0u64;
+    loop {
+        while let Some(event) = keyboard::try_read_event() {
+            event_count = event_count.saturating_add(1);
+            console.write_fmt(format_args!(
+                "P3.4: {} key=0x{:02X} shift={} ctrl={} alt={} meta={} caps={} num={} scroll={}\r\n",
+                if event.pressed { "DOWN" } else { "UP" },
+                event.key.0,
+                event.modifiers.shift,
+                event.modifiers.control,
+                event.modifiers.alt,
+                event.modifiers.meta,
+                event.modifiers.caps_lock,
+                event.modifiers.num_lock,
+                event.modifiers.scroll_lock
+            ));
+            if event.pressed && event.key == exhi_input::KeyCode::D && event.modifiers.control {
+                unsafe { asm!("cli", options(nomem, nostack)); }
+                let pic_status = keyboard::mask_irq1();
+                let dropped = keyboard::dropped_scancodes();
+                console.write_fmt(format_args!(
+                    "P3.4: events={} dropped-scancodes={} IRQ1-mask=0x{:02X}\r\n",
+                    event_count, dropped, pic_status.master_mask
+                ));
+                if dropped == 0 && pic_status.master_mask & 0x02 != 0 {
+                    console.write(b"P3.4: PS/2 IRQ1 keyboard runtime smoke test passed.\r\n");
+                } else {
+                    console.write(b"P3.4: keyboard queue or PIC mask verification failed.\r\n");
+                    halt_forever();
+                }
+                console.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
+                unsafe {
+                    asm!(
+                        "out dx, eax",
+                        in("dx") QEMU_DEBUG_EXIT_PORT,
+                        in("eax") QEMU_DEBUG_EXIT_VALUE,
+                        options(nomem, nostack, preserves_flags)
+                    );
+                }
+                console.write(b"QEMU debug-exit: device did not terminate the guest.\r\n");
+                halt_forever();
+            }
+        }
+        unsafe { asm!("sti", "hlt", options(nomem, nostack)); }
     }
 }
 

@@ -8,6 +8,8 @@ EXCEPTION_TEST="${EXHIOS_EXCEPTION_TEST:-0}"
 QEMU_EXIT_TEST="${EXHIOS_QEMU_EXIT_TEST:-0}"
 HEADLESS_TEST="${EXHIOS_HEADLESS:-0}"
 TIMER_TEST="${EXHIOS_TIMER_TEST:-0}"
+KEYBOARD_TEST="${EXHIOS_KEYBOARD_TEST:-0}"
+SERIAL_RX_TEST="${EXHIOS_SERIAL_RX_TEST:-0}"
 
 if [[ "$EXCEPTION_TEST" == "1" && "$QEMU_EXIT_TEST" == "1" ]]; then
     echo "Choose either EXHIOS_EXCEPTION_TEST or EXHIOS_QEMU_EXIT_TEST, not both." >&2
@@ -20,6 +22,15 @@ if [[ "$TIMER_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
 fi
 if [[ "$TIMER_TEST" == "1" && "$EXCEPTION_TEST" == "1" ]]; then
     echo "EXHIOS_TIMER_TEST cannot be combined with EXHIOS_EXCEPTION_TEST." >&2
+    exit 1
+fi
+
+if [[ "$KEYBOARD_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
+    echo "EXHIOS_KEYBOARD_TEST requires EXHIOS_QEMU_EXIT_TEST=1 for controlled QEMU shutdown." >&2
+    exit 1
+fi
+if [[ "$KEYBOARD_TEST" == "1" && ( "$EXCEPTION_TEST" == "1" || "$SERIAL_RX_TEST" == "1" || "$TIMER_TEST" == "1" ) ]]; then
+    echo "EXHIOS_KEYBOARD_TEST cannot be combined with exception, serial RX or timer tests." >&2
     exit 1
 fi
 
@@ -107,10 +118,11 @@ if [[ "$HEADLESS_TEST" == "1" ]]; then
     QEMU_ARGS+=(-display none -monitor none)
 fi
 
-if [[ "$TIMER_TEST" == "1" ]]; then
+if [[ "$KEYBOARD_TEST" == "1" ]]; then
+    echo "Starting ExhiOS interactive PS/2 keyboard IRQ1 smoke test."
+    QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
+elif [[ "$TIMER_TEST" == "1" ]]; then
     echo "Starting ExhiOS PIT IRQ0 timer smoke test."
-    # Timer smoke mode uses the same controlled debug-exit device but skips
-    # the deliberate P2.6 double-fault trigger so it can exercise IRQ0.
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
 elif [[ "$QEMU_EXIT_TEST" == "1" ]]; then
     echo "Starting ExhiOS QEMU debug-exit test."
