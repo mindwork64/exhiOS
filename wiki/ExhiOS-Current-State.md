@@ -3,12 +3,12 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: e0bbdf021693f25a80a35d3f9d92a9f18e328f8f (P2.6 TSS/IST code; CI QEMU runtime pending).
+Кодовый checkpoint: b46c8702e3725281e9a42654524649d1d04b4fe8 (P2.6 TSS/IST + contiguous boot-stack guard page; headless CI QEMU passed, local QEMU pending).
 
 ## Закрыто и проверено в QEMU
 
 ### P0 — UEFI boot chain
-Loader читает и валидирует ELF64, загружает PT_LOAD по фиксированным физическим адресам, обнуляет BSS, получает GOP и ACPI RSDP, подготавливает BootInfo и 64 KiB stack, получает финальную memory map, выполняет ExitBootServices и передаёт управление ядру по System V x86-64 ABI.
+Loader читает и валидирует ELF64, загружает PT_LOAD по фиксированным физическим адресам, обнуляет BSS, получает GOP и ACPI RSDP, подготавливает BootInfo v2 и выделяет единый блок из 17 страниц: одну guard page и 64 KiB kernel stack. Затем получает финальную memory map, выполняет ExitBootServices и передаёт управление ядру по System V x86-64 ABI.
 
 ### P1 — Kernel foundation
 - GDT загружена; CS=0x08, DS=ES=SS=0x10 подтверждены.
@@ -138,18 +138,26 @@ P2.5 initial address-space layer закрыт по CI и локальному ru
 
 Ограничения: test пока выполняется в Ring 0, он подтверждает раздельные mappings/CR3 и permission bits в page tables, но ещё не запускает код в Ring 3 и не проверяет аппаратные user-mode faults. Это подготовка address-space layer, не завершённая process isolation.
 
-## P2.6 — TSS and double-fault IST (implementation in progress)
+## P2.6 — TSS, double-fault IST and boot-stack guard page
 
-Latest code checkpoint: [e0bbdf0](https://github.com/mindwork64/exhiOS/commit/e0bbdf021693f25a80a35d3f9d92a9f18e328f8f).
+Code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b46c8702e3725281e9a42654524649d1d04b4fe8). Headless CI/OVMF runtime: [run 42256795134](https://github.com/mindwork64/exhiOS/actions/runs/42256795134).
 
-- 64-bit TSS descriptor is added to GDT and loaded with LTR.
+Implementation:
+- 64-bit TSS descriptor is added to GDT and loaded with LTR (selector 0x18).
 - A dedicated 16 KiB, page-aligned IST1 stack is reserved in kernel BSS.
 - IDT vector 8 selects IST1; IdtStatus verifies its IST index.
 - The common exception stub passes the normalized frame pointer as the sixth SysV argument; the #DF handler checks that it lies inside the IST1 range.
-- The QEMU debug-exit variant intentionally makes #PF delivery fail and reads a verified-unmapped VA to force #DF. The handler reports success and exits only if the frame is on IST1.
-- CI and local runtime validation for this new #DF path are pending. No guard page has been enabled.
+- BootInfo v2 carries the boot stack base and size. The loader allocates a contiguous 17-page block: one dedicated guard page plus the 16 pages used for the 64 KiB kernel stack.
+- The physical allocator reserves the guard frame before subsequent allocations. After bootstrap paging and VMM setup, the guard identity mapping is removed; the complete stack remains supervisor mapped.
+- The QEMU debug-exit variant sets RSP to the bottom of the mapped stack and faults on the guard page. The #PF exception-frame push then faults into the same guard page; the processor raises #DF, switches to IST1, and the handler verifies its stack pointer.
 
-Guard page remains deferred until the separate IST path is confirmed in runtime.
+CI serial evidence (run 42256795134):
+- Guard page 0x1E6FF000; kernel stack 0x1E700000..0x1E710000 (64 KiB).
+- Guard translation is NotMapped; first/last stack pages remain mapped and supervisor-only.
+- Exception stack pointer 0x16AFC8 lies inside IST1.
+- #DF/IST1 runtime success marker printed; QEMU debug-exit status 33.
+
+Local Linux Mint/QEMU validation by the user is still pending.
 
 ## Wiki и автоматическая синхронизация
 
