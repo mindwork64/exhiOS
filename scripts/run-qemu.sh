@@ -7,9 +7,19 @@ cd "$ROOT_DIR"
 EXCEPTION_TEST="${EXHIOS_EXCEPTION_TEST:-0}"
 QEMU_EXIT_TEST="${EXHIOS_QEMU_EXIT_TEST:-0}"
 HEADLESS_TEST="${EXHIOS_HEADLESS:-0}"
+TIMER_TEST="${EXHIOS_TIMER_TEST:-0}"
 
 if [[ "$EXCEPTION_TEST" == "1" && "$QEMU_EXIT_TEST" == "1" ]]; then
     echo "Choose either EXHIOS_EXCEPTION_TEST or EXHIOS_QEMU_EXIT_TEST, not both." >&2
+    exit 1
+fi
+
+if [[ "$TIMER_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
+    echo "EXHIOS_TIMER_TEST requires EXHIOS_QEMU_EXIT_TEST=1 for controlled QEMU shutdown." >&2
+    exit 1
+fi
+if [[ "$TIMER_TEST" == "1" && "$EXCEPTION_TEST" == "1" ]]; then
+    echo "EXHIOS_TIMER_TEST cannot be combined with EXHIOS_EXCEPTION_TEST." >&2
     exit 1
 fi
 
@@ -97,7 +107,12 @@ if [[ "$HEADLESS_TEST" == "1" ]]; then
     QEMU_ARGS+=(-display none -monitor none)
 fi
 
-if [[ "$QEMU_EXIT_TEST" == "1" ]]; then
+if [[ "$TIMER_TEST" == "1" ]]; then
+    echo "Starting ExhiOS PIT IRQ0 timer smoke test."
+    # Timer smoke mode uses the same controlled debug-exit device but skips
+    # the deliberate P2.6 double-fault trigger so it can exercise IRQ0.
+    QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
+elif [[ "$QEMU_EXIT_TEST" == "1" ]]; then
     echo "Starting ExhiOS QEMU debug-exit test."
     # isa-debug-exit requests a guest shutdown; -no-shutdown would keep QEMU open.
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
