@@ -19,3 +19,4 @@ bench = false
 exhi-abi.workspace = true
 exhi-memory.workspace = true
 exhi-heap.workspace = true
+exhi-console.workspace = true
