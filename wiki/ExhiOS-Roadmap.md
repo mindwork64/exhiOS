@@ -64,6 +64,19 @@
 
 Границы текущего результата: smoke test проверяет раздельные mappings, CR3 switching и supervisor-only policy на Ring 0. Он ещё не доказывает выполнение кода в CPL3 или аппаратное блокирование доступа пользователя к supervisor pages.
 
+### P2.5.1 Address-space lifecycle and mapping hardening
+**Реализация закоммичена; CI и локальный QEMU runtime ещё не подтверждены.**
+- [x] Guard для вызовов после уничтожения AddressSpace: методы не должны разыменовывать освобождённый root; повторный destroy идемпотентен.
+- [x] Запрет destroy активного CR3.
+- [x] Отказ от writable+executable user mappings (W^X).
+- [x] Негативные smoke tests: unaligned/out-of-window virtual address, unaligned physical address, W+X, duplicate mapping, double unmap, use-after-destroy.
+- [x] Валидация диапазона и выравнивания физических кадров вложенных page tables перед обходом.
+- [x] Двухпроходный teardown: сначала validate всего private дерева, затем освобождение с unlink-after-success и возможностью безопасной повторной попытки.
+- [ ] CI build + headless QEMU/OVMF runtime.
+- [ ] Локальный Linux Mint/QEMU runtime пользователя.
+
+Кодовый checkpoint: [e19db15](https://github.com/mindwork64/exhiOS/commit/e19db15bf891805c2e22cb3251ebade7872bf515). Изменения P2.5.1 пока считаются незавершёнными до успешной runtime проверки.
+
 ### P2.6 Exception and stack hardening
 - [ ] Kernel TSS and dedicated IST stack for double fault.
 - [ ] IDT double-fault gate uses IST; verify the fatal handler can print diagnostics without relying on the failing kernel stack.
