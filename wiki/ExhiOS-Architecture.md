@@ -189,7 +189,7 @@ The first executable context switch is implemented in the feature-gated `exhi-ke
 - User-local Linux Mint/QEMU runtime was confirmed on 2026-11-06: task A/B alternation, progress=3 for both, distinct task-local stack addresses, Finished=2, TSS.RSP0 restored=yes, pass marker and debug-exit status 33. P4.2 is closed locally and in self-hosted CI.
 
 
-## P4.3 — PIT-backed cooperative task runtime accounting (implementation; runtime validation pending)
+## P4.3 — PIT-backed cooperative task runtime accounting (CI runtime passed; local pending)
 
 - Each `exhi-task::Task` now stores a saturating `runtime_ticks: u64` counter, exposed through `Task::runtime_ticks()`.
 - `Scheduler::account_current_ticks(elapsed)` accepts elapsed ticks only when a task is Running. It accumulates with saturation; it is called from the architecture layer at explicit cooperative yield/finish boundaries, never from the IRQ handler.
