@@ -122,11 +122,20 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 **Unified writer follow-up (implementation checkpoint [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a)):**
 - [x] Allocation-free `KernelConsole` mirrors byte and formatted output to COM1 and GOP framebuffer after framebuffer initialization; if GOP is unavailable it continues as serial-only output.
 - [x] Early boot diagnostics remain on COM1 until GOP setup succeeds; QEMU debug-exit and final halt messages use the unified writer.
-- [x] CI build job passed for all kernel variants in [run 42274252754](https://github.com/mindwork64/exhiOS/actions/runs/42274252754).
-- [ ] CI headless QEMU runtime and local QEMU validation of mirrored output.
+- [x] CI build + headless QEMU runtime passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072).
+- [x] Local Linux Mint/QEMU (2026-11-06): the unified writer emitted readiness, kernel handoff and halt-loop messages on COM1; the same writer call also targets the initialized framebuffer.
 
-### P3.3 — Timer
-- [ ] Initial timer source and monotonic tick interface.
+### P3.3 — PIT timer and monotonic ticks
+**Первая реализация проходит CI QEMU runtime; локальная проверка ожидается.**
+- [x] PIT channel 0 programmed in mode 2 at requested 100 Hz (input 1,193,182 Hz, divisor 11,932).
+- [x] IDT vector 0x20 interrupt gate installed and read-back validated.
+- [x] PIC exposes IRQ0 mask/unmask controls; timer startup unmasks IRQ0 only and preserves all other PIC masks.
+- [x] Minimal assembly IRQ0 stub preserves RAX, performs a locked 64-bit tick increment, sends master PIC EOI and returns with IRETQ. It does not call Rust or allocate memory.
+- [x] Public monotonic `ticks()` and wrap-safe `elapsed_ticks(start)` interfaces use an atomic 64-bit counter.
+- [x] Opt-in timer smoke test enables interrupts, waits for at least five real PIT ticks, disables IF, masks IRQ0 again and verifies the mask state.
+- [x] CI build of all variants plus headless QEMU/OVMF tests passed: [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072). QEMU printed 5 elapsed ticks and exited with status 33.
+- [ ] Local Linux Mint/QEMU timer runtime validation.
+- [ ] APIC/IOAPIC, HPET/TSC calibration and scheduler integration remain future work.
 
 ### P3.4 — Keyboard
 - [ ] Keyboard input driver and key event abstraction.
