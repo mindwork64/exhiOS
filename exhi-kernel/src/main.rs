@@ -20,6 +20,7 @@ const QEMU_DEBUG_EXIT_VALUE: u32 = 0x10;
 pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     serial::COM1.initialize();
     serial::COM1.write(b"ExhiOS Kernel 0.1\r\n");
+    serial::COM1.write(b"P3.1: COM1 polling serial driver ready.\r\n");
     serial::COM1.write(b"Kernel entry point reached.\r\n");
 
     // Firmware enters the kernel with IF clear. Keep it that way until the
