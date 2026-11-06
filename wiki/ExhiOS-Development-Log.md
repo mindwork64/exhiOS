@@ -291,3 +291,17 @@ Commits in this implementation:
 The console currently supports GOP format 0 (RGB-reserved) and 1 (BGR-reserved), uses the firmware stride rather than assuming stride equals visible width, validates the framebuffer byte range against the current 4 GiB identity map and writes pixels with volatile stores. The first boot screen reports the kernel banner, resolution, stride and pixel format. BitMask/BltOnly modes and cache policy are not implemented in this first slice.
 
 Host tests, all kernel build variants and headless QEMU/OVMF runtime passed in [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662). The serial trace printed `P3.2: framebuffer console initialized; GOP format and stride validated`, then confirmed P2.6 Double Fault/IST1 and debug-exit status 33. The user's local Linux Mint/QEMU serial log (2026-11-06) now also confirms framebuffer address 0x80000000, resolution 1280x800, stride 1280, GOP format 1, successful console initialization, kernel handoff and halt loop. The screenshot was shared as `https://media.exhi.ru/f/a9cba69c-6d5d-4530-9282-cf2a667cadc7.png`, but it could not be fetched from the assistant runtime because of DNS/network resolution failure; rendered text and layout still require visual inspection.
+
+
+## 2026-11-06 — P3.2 framebuffer output confirmed by user
+
+The user supplied a description of the screenshot captured from local Linux Mint/QEMU. It identifies the visible screen text:
+- `EXHIOS KERNEL 0.1`
+- `FRAMEBUFFER CONSOLE READY`
+- `RESOLUTION: 1280 X 800`
+- `SCANLINE STRIDE: 1280`
+- `PIXEL FORMAT: BGRX`
+- `COM1 SERIAL: READY`
+- `KERNEL HANDOFF: SUCCESS`
+
+Combined with the user's serial log showing GOP address 0x80000000, 1280x800, stride 1280, format 1, successful framebuffer initialization, kernel handoff and halt loop, this confirms that the initial framebuffer console rendered the expected content in local QEMU. The screenshot URL itself could not be fetched by the assistant runtime, so fine visual details such as glyph sharpness, spacing and artifacts were not independently inspected. P3.2's initial functional acceptance is complete with local evidence and CI [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662).
