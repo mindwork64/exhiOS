@@ -17,33 +17,33 @@
 - Пользователь присылает serial output для runtime проверки. Не объявлять этап закрытым без него.
 
 ## Последняя подтверждённая точка
-- P0/P1, P2.1, P2.2, P2.3, P2.4 и initial P2.5 address-space layer завершены по локальному + CI runtime evidence.
-- P2.3 local QEMU: NX enabled; 2 MiB to 4 KiB split; RW supervisor NX read/write; unmap/TLB invalidation; identity restore and reclaim; debug-exit 33.
-- P2.4 local + CI QEMU: heap at 4 GiB; 4 initial pages; grows to 18 pages; cross-page read/write, free/reuse/coalescing; 0x12000 free bytes; debug-exit 33.
+- P0/P1, P2.1, P2.2, P2.3, P2.4, P2.5 и P2.5.1 прошли локальную + CI runtime проверку.
+- P2.5.1: use-after-destroy, idempotent destroy, active-destroy rejection, W^X, invalid/duplicate mappings, double-unmap, page-table frame validation and retry-safe teardown.
+- P2.5.1 CI QEMU/OVMF: [run 42238977281](https://github.com/mindwork64/exhiOS/actions/runs/42238977281); local Linux Mint/QEMU log also passed with debug-exit 33.
+- P2.5 is Ring 0 address-space management only; actual CPL3 execution, syscalls and hardware-enforced user/supervisor fault tests are not implemented.
 
-## Текущий checkpoint
-- P2.5 base checkpoint: [a856090](https://github.com/mindwork64/exhiOS/commit/a856090c0d6e25215e5b56d269894b00696bd01d) (local + CI QEMU verified).
-- Latest code checkpoint: [e19db15](https://github.com/mindwork64/exhiOS/commit/e19db15bf891805c2e22cb3251ebade7872bf515) (P2.5.1 hardening; CI and local runtime pending).
-- P2.5 initial address-space manager committed. New PML4/PDPT per space; shared supervisor-only kernel PDPT entries 0..4; reserved entries 5..7; private user VA 8..512 GiB (PDPT entries 8..511).
-- Unsafe user-frame mapping contract: caller owns and scrubs the frame before exposing it to untrusted code.
-- Initial headless QEMU CI [run 42217123278](https://github.com/mindwork64/exhiOS/actions/runs/42217123278) passed: same VA 0x200000000 mapped to different physical frames in two roots; A1/B2 contents survived CR3 switches; shared kernel/heap maps survived; private page tables reclaimed; debug-exit 33.
-- Latest hardening commit a856090 adds explicit supervisor-only assertions for shared code/stack/heap and the user frame safety contract. Headless QEMU/OVMF CI [run 42217369804](https://github.com/mindwork64/exhiOS/actions/runs/42217369804) and local Linux Mint/QEMU both passed.
-- Local serial values: kernel root 0x11B000; A PML4 0x177000; B PML4 0x179000; shared kernel translation 0x104000; shared heap translation 0x163000; VA 0x200000000 → A frame 0x17B000 / B frame 0x17C000; private page tables reclaimed; debug-exit 33.
-- P2.5 smoke test runs at Ring 0. No actual Ring 3 process execution, syscalls or hardware user-fault test yet. TSS/IST and stack guard page also remain future hardening.
-- P2.5.1 latest code adds use-after-destroy guards, active-destroy rejection, W^X denial, invalid/duplicate map and double-unmap tests, page-table frame validation and retry-safe teardown. This code has not yet received CI/local runtime confirmation.
+## Текущий кодовый checkpoint
+- Latest code commit: [b46c870](https://github.com/mindwork64/exhiOS/commit/b46c8702e3725281e9a42654524649d1d04b4fe8).
+- P2.6 implementation: 64-bit TSS in GDT (selector 0x18), TR loaded with LTR, 16 KiB aligned IST1 stack, IDT vector 8 uses IST1; exception assembly passes normalized frame pointer to the Rust #DF handler.
+- BootInfo ABI was bumped to magic `EXHIOS02`, version 2, and now carries kernel stack base/size.
+- UEFI loader allocates a contiguous 17-page LOADER_DATA region: first page is a reserved guard page; remaining 16 pages form the 64 KiB kernel stack.
+- Kernel reserves the guard physical page before later allocator use, then removes its identity mapping through VMM after the UEFI map is parsed. It verifies the guard is NotMapped and the stack remains supervisor mapped.
+- QEMU debug-exit test sets RSP to the first byte of the mapped kernel stack and accesses the guard page. Page-fault frame delivery hits the same guard page and escalates to #DF; CPU must switch to IST1.
+- Headless CI/OVMF runtime: [run 42256795134](https://github.com/mindwork64/exhiOS/actions/runs/42256795134) passed. Serial showed guard 0x1E6FF000, stack 0x1E700000..0x1E710000, exception stack pointer 0x16AFC8 inside IST1, P2.6 success marker and debug-exit 33.
+- Local Linux Mint/QEMU test for latest P2.6 guard-page checkpoint is still pending. Do not mark P2.6 fully closed until that log is reviewed.
 
 ## Следующие действия
-1. Получить CI и локальный runtime evidence для P2.5.1 checkpoint e19db15; исправить compile/runtime ошибки до дальнейшего расширения подсистемы.
-2. После закрытия P2.5.1 перейти к P2.6: TSS и отдельный IST stack для double fault; перевести #DF gate на IST и проверить контролируемую диагностику.
-3. Только после подтверждённого IST path добавить guard page под kernel stack. Не допускать тройного fault при тестах.
-4. Ring 3, системные вызовы и аппаратные user/supervisor fault tests остаются отдельным последующим user-mode этапом.
-
-Локальная проверка P2.5 завершена 2026-11-06. Для следующих кодовых изменений обновлять main через:
-~~~bash
-git fetch origin
-git reset --hard origin/main
-~~~
-После этого запускать `cargo fmt`, `cargo test` и `EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh` по необходимости.
+1. Пользовательская локальная проверка checkpoint b46c870:
+   ```bash
+   git fetch origin
+   git reset --hard origin/main
+   cargo fmt
+   cargo test
+   EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh
+   ```
+   Expected markers: kernel stack guard page reported unmapped; stack remains supervisor-only; controlled guard-page fault raises #DF; exception stack pointer lies inside IST1; debug-exit status 33.
+2. Once local P2.6 is confirmed, start P3 device foundation: serial abstraction, framebuffer console, timer, keyboard and driver registry.
+3. Keep Ring 3, syscalls and hardware user/supervisor fault tests as a later user-mode milestone. Guard page is now implemented and CI-tested; don't remove or bypass it.
 
 ## Правила работы
 - Русский язык общения.
