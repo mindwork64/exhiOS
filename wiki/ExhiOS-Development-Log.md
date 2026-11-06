@@ -233,3 +233,23 @@ Headless CI/OVMF [run 42256850017](https://github.com/mindwork64/exhiOS/actions/
 - P2.6 double-fault IST runtime success marker and QEMU debug-exit status 33.
 
 Local Linux Mint/QEMU verification of this P2.6 guard-page checkpoint is still pending. Do not yet mark P2.6 fully closed by the project's local+CI acceptance rule.
+
+## 2026-11-06 — P3.1 polling serial driver implementation
+
+Commits:
+- [eb60bdf](https://github.com/mindwork64/exhiOS/commit/eb60bdf377f4f28211504fe4152bd26db10d1eee) — introduced a reusable 16550-compatible SerialPort abstraction.
+- [97f8a9b](https://github.com/mindwork64/exhiOS/commit/97f8a9b43d4e3d9453ed46fd5956aee5adfd4851) — exported the serial driver module from x86_64 architecture.
+- [11251d5](https://github.com/mindwork64/exhiOS/commit/11251d5c57151a86f153dec96493c1f686101979) — migrated main.rs boot/exception diagnostics from direct COM1 I/O helpers to serial::COM1; first headless QEMU regression passed.
+- [14f2268](https://github.com/mindwork64/exhiOS/commit/14f22683bf1f5c02f7740ccecbf330dae43e2b27) — added explicit P3.1 readiness marker in the boot log.
+- [d1ea614](https://github.com/mindwork64/exhiOS/commit/d1ea6145e4fa2c10a04e03725d7677b679cbede0) — added non-blocking try_read_byte and polling read_byte_blocking.
+
+Implementation:
+- SerialPort accepts a configurable UART I/O base; COM1 at 0x3F8 is the early kernel console.
+- Initialization configures 38400 baud, 8N1, FIFO and modem-control lines.
+- TX uses bounded polling on the 16550 line-status register; string and 64-bit hexadecimal output are provided.
+- RX offers a non-blocking byte read and a blocking polling read for a later serial shell. The driver is deliberately single-core and non-interrupt-driven while IF remains clear.
+- main.rs no longer owns UART register constants or raw port I/O helpers; GDT, IDT, memory, VMM and exception diagnostics all use the serial module.
+
+Headless QEMU/OVMF [run 42257896620](https://github.com/mindwork64/exhiOS/actions/runs/42257896620) passed and printed the P3.1 COM1 readiness marker. The same run confirmed the P2.6 guard-page/#DF/IST1 path and debug-exit status 33. A subsequent build for the RX-inclusive checkpoint passed; its QEMU regression run [42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) was still in progress at this log snapshot.
+
+Interactive serial input on the user's local Linux Mint/QEMU terminal has not yet been verified.
