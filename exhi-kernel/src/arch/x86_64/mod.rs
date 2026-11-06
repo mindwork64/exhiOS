@@ -6,3 +6,4 @@ pub mod vmm;
 pub mod address_space;
 pub mod stack_guard;
 pub mod serial;
+pub mod framebuffer;
