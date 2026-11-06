@@ -262,6 +262,36 @@ impl<const FRAME_COUNT: usize, const WORD_COUNT: usize>
         Err(MemoryError::OutOfMemory)
     }
 
+    /// Permanently reserves a page for a kernel/firmware object.
+    ///
+    /// A page outside Conventional Memory is already unavailable to this
+    /// allocator, so reserving it is an idempotent no-op. A managed free page
+    /// is marked allocated and removed from the free-page count.
+    pub fn reserve_page(&mut self, physical_address: u64) -> Result<(), MemoryError> {
+        if !self.initialized {
+            return Err(MemoryError::NotInitialized);
+        }
+        if physical_address % PAGE_SIZE != 0 {
+            return Err(MemoryError::UnalignedAddress);
+        }
+
+        let frame_u64 = physical_address / PAGE_SIZE;
+        let frame = usize::try_from(frame_u64).map_err(|_| MemoryError::AddressOutOfRange)?;
+        if frame >= FRAME_COUNT {
+            return Err(MemoryError::AddressOutOfRange);
+        }
+
+        let word = frame / 64;
+        let mask = 1u64 << (frame % 64);
+        if self.managed[word] & mask == 0 || self.allocated[word] & mask != 0 {
+            return Ok(());
+        }
+
+        self.allocated[word] |= mask;
+        self.stats.free_pages -= 1;
+        Ok(())
+    }
+
     /// Returns a page previously allocated by this allocator.
     pub fn free_page(&mut self, physical_address: u64) -> Result<(), MemoryError> {
         if !self.initialized {
@@ -416,6 +446,45 @@ mod tests {
         allocator.free_page(reused).unwrap();
         allocator.free_page(second).unwrap();
         assert_eq!(allocator.stats().free_pages, 2);
+    }
+
+    #[test]
+    fn reserves_managed_pages_and_ignores_firmware_reserved_pages() {
+        let bytes = map(&[descriptor(UEFI_CONVENTIONAL_MEMORY_TYPE, 0x10_0000, 2)]);
+        let mut allocator = TestAllocator::new();
+        allocator
+            .initialize_from_uefi(&bytes, TEST_DESCRIPTOR_SIZE, 1)
+            .unwrap();
+
+        assert_eq!(allocator.stats().free_pages, 2);
+        allocator.reserve_page(0x10_0000).unwrap();
+        assert_eq!(allocator.stats().free_pages, 1);
+        // Reserving a page twice is harmless and does not decrement twice.
+        allocator.reserve_page(0x10_0000).unwrap();
+        assert_eq!(allocator.stats().free_pages, 1);
+        // A firmware-reserved page is outside the managed bitmap already.
+        allocator.reserve_page(0x20_0000).unwrap();
+        assert_eq!(allocator.stats().free_pages, 1);
+        assert_eq!(allocator.allocate_page().unwrap(), 0x10_1000);
+        assert_eq!(allocator.allocate_page(), Err(MemoryError::OutOfMemory));
+    }
+
+    #[test]
+    fn reserve_page_rejects_unaligned_and_out_of_range_addresses() {
+        let bytes = map(&[descriptor(UEFI_CONVENTIONAL_MEMORY_TYPE, 0x10_0000, 1)]);
+        let mut allocator = TestAllocator::new();
+        allocator
+            .initialize_from_uefi(&bytes, TEST_DESCRIPTOR_SIZE, 1)
+            .unwrap();
+
+        assert_eq!(
+            allocator.reserve_page(0x10_0001),
+            Err(MemoryError::UnalignedAddress)
+        );
+        assert_eq!(
+            allocator.reserve_page(MAX_PHYSICAL_ADDRESS),
+            Err(MemoryError::AddressOutOfRange)
+        );
     }
 
     #[test]
