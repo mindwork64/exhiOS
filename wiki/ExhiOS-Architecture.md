@@ -186,4 +186,16 @@ The first executable context switch is implemented in the feature-gated `exhi-ke
 - TSS.RSP0 is updated to each selected task's stack top and reset after returning to boot. The 16 KiB double-fault IST1 is not reused.
 - The smoke test keeps IF disabled and is cooperative only. It does not implement timer preemption, Ring 3, per-process CR3 isolation or SMP.
 - Self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) passed. QEMU serial confirms A/B task alternation, stack-local values preserved across yields at different addresses, both tasks Finished, TSS.RSP0 restored, boot stack resumed and debug-exit status 33.
-- User-local Linux Mint/QEMU runtime confirmation remains required before P4.2 is marked closed.
+- User-local Linux Mint/QEMU runtime was confirmed on 2026-11-06: task A/B alternation, progress=3 for both, distinct task-local stack addresses, Finished=2, TSS.RSP0 restored=yes, pass marker and debug-exit status 33. P4.2 is closed locally and in self-hosted CI.
+
+
+## P4.3 — PIT-backed cooperative task runtime accounting (implementation; runtime validation pending)
+
+- Each `exhi-task::Task` now stores a saturating `runtime_ticks: u64` counter, exposed through `Task::runtime_ticks()`.
+- `Scheduler::account_current_ticks(elapsed)` accepts elapsed ticks only when a task is Running. It accumulates with saturation; it is called from the architecture layer at explicit cooperative yield/finish boundaries, never from the IRQ handler.
+- The feature-gated kernel test reuses two guarded Ring 0 task stacks. Each task waits for three or more real 100 Hz PIT ticks per step, alternates with its peer and records its own runtime across three steps.
+- IRQ0 remains an assembly-only stub: locked increment of `EXHIOS_PIT_TICKS`, master PIC EOI, IRETQ. No Rust call, heap allocation or scheduler access was added to the ISR.
+- IF is clear while scheduler metadata, accounting baselines, TSS.RSP0 and the call-based stack switch are updated. Tasks use `sti; hlt` only while waiting; the resumed cooperative-yield path enables IF again. This prevents an IRQ from interrupting the partially restored context frame.
+- Runtime mode: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TASK_ACCOUNTING_TEST=1 ./scripts/run-qemu.sh`. A pass requires two Finished tasks, at least 12 total PIT ticks, at least six accounted ticks per task, IRQ0 masked at the end, TSS.RSP0 cleared and QEMU debug-exit status 33.
+- Code and CI workflow are present; self-hosted CI result and user-local QEMU runtime evidence have not yet been accepted.
+- This is cooperative runtime accounting, not timer preemption. Full interrupt-frame switching is explicitly separated into P4.4.
