@@ -53,6 +53,7 @@ pub enum PagingError {
     PaeNotEnabled,
     FiveLevelPagingNotSupportedByBootstrap,
     InvalidPageTableStorage,
+    InvalidKernelStackRange,
     AddressOutOfRange,
     MissingPageTableEntry,
     UnexpectedPageSize,
@@ -73,6 +74,7 @@ impl PagingError {
                 b"five-level paging is active; bootstrap supports four levels"
             }
             Self::InvalidPageTableStorage => b"bootstrap page-table storage is invalid or above 4 GiB",
+            Self::InvalidKernelStackRange => b"boot kernel stack bounds are invalid or do not contain the active stack",
             Self::AddressOutOfRange => b"required address range is outside the initial 4 GiB identity map",
             Self::MissingPageTableEntry => b"required page-table entry is not present",
             Self::UnexpectedPageSize => b"unexpected page-table entry size",
@@ -144,10 +146,24 @@ pub fn initialize_identity_map_4g(boot_info: &BootInfo) -> Result<PagingStatus, 
     let boot_info_address = boot_info as *const BootInfo as u64;
     let kernel_code_address = initialize_identity_map_4g as *const () as u64;
     let stack_address = read_stack_pointer();
+    let stack_end = boot_info
+        .kernel_stack_base
+        .checked_add(boot_info.kernel_stack_size)
+        .ok_or(PagingError::InvalidKernelStackRange)?;
+    if boot_info.kernel_stack_base == 0
+        || boot_info.kernel_stack_size == 0
+        || boot_info.kernel_stack_base % PAGE_SIZE != 0
+        || boot_info.kernel_stack_size % PAGE_SIZE != 0
+        || stack_address < boot_info.kernel_stack_base
+        || stack_address >= stack_end
+    {
+        return Err(PagingError::InvalidKernelStackRange);
+    }
 
     let ranges = [
         (kernel_code_address, 1u64),
         (stack_address, 8u64),
+        (boot_info.kernel_stack_base, boot_info.kernel_stack_size),
         (boot_info_address, core::mem::size_of::<BootInfo>() as u64),
         (
             boot_info.memory_map.physical_address,
