@@ -9,6 +9,7 @@ use exhi_abi::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
 
 const COM1: u16 = 0x3F8;
 const LINE_STATUS: u16 = COM1 + 5;
+const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
 
 #[no_mangle]
 pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
@@ -17,19 +18,54 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     serial_write(b"Kernel entry point reached.\r\n");
 
     if !boot_info.is_null() {
+        // SAFETY: The bootloader passes a pointer to a dedicated LOADER_DATA
+        // page and retains that page for the lifetime of the kernel.
         let info = unsafe { &*boot_info };
         if info.magic == BOOT_INFO_MAGIC
             && info.version == BOOT_INFO_VERSION
             && info.is_valid()
         {
             serial_write(b"BootInfo: valid\r\n");
+
+            serial_write(b"Memory map address: 0x");
+            serial_write_hex(info.memory_map.physical_address);
+            serial_write(b"\r\nMemory map size: 0x");
+            serial_write_hex(info.memory_map.map_size);
+            serial_write(b"\r\nMemory descriptor size: 0x");
+            serial_write_hex(u64::from(info.memory_map.descriptor_size));
+            serial_write(b"\r\nMemory descriptor version: 0x");
+            serial_write_hex(u64::from(info.memory_map.descriptor_version));
+
+            if info.memory_map.physical_address != 0
+                && info.memory_map.map_size != 0
+                && info.memory_map.descriptor_size != 0
+            {
+                let descriptor_count =
+                    info.memory_map.map_size / u64::from(info.memory_map.descriptor_size);
+                serial_write(b"\r\nMemory descriptors: 0x");
+                serial_write_hex(descriptor_count);
+            } else {
+                serial_write(b"\r\nBootInfo: memory map metadata is incomplete");
+            }
+
+            serial_write(b"\r\nFramebuffer address: 0x");
+            serial_write_hex(info.framebuffer.physical_address);
+            serial_write(b"\r\nFramebuffer resolution: 0x");
+            serial_write_hex(u64::from(info.framebuffer.width));
+            serial_write(b" x 0x");
+            serial_write_hex(u64::from(info.framebuffer.height));
+            serial_write(b"\r\nACPI RSDP address: 0x");
+            serial_write_hex(info.acpi_rsdp_address);
+            serial_write(b"\r\n");
         } else {
             serial_write(b"BootInfo: invalid\r\n");
         }
     } else {
-        serial_write(b"BootInfo: not supplied (kernel build smoke test)\r\n");
+        serial_write(b"BootInfo: not supplied\r\n");
     }
 
+    serial_write(b"ExhiOS: kernel handoff successful.\r\n");
+    serial_write(b"ExhiOS: interrupts remain disabled until the IDT is ready.\r\n");
     serial_write(b"ExhiOS: halt loop entered.\r\n");
 
     loop {
@@ -69,6 +105,13 @@ fn serial_write(bytes: &[u8]) {
         unsafe {
             outb(COM1, byte);
         }
+    }
+}
+
+fn serial_write_hex(value: u64) {
+    for shift in (0..16).rev() {
+        let digit = ((value >> (shift * 4)) & 0xF) as usize;
+        serial_write(&HEX_DIGITS[digit..digit + 1]);
     }
 }
 

@@ -43,22 +43,20 @@
 - [x] Collect GOP framebuffer information when direct framebuffer access is available.
 - [x] Locate ACPI 2.0 RSDP, falling back to the ACPI 1.0 table.
 - [x] Allocate and populate a persistent BootInfo handoff structure.
-- [ ] Run the P0.3 segment-load path in QEMU and confirm all exact-address allocations and memory checks.
-- [ ] Confirm cleanup releases temporary allocations after the smoke test.
-
-**Current code limitation:** the P0.3 smoke test deliberately frees the temporary kernel and BootInfo allocations before returning to firmware. It does not enter the kernel. The final memory map is intentionally deferred until P0.4, after all allocations are complete.
+- [x] Run the P0.3 segment-load path in QEMU; exact-address allocations and memory checks passed.
+- [x] Confirm temporary allocations are released by the P0.3 smoke-test path.
 
 ### P0.4 — Final memory map, ExitBootServices and enter ExhiKernel
 
-- [ ] Reserve stable storage for the final memory map and BootInfo before requesting the map key.
-- [ ] Obtain the final memory map after all remaining UEFI allocations.
-- [ ] Populate BootInfo memory-map address, size, descriptor size, and descriptor version.
-- [ ] Exit UEFI Boot Services using the current memory-map key.
-- [ ] Transfer control using the x86-64 System V kernel entry ABI.
-- [ ] Verify the kernel banner through COM1 in QEMU.
-- [ ] Verify the passed BootInfo header and memory-map metadata.
+- [x] Reserve the kernel stack, segment pages and BootInfo page before the final memory map.
+- [x] Drop filesystem/protocol handles and temporary UEFI heap allocations before ExitBootServices.
+- [x] Obtain the final memory map and handle a stale map key using the uefi crate helper.
+- [x] Populate BootInfo memory-map address, size, descriptor size and descriptor version.
+- [x] Switch to a dedicated kernel stack with the System V x86-64 entry ABI.
+- [x] Disable interrupts until the kernel has installed its own IDT.
+- [ ] Run the P0.4 handoff in QEMU and confirm the kernel serial banner and BootInfo fields.
 
-**P0 acceptance:** QEMU + OVMF starts the ExhiOS UEFI loader, the loader loads the project's ELF64 kernel, Boot Services are exited, and the kernel prints `ExhiOS Kernel 0.1` through COM1.
+**P0 acceptance:** QEMU + OVMF starts the ExhiOS UEFI loader, the loader loads the project's ELF64 kernel, Boot Services are exited, and the kernel prints `ExhiOS Kernel 0.1` through COM1 with valid BootInfo metadata.
 
 ## P1 — Kernel foundation
 

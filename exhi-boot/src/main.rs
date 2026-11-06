@@ -4,11 +4,13 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use core::{ptr, slice, time::Duration};
-use core::ptr::NonNull;
+use core::arch::global_asm;
+use core::ptr::{self, NonNull};
+use core::{slice, time::Duration};
 
-use exhi_abi::{BootInfo, FramebufferInfo};
+use exhi_abi::{BootInfo, FramebufferInfo, MemoryMapInfo};
 use exhi_elf::{ElfFile, ProgramHeader, PT_LOAD};
+use uefi::mem::memory_map::MemoryMap;
 use uefi::prelude::*;
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 use uefi::{boot, cstr16};
@@ -17,19 +19,48 @@ use uefi::fs::FileSystem;
 const KERNEL_PATH: &uefi::CStr16 = cstr16!("\\exhi-kernel.elf");
 const MAX_KERNEL_SIZE: u64 = 64 * 1024 * 1024;
 const PAGE_SIZE: u64 = boot::PAGE_SIZE as u64;
+const KERNEL_STACK_PAGES: usize = 16;
 
 struct AllocatedPages {
     base: NonNull<u8>,
     page_count: usize,
 }
 
+// The trampoline is entered using the System V x86-64 ABI. Its arguments are:
+// RDI = kernel entry address, RSI = exclusive stack top, RDX = BootInfo pointer.
+// It disables interrupts, installs a fresh 16-byte-aligned stack, passes
+// BootInfo in RDI, and calls the kernel using the same ABI.
+global_asm!(
+    r#"
+    .text
+    .global exhi_enter_kernel
+exhi_enter_kernel:
+    cli
+    cld
+    mov rsp, rsi
+    and rsp, -16
+    mov rax, rdi
+    mov rdi, rdx
+    call rax
+    ud2
+"#
+);
+
+unsafe extern "sysv64" {
+    fn exhi_enter_kernel(
+        kernel_entry: u64,
+        stack_top: u64,
+        boot_info: *const BootInfo,
+    ) -> !;
+}
+
 #[entry]
 fn main() -> Status {
     let _ = uefi::helpers::init();
 
-    uefi::println!("ExhiOS Bootloader 0.3");
+    uefi::println!("ExhiOS Bootloader 0.4");
     uefi::println!("UEFI application entry point reached.");
-    uefi::println!("P0.3: loading kernel segments into physical memory.");
+    uefi::println!("P0.4: final memory map and kernel handoff.");
 
     let image_fs = match boot::get_image_file_system(boot::image_handle()) {
         Ok(file_system) => file_system,
@@ -55,6 +86,8 @@ fn main() -> Status {
     }
 
     let expected_size = metadata.file_size();
+    drop(metadata);
+
     if expected_size == 0 || expected_size > MAX_KERNEL_SIZE {
         uefi::println!(
             "ERROR: kernel file size is outside the allowed range: {expected_size} bytes."
@@ -90,12 +123,16 @@ fn main() -> Status {
         }
     };
 
+    let kernel_entry = elf.entry_point();
     uefi::println!("ELF64 validation: OK");
-    uefi::println!("Entry point: {:#018x}", elf.entry_point());
+    uefi::println!("Entry point: {kernel_entry:#018x}");
     uefi::println!("Program headers: {}", elf.program_header_count());
 
     let mut allocations = Vec::new();
-    if allocations.try_reserve(elf.program_header_count() + 1).is_err() {
+    if allocations
+        .try_reserve(elf.program_header_count() + 2)
+        .is_err()
+    {
         uefi::println!("ERROR: cannot reserve allocation tracking storage.");
         return finish(Status::OUT_OF_RESOURCES);
     }
@@ -127,10 +164,6 @@ fn main() -> Status {
         uefi::println!("ACPI RSDP: not found.");
     }
 
-    let mut boot_info = BootInfo::empty();
-    boot_info.framebuffer = framebuffer;
-    boot_info.acpi_rsdp_address = acpi_rsdp_address;
-
     let boot_info_page = match boot::allocate_pages(
         boot::AllocateType::AnyPages,
         boot::MemoryType::LOADER_DATA,
@@ -144,32 +177,118 @@ fn main() -> Status {
         }
     };
 
+    let boot_info = BootInfo {
+        framebuffer,
+        acpi_rsdp_address,
+        ..BootInfo::empty()
+    };
+
     // SAFETY: The allocated page is writable, correctly aligned, and large
-    // enough for BootInfo. The allocation is retained until cleanup or handoff.
+    // enough for BootInfo. It is retained across ExitBootServices.
     unsafe {
         boot_info_page.as_ptr().cast::<BootInfo>().write(boot_info);
     }
-
     allocations.push(AllocatedPages {
         base: boot_info_page,
         page_count: 1,
     });
 
+    let stack_pages = match boot::allocate_pages(
+        boot::AllocateType::AnyPages,
+        boot::MemoryType::LOADER_DATA,
+        KERNEL_STACK_PAGES,
+    ) {
+        Ok(pages) => pages,
+        Err(error) => {
+            uefi::println!("ERROR: cannot allocate the kernel stack: {error:?}");
+            release_allocations(&mut allocations);
+            return finish(Status::OUT_OF_RESOURCES);
+        }
+    };
+
+    let stack_bytes = match KERNEL_STACK_PAGES.checked_mul(boot::PAGE_SIZE) {
+        Some(size) => size,
+        None => {
+            uefi::println!("ERROR: kernel stack size overflow.");
+            // SAFETY: This is the exact allocation just returned by UEFI.
+            let _ = unsafe { boot::free_pages(stack_pages, KERNEL_STACK_PAGES) };
+            release_allocations(&mut allocations);
+            return finish(Status::LOAD_ERROR);
+        }
+    };
+
+    let stack_top = match (stack_pages.as_ptr() as u64).checked_add(stack_bytes as u64) {
+        Some(top) => top,
+        None => {
+            uefi::println!("ERROR: kernel stack address overflow.");
+            // SAFETY: This is the exact allocation just returned by UEFI.
+            let _ = unsafe { boot::free_pages(stack_pages, KERNEL_STACK_PAGES) };
+            release_allocations(&mut allocations);
+            return finish(Status::LOAD_ERROR);
+        }
+    };
+
+    allocations.push(AllocatedPages {
+        base: stack_pages,
+        page_count: KERNEL_STACK_PAGES,
+    });
+
+    let boot_info_ptr = boot_info_page.as_ptr().cast::<BootInfo>();
+
+    uefi::println!("BootInfo prepared at {:#018x}.", boot_info_ptr as u64);
     uefi::println!(
-        "BootInfo prepared at {:#018x}.",
-        boot_info_page.as_ptr() as u64
+        "Kernel stack: {:#018x}..{stack_top:#018x} ({} bytes).",
+        stack_pages.as_ptr() as u64,
+        stack_bytes
     );
-    uefi::println!("BootInfo framebuffer and ACPI fields populated.");
-    uefi::println!("BootInfo memory map will be finalized in P0.4.");
+    uefi::println!("All kernel, stack and handoff allocations are reserved.");
 
-    uefi::println!("");
-    uefi::println!("P0.3 preparation complete.");
-    uefi::println!("Kernel segments are loaded at their fixed physical addresses.");
-    uefi::println!("Segment contents and zero-filled tails were verified.");
-    uefi::println!("Kernel has not been entered; UEFI Boot Services remain active.");
+    // All objects backed by UEFI protocols or the UEFI pool allocator must be
+    // disposed of before ExitBootServices. The raw page allocations themselves
+    // are intentionally retained; dropping this Vec only frees its bookkeeping.
+    drop(file_system);
+    drop(kernel_bytes);
+    drop(allocations);
 
-    release_allocations(&mut allocations);
-    finish(Status::SUCCESS)
+    uefi::println!("Preparing the final UEFI memory map...");
+    uefi::println!("Exiting UEFI Boot Services and entering ExhiOS Kernel.");
+
+    // SAFETY:
+    // - The filesystem and all scoped UEFI protocol handles have been dropped.
+    // - Temporary Vec buffers and other UEFI-pool allocations have been dropped.
+    // - The kernel segments, stack and BootInfo page are LOADER_DATA allocations
+    //   and remain reserved across ExitBootServices.
+    // - No UEFI services, protocols or global allocator operations are used after
+    //   this call. The returned memory-map backing allocation is retained.
+    let memory_map = unsafe { boot::exit_boot_services(None) };
+
+    let memory_map_meta = memory_map.meta();
+    let memory_map_address = memory_map.buffer().as_ptr() as u64;
+
+    let mut final_boot_info = unsafe { boot_info_ptr.read() };
+    final_boot_info.memory_map = MemoryMapInfo {
+        physical_address: memory_map_address,
+        map_size: memory_map_meta.map_size as u64,
+        descriptor_size: memory_map_meta.desc_size as u32,
+        descriptor_version: memory_map_meta.desc_version,
+    };
+
+    // SAFETY: BootInfo resides in a dedicated LOADER_DATA page allocated before
+    // ExitBootServices and remains writable by the loader and the kernel.
+    unsafe {
+        boot_info_ptr.write(final_boot_info);
+    }
+
+    // The kernel owns this map buffer from this point onward. Forgetting the
+    // wrapper prevents any destructor from trying to return memory to firmware.
+    core::mem::forget(memory_map);
+
+    // No UEFI console, protocol, allocator, logger or Boot Services call is legal
+    // beyond this point. The trampoline switches to our own stack and enters
+    // the fixed-address kernel through its System V ABI entry point.
+    unsafe {
+        exhi_enter_kernel(kernel_entry, stack_top, boot_info_ptr);
+    }
 }
 
 fn load_kernel_segments(
@@ -250,9 +369,7 @@ fn load_one_segment(
     };
 
     if destination_pages.as_ptr() as u64 != page_start {
-        uefi::println!(
-            "ERROR: UEFI returned an unexpected address for PT_LOAD #{index}."
-        );
+        uefi::println!("ERROR: UEFI returned an unexpected address for PT_LOAD #{index}.");
         // SAFETY: This allocation was just returned by allocate_pages with
         // exactly this page count.
         let _ = unsafe { boot::free_pages(destination_pages, page_count) };
@@ -275,11 +392,7 @@ fn load_one_segment(
     unsafe {
         ptr::write_bytes(destination_pages.as_ptr(), 0, allocation_size);
         ptr::copy_nonoverlapping(source.as_ptr(), destination, file_size);
-        ptr::write_bytes(
-            destination.add(file_size),
-            0,
-            memory_size - file_size,
-        );
+        ptr::write_bytes(destination.add(file_size), 0, memory_size - file_size);
     }
 
     // Verify the bytes copied from the file and the zero-filled memory tail.
@@ -380,9 +493,7 @@ fn release_allocations(allocations: &mut Vec<AllocatedPages>) {
     while let Some(allocation) = allocations.pop() {
         // SAFETY: Every entry is a matching allocation returned by allocate_pages
         // and no pointers into these pages are used after this call.
-        if let Err(error) =
-            unsafe { boot::free_pages(allocation.base, allocation.page_count) }
-        {
+        if let Err(error) = unsafe { boot::free_pages(allocation.base, allocation.page_count) } {
             uefi::println!("WARNING: could not release a temporary page allocation: {error:?}");
         }
     }

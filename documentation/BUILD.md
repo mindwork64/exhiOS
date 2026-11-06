@@ -33,7 +33,7 @@ Expected artifacts:
 - `target/x86_64-unknown-uefi/debug/exhi-boot.efi`
 - `target/x86_64-unknown-none/debug/exhi-kernel`
 
-## P0.3: load and verify kernel segments in QEMU
+## P0.4: exit UEFI Boot Services and enter ExhiKernel
 
 On Debian/Ubuntu-based systems, install the runtime tools:
 
@@ -47,43 +47,33 @@ Then run:
 ./scripts/run-qemu.sh
 ```
 
-The script creates a GPT disk with a FAT32 EFI System Partition, copies the loader to `EFI/BOOT/BOOTX64.EFI`, copies the kernel to `\\exhi-kernel.elf`, and starts QEMU.
+The loader reads and validates the kernel ELF, loads each `PT_LOAD` segment into its declared physical address, and reserves a 64 KiB kernel stack and a persistent `BootInfo` page.
 
-The loader:
+Before exiting Boot Services, it closes the filesystem and drops temporary heap-backed buffers. The `uefi` crate's `boot::exit_boot_services(None)` helper obtains the final memory map and retries the ExitBootServices operation if the map key becomes stale. The loader stores the returned memory-map buffer address, size, descriptor size and descriptor version in BootInfo.
 
-1. Reads and validates the kernel ELF64 image.
-2. For each `PT_LOAD`, computes the page-rounded physical range.
-3. Requests those exact physical pages from UEFI as `LOADER_DATA`.
-4. Clears the allocation, copies `p_filesz` bytes, and zeroes the tail through `p_memsz`.
-5. Verifies the copied bytes and zero-filled tail.
-6. Collects GOP framebuffer information when direct access is supported and finds the ACPI RSDP.
-7. Allocates and populates a `BootInfo` structure.
+The loader then switches to its dedicated kernel stack, disables interrupts, and calls the kernel entry point using the x86-64 System V ABI. No UEFI protocol, console, allocator or Boot Services API is used after the transition.
 
-The loader releases these temporary allocations before returning to firmware. Kernel handoff and `ExitBootServices` remain part of P0.4.
-
-Expected output includes:
+Expected QEMU output is split between the UEFI display and serial console. The UEFI display should end with the handoff message; the QEMU terminal should show:
 
 ```text
-ExhiOS Bootloader 0.3
-P0.3: loading kernel segments into physical memory.
-ELF64 validation: OK
-Reserving PT_LOAD #0: physical=0x..., pages=..., bytes=...
-PT_LOAD #0: loaded at 0x...; ... verified.
-Reserving PT_LOAD #1: physical=0x..., pages=..., bytes=...
-PT_LOAD #1: loaded at 0x...; ... verified.
-GOP framebuffer: ...
-ACPI RSDP: ...
-BootInfo prepared at 0x...
-P0.3 preparation complete.
-Kernel segments are loaded at their fixed physical addresses.
-Segment contents and zero-filled tails were verified.
-Kernel has not been entered; UEFI Boot Services remain active.
+ExhiOS Kernel 0.1
+Kernel entry point reached.
+BootInfo: valid
+Memory map address: 0x...
+Memory map size: 0x...
+Memory descriptor size: 0x...
+Memory descriptor version: 0x...
+Memory descriptors: 0x...
+Framebuffer address: 0x...
+Framebuffer resolution: 0x...
+ACPI RSDP address: 0x...
+ExhiOS: kernel handoff successful.
+ExhiOS: interrupts remain disabled until the IDT is ready.
+ExhiOS: halt loop entered.
 ```
 
-## P0.4: final memory map and kernel handoff
-
-The final memory map must be retrieved only after the loader has completed its UEFI allocations. P0.4 will reserve the memory-map and BootInfo storage first, obtain the current map key, populate the handoff metadata, exit Boot Services, and enter the kernel.
+The kernel intentionally leaves interrupts disabled and halts after printing the handoff information. It does not yet install an IDT or initialize its own page tables.
 
 ## Scope of this checkpoint
 
-P0.3 does not call `ExitBootServices` or execute the kernel. The temporary segment and BootInfo allocations are freed after successful verification so the current smoke test leaves firmware in a clean state.
+P0.4 validates the complete UEFI-to-kernel handoff and memory-map delivery. GDT/IDT setup, exception handling, kernel-owned page tables, physical memory manager and drivers are subsequent milestones.
