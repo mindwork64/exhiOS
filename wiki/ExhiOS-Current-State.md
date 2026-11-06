@@ -3,7 +3,7 @@
 Снимок: **2026-11-07**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: P3.5 полностью закрыт. P4.1 host-tested и локально подтверждён 57/57 тестами. P4.2 реализован; self-hosted CI build + standard/PIT/registry/context-switch QEMU tests passed in [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157). Локальная QEMU-проверка P4.2 ожидается.
+Кодовый checkpoint: P3.5, P4.1 и P4.2 закрыты по соответствующим локальным и CI evidence. P4.2: пользовательский Linux Mint/QEMU log от 2026-11-06 подтвердил A/B переключения, два независимых task stacks, Finished=2, восстановление TSS.RSP0 и debug-exit 33; self-hosted CI — [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157). P4.3 реализован в коде как PIT-backed cooperative runtime accounting; его CI и локальная QEMU-приёмка ожидаются.
 
 ## Закрыто и проверено в QEMU
 
@@ -273,7 +273,7 @@ New no_std crate: `exhi-task`.
 - Tasks remain Ring 0 and share the kernel address space. No user-mode isolation or timer preemption is claimed.
 
 
-## P4.2 — x86-64 cooperative context switching (self-hosted QEMU passed; local pending)
+## P4.2 — x86-64 cooperative context switching (local + self-hosted CI accepted)
 
 Implementation:
 - Feature-gated architecture module: `exhi-kernel/src/arch/x86_64/task.rs`; runtime mode: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_CONTEXT_SWITCH_TEST=1 ./scripts/run-qemu.sh`.
@@ -282,5 +282,22 @@ Implementation:
 - Context switch saves/restores RSP and the SysV callee-saved set RBP/RBX/R12–R15. Caller-saved registers remain caller-clobbered according to the ABI.
 - Returning task entry functions transition to Finished and never resume. The final task restores the suspended boot stack.
 - TSS.RSP0 is updated before each switch and cleared/restored after returning to boot; double-fault IST1 remains independent.
-- Self-hosted QEMU [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157): A/B alternation A→B→A→B→A→B; stack-local values survived yields on two distinct stack addresses; both tasks reached Finished; boot context resumed; QEMU exited with status 33.
-- Local Linux Mint/QEMU verification is still pending. Cooperative Ring 0 only; no timer preemption, Ring 3, or per-process address spaces are included.
+- Self-hosted QEMU [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) and user-local Linux Mint/QEMU log (2026-11-06) both confirm A/B alternation A→B→A→B→A→B, preserved task-local values at distinct stack addresses, both tasks Finished, boot context resumed, TSS.RSP0 restored and QEMU status 33.
+- P4.2 is closed. It remains cooperative, Ring 0 and single-CPU; timer preemption, Ring 3 and per-process CR3 isolation are not included.
+
+## P4.3 — PIT-backed cooperative task runtime accounting (implementation; runtime pending)
+
+- Added `runtime_ticks: u64` to each `exhi-task::Task` and `Scheduler::account_current_ticks()`; accumulation saturates rather than wrapping and is covered by three additional host tests.
+- The feature-gated x86-64 test uses the existing 100 Hz PIT counter. Two tasks wait for real PIT intervals, alternate through the cooperative scheduler and accumulate their own elapsed ticks at yield/finish boundaries.
+- The IRQ0 stub is unchanged: assembly-only locked tick increment + master PIC EOI. It never calls Rust or touches scheduler state.
+- Interrupts are enabled while a task waits using `sti; hlt`; IF is cleared before accounting and every call-based context switch, then re-enabled by the resumed task. This prevents IRQ0 from interrupting the current stack-restore sequence.
+- Runtime command:
+  `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TASK_ACCOUNTING_TEST=1 ./scripts/run-qemu.sh`.
+- Code is pushed; self-hosted CI and user-local QEMU runtime evidence are pending. This slice is accounting only, not timer preemption.
+
+## P4.4 — Timer-driven preemption (planned)
+
+- Design a complete hardware-interrupt context frame before switching tasks from IRQ0.
+- Save/restore all required general-purpose registers, interrupt return state and stack ownership; preserve the SysV ABI and active TSS.RSP0.
+- Define scheduler/EOI ordering and failure handling for interrupt-originated switches.
+- Do not call the current P4.2 cooperative switch routine directly from the minimal IRQ0 stub.
