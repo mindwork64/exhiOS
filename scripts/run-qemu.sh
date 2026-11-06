@@ -90,16 +90,20 @@ QEMU_ARGS=(
     -net none
     -serial stdio
     -no-reboot
-    -no-shutdown
 )
 
 if [[ "$QEMU_EXIT_TEST" == "1" ]]; then
     echo "Starting ExhiOS QEMU debug-exit test."
+    # isa-debug-exit requests a guest shutdown; -no-shutdown would keep QEMU open.
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
 elif [[ "$EXCEPTION_TEST" == "1" ]]; then
     echo "Starting ExhiOS IDT/INT3 exception smoke test in QEMU."
 else
     echo "Starting ExhiOS kernel foundation test in QEMU."
+fi
+
+if [[ "$QEMU_EXIT_TEST" != "1" ]]; then
+    QEMU_ARGS+=(-no-shutdown)
 fi
 
 echo "EFI application and kernel ELF are on the same GPT EFI System Partition."
