@@ -119,6 +119,12 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [ ] Detailed inspection of glyph sharpness, spacing and visual artifacts was not possible from the textual image description alone.
 - [ ] BitMask/BltOnly pixel formats, Unicode fonts and framebuffer cache policy remain future work.
 
+**Unified writer follow-up (implementation checkpoint [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a)):**
+- [x] Allocation-free `KernelConsole` mirrors byte and formatted output to COM1 and GOP framebuffer after framebuffer initialization; if GOP is unavailable it continues as serial-only output.
+- [x] Early boot diagnostics remain on COM1 until GOP setup succeeds; QEMU debug-exit and final halt messages use the unified writer.
+- [x] CI build job passed for all kernel variants in [run 42274252754](https://github.com/mindwork64/exhiOS/actions/runs/42274252754).
+- [ ] CI headless QEMU runtime and local QEMU validation of mirrored output.
+
 ### P3.3 — Timer
 - [ ] Initial timer source and monotonic tick interface.
 
