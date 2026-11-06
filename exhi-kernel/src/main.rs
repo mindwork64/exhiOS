@@ -5,7 +5,7 @@ mod arch;
 mod heap;
 mod memory;
 
-use arch::x86_64::{address_space, gdt, idt, paging, pic, vmm};
+use arch::x86_64::{address_space, gdt, idt, paging, pic, stack_guard, vmm};
 use core::arch::asm;
 use core::hint::spin_loop;
 use core::panic::PanicInfo;
@@ -159,6 +159,23 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 }
             };
 
+            let stack_guard_reservation = match stack_guard::reserve_before_allocations(info) {
+                Ok(reservation) => reservation,
+                Err(error) => {
+                    serial_write(b"P2.6: kernel stack/guard bounds rejected: ");
+                    serial_write(error.message());
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+            serial_write(b"Boot kernel stack base: 0x");
+            serial_write_hex(stack_guard_reservation.stack_base);
+            serial_write(b" size: 0x");
+            serial_write_hex(stack_guard_reservation.stack_size);
+            serial_write(b"\r\nReserved stack guard frame: 0x");
+            serial_write_hex(stack_guard_reservation.guard_page);
+            serial_write(b"\r\n");
+
             serial_write(b"Physical memory descriptors: 0x");
             serial_write_hex(memory_stats.descriptor_count);
             serial_write(b"\r\nManaged conventional pages: 0x");
@@ -251,6 +268,16 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial_write(b"\r\nVMM virtual-address limit: 0x");
             serial_write_hex(vmm_status.virtual_address_limit);
             serial_write(b"\r\n");
+
+            if let Err(error) = stack_guard::install(stack_guard_reservation) {
+                serial_write(b"P2.6: failed to install kernel stack guard page: ");
+                serial_write(error.message());
+                serial_write(b"\r\n");
+                halt_forever();
+            }
+            serial_write(b"P2.6: unmapped guard page below boot kernel stack: 0x");
+            serial_write_hex(stack_guard_reservation.guard_page);
+            serial_write(b"\r\nP2.6: boot kernel stack remains mapped and supervisor-only.\r\n");
 
             // Exercise a page inside an otherwise unused 1 GiB virtual range.
             // The test temporarily splits one 2 MiB huge page, maps a managed
@@ -466,8 +493,11 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
 
             #[cfg(feature = "qemu-debug-exit-smoke-test")]
             {
-                serial_write(b"P2.6: triggering controlled double fault to verify IST1.\r\n");
-                idt::trigger_double_fault_smoke_test();
+                serial_write(b"P2.6: forcing an exception-frame write into the unmapped stack guard page.\r\n");
+                idt::trigger_double_fault_guard_stack_smoke_test(
+                    stack_guard_reservation.stack_base,
+                    stack_guard_reservation.guard_page,
+                );
             }
 
         } else {
