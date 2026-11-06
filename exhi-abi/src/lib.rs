@@ -3,8 +3,8 @@
 //! Stable, explicitly laid-out data structures shared across ExhiOS
 //! privilege and image boundaries.
 
-pub const BOOT_INFO_MAGIC: [u8; 8] = *b"EXHIOS01";
-pub const BOOT_INFO_VERSION: u32 = 1;
+pub const BOOT_INFO_MAGIC: [u8; 8] = *b"EXHIOS02";
+pub const BOOT_INFO_VERSION: u32 = 2;
 
 /// Information transferred by the UEFI loader to the kernel.
 ///
@@ -19,6 +19,9 @@ pub struct BootInfo {
     pub memory_map: MemoryMapInfo,
     pub framebuffer: FramebufferInfo,
     pub acpi_rsdp_address: u64,
+    /// Physical base and byte size of the boot-time kernel stack allocation.
+    pub kernel_stack_base: u64,
+    pub kernel_stack_size: u64,
 }
 
 impl BootInfo {
@@ -30,6 +33,8 @@ impl BootInfo {
             memory_map: MemoryMapInfo::empty(),
             framebuffer: FramebufferInfo::empty(),
             acpi_rsdp_address: 0,
+            kernel_stack_base: 0,
+            kernel_stack_size: 0,
         }
     }
 
@@ -93,14 +98,14 @@ mod tests {
     fn boot_info_layout_is_fixed() {
         assert_eq!(core::mem::size_of::<MemoryMapInfo>(), 24);
         assert_eq!(core::mem::size_of::<FramebufferInfo>(), 32);
-        assert_eq!(core::mem::size_of::<BootInfo>(), 80);
+        assert_eq!(core::mem::size_of::<BootInfo>(), 96);
     }
 
     #[test]
     fn empty_boot_info_has_valid_header() {
         let info = BootInfo::empty();
         assert!(info.is_valid());
-        assert_eq!(info.magic, *b"EXHIOS01");
-        assert_eq!(info.version, 1);
+        assert_eq!(info.magic, *b"EXHIOS02");
+        assert_eq!(info.version, 2);
     }
 }
