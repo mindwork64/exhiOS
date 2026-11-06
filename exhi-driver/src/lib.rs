@@ -192,8 +192,10 @@ mod tests {
         registry.register(PIT).unwrap();
         assert_eq!(registry.len(), 2);
         assert_eq!(registry.get(DriverId::SerialCom1).unwrap().descriptor.name(), "COM1");
-        assert_eq!(registry.iter().map(|entry| entry.descriptor.id()).collect::<std::vec::Vec<_>>(),
-            [DriverId::SerialCom1, DriverId::PitChannel0]);
+        let mut entries = registry.iter();
+        assert_eq!(entries.next().map(|entry| entry.descriptor.id()), Some(DriverId::SerialCom1));
+        assert_eq!(entries.next().map(|entry| entry.descriptor.id()), Some(DriverId::PitChannel0));
+        assert!(entries.next().is_none());
     }
 
     #[test]
