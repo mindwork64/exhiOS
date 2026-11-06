@@ -23,17 +23,20 @@
 - P2.5 is Ring 0 address-space management only; actual CPL3 execution, syscalls and hardware-enforced user/supervisor fault tests are not implemented.
 
 ## Текущий кодовый checkpoint
-- Latest code commit: [b46c870](https://github.com/mindwork64/exhiOS/commit/b46c8702e3725281e9a42654524649d1d04b4fe8).
+- Latest code commit: [d1ea614](https://github.com/mindwork64/exhiOS/commit/d1ea6145e4fa2c10a04e03725d7677b679cbede0).
 - P2.6 implementation: 64-bit TSS in GDT (selector 0x18), TR loaded with LTR, 16 KiB aligned IST1 stack, IDT vector 8 uses IST1; exception assembly passes normalized frame pointer to the Rust #DF handler.
 - BootInfo ABI was bumped to magic `EXHIOS02`, version 2, and now carries kernel stack base/size.
 - UEFI loader allocates a contiguous 17-page LOADER_DATA region: first page is a reserved guard page; remaining 16 pages form the 64 KiB kernel stack.
 - Kernel reserves the guard physical page before later allocator use, then removes its identity mapping through VMM after the UEFI map is parsed. It verifies the guard is NotMapped and the stack remains supervisor mapped.
-- QEMU debug-exit test sets RSP to the first byte of the mapped kernel stack and accesses the guard page. Page-fault frame delivery hits the same guard page and escalates to #DF; CPU must switch to IST1.
-- Headless CI/OVMF runtime: [run 42256795134](https://github.com/mindwork64/exhiOS/actions/runs/42256795134) passed. Serial showed guard 0x1E6FF000, stack 0x1E700000..0x1E710000, exception stack pointer 0x16AFC8 inside IST1, P2.6 success marker and debug-exit 33.
-- Local Linux Mint/QEMU test for latest P2.6 guard-page checkpoint is still pending. Do not mark P2.6 fully closed until that log is reviewed.
+- QEMU debug-exit test sets RSP to the first byte of the mapped kernel stack and reads from the guard page. Page-fault frame delivery hits the same guard page and escalates to #DF; CPU switches to IST1.
+- Headless CI/OVMF runtime: [run 42256850017](https://github.com/mindwork64/exhiOS/actions/runs/42256850017) passed. Serial showed guard 0x1E6FF000, stack 0x1E700000..0x1E710000, exception stack pointer 0x16AFC8 inside IST1, P2.6 success marker and debug-exit 33.
+- P3.1 adds a reusable polling 16550 SerialPort driver in `arch/x86_64/serial.rs`. COM1 output is migrated from main.rs; RX adds non-blocking try_read_byte and polling read_byte_blocking. Boot prints the P3.1 readiness marker.
+- Build passed for RX-inclusive P3.1 commit; headless QEMU regression run [42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) was still running at this snapshot. Interactive RX has not yet been tested with local terminal input.
+- Local Linux Mint/QEMU test for latest P2.6/P3.1 checkpoint is still pending. Do not mark P2.6 fully closed until that log is reviewed.
 
 ## Следующие действия
-1. Пользовательская локальная проверка checkpoint b46c870:
+1. Дождаться подтверждения headless QEMU regression для RX-inclusive P3.1 commit d1ea614/run 42258141119.
+2. Пользовательская локальная проверка latest main:
    ```bash
    git fetch origin
    git reset --hard origin/main
@@ -41,9 +44,9 @@
    cargo test
    EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh
    ```
-   Expected markers: kernel stack guard page reported unmapped; stack remains supervisor-only; controlled guard-page fault raises #DF; exception stack pointer lies inside IST1; debug-exit status 33.
-2. Once local P2.6 is confirmed, start P3 device foundation: serial abstraction, framebuffer console, timer, keyboard and driver registry.
-3. Keep Ring 3, syscalls and hardware user/supervisor fault tests as a later user-mode milestone. Guard page is now implemented and CI-tested; don't remove or bypass it.
+   Expected markers: P3.1 COM1 polling serial driver ready; guard page unmapped; stack remains supervisor-only; controlled guard-page fault raises #DF on IST1; debug-exit status 33.
+3. После локального runtime — проверить интерактивный serial RX через QEMU stdio; далее делать line editor/console, затем framebuffer console, timer и keyboard.
+4. Keep Ring 3, syscalls and hardware user/supervisor fault tests as a later user-mode milestone. Guard page is implemented and CI-tested; don't remove or bypass it.
 
 ## Правила работы
 - Русский язык общения.
