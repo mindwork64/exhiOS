@@ -78,16 +78,18 @@
 Кодовый checkpoint P2.5.1: [e19db15](https://github.com/mindwork64/exhiOS/commit/e19db15bf891805c2e22cb3251ebade7872bf515).
 
 ### P2.6 Exception and stack hardening
-**TSS/IST1 and controlled double-fault test code committed; runtime validation pending.**
+**TSS/IST1 and boot-stack guard page pass headless CI/OVMF QEMU runtime; local user QEMU validation pending.**
 - [x] Kernel 64-bit TSS descriptor in GDT; LTR installs TR; dedicated aligned 16 KiB IST1 stack.
 - [x] IDT vector 8 (#DF) gate selects IST1; status readback checks IST index.
 - [x] Exception assembly passes the normalized exception-frame pointer to the handler; #DF handler verifies that it lies inside IST1.
-- [x] QEMU debug-exit variant deliberately disables the #PF gate and touches a verified-unmapped VA, requiring the CPU to raise #DF and enter through IST1.
-- [ ] Headless CI QEMU/OVMF runtime must print the IST1 success marker and exit with status 33.
+- [x] UEFI loader allocates one contiguous 17-page block: one reserved guard page followed by the 16-page (64 KiB) boot kernel stack. BootInfo v2 carries the exact stack bounds.
+- [x] Physical allocator reserves the guard frame before later allocations; VMM removes its supervisor identity mapping and confirms the stack pages remain mapped.
+- [x] QEMU debug-exit variant switches RSP to the bottom of the mapped stack and faults on the guard page. The CPU's #PF frame push faults into the same guard page, raising #DF on IST1; handler verifies its frame pointer is inside IST1.
+- [x] Headless CI QEMU/OVMF run [42256795134](https://github.com/mindwork64/exhiOS/actions/runs/42256795134): loader reports guard 0x1E6FF000, stack 0x1E700000..0x1E710000; guard is unmapped, stack remains supervisor-only, #DF reaches IST1, debug-exit status 33.
 - [ ] Local Linux Mint/QEMU confirmation.
-- [ ] Guard page below boot kernel stack — deliberately deferred until the IST path is runtime-verified.
+- [ ] Additional deliberate stack exhaustion/guard-page variants beyond the controlled #DF probe.
 
-Latest implementation checkpoint: [8afcc70](https://github.com/mindwork64/exhiOS/commit/8afcc700db48047ed40314dd5ac8ffad656507fa).
+Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b46c8702e3725281e9a42654524649d1d04b4fe8).
 
 ## P3 — Basic devices
 - [ ] Serial abstraction, framebuffer console, timer, keyboard, driver registration.
