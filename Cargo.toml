@@ -1,5 +1,5 @@
 [workspace]
-members = ["exhi-abi", "exhi-elf", "exhi-boot", "exhi-kernel", "exhi-memory", "exhi-heap", "exhi-console", "exhi-input", "exhi-driver"]
+members = ["exhi-abi", "exhi-elf", "exhi-boot", "exhi-kernel", "exhi-memory", "exhi-heap", "exhi-console", "exhi-input", "exhi-driver", "exhi-task"]
 resolver = "2"
 
 [workspace.package]
@@ -15,6 +15,7 @@ exhi-heap = { path = "exhi-heap" }
 exhi-console = { path = "exhi-console" }
 exhi-input = { path = "exhi-input" }
 exhi-driver = { path = "exhi-driver" }
+exhi-task = { path = "exhi-task" }
 
 [profile.dev]
 panic = "abort"
