@@ -531,8 +531,53 @@ pub fn smoke_test() -> Result<AddressSpaceTestStatus, AddressSpaceError> {
         }
     };
 
-    // W^X is checked before allocating any private page-table levels.
+    // Invalid requests must fail before allocating any private page-table levels.
     // SAFETY: first_frame is freshly allocated and remains owned by this test.
+    let invalid_unaligned_virtual = unsafe {
+        first.map_user_page(
+            USER_VIRTUAL_BASE + 1,
+            first_frame,
+            UserPageFlags::read_write_nx(),
+        )
+    };
+    // SAFETY: first_frame remains owned by this test.
+    let invalid_low_virtual = unsafe {
+        first.map_user_page(
+            USER_VIRTUAL_BASE - PAGE_SIZE,
+            first_frame,
+            UserPageFlags::read_write_nx(),
+        )
+    };
+    // SAFETY: first_frame remains owned by this test.
+    let invalid_unaligned_physical = unsafe {
+        first.map_user_page(
+            USER_VIRTUAL_BASE,
+            first_frame + 1,
+            UserPageFlags::read_write_nx(),
+        )
+    };
+    // SAFETY: the method must reject physical address zero before touching it.
+    let invalid_zero_physical = unsafe {
+        first.map_user_page(
+            USER_VIRTUAL_BASE,
+            0,
+            UserPageFlags::read_write_nx(),
+        )
+    };
+    if invalid_unaligned_virtual != Err(AddressSpaceError::UnalignedAddress)
+        || invalid_low_virtual != Err(AddressSpaceError::AddressOutOfRange)
+        || invalid_unaligned_physical != Err(AddressSpaceError::UnalignedAddress)
+        || invalid_zero_physical != Err(AddressSpaceError::AddressOutOfRange)
+        || first.translate(USER_VIRTUAL_BASE) != Err(AddressSpaceError::MissingPageTableEntry)
+    {
+        let _ = memory::release_frame(first_frame);
+        let _ = memory::release_frame(second_frame);
+        let _ = first.destroy();
+        let _ = second.destroy();
+        return Err(AddressSpaceError::MappingVerificationFailed);
+    }
+
+    // W^X is checked before allocating any private page-table levels.
     let write_execute_result = unsafe {
         first.map_user_page(
             USER_VIRTUAL_BASE,
@@ -571,8 +616,22 @@ pub fn smoke_test() -> Result<AddressSpaceTestStatus, AddressSpaceError> {
         return Err(error);
     }
 
+    // A duplicate mapping must be rejected without changing the original leaf.
+    // SAFETY: first_frame remains owned by this test and is already mapped here.
+    let duplicate_mapping = unsafe {
+        first.map_user_page(
+            USER_VIRTUAL_BASE,
+            first_frame,
+            UserPageFlags::read_write_nx(),
+        )
+    };
     let first_mapping = first.translate(USER_VIRTUAL_BASE)?;
     let second_mapping = second.translate(USER_VIRTUAL_BASE)?;
+    if duplicate_mapping != Err(AddressSpaceError::AlreadyMapped)
+        || first_mapping.physical_page != first_frame
+    {
+        return Err(AddressSpaceError::MappingVerificationFailed);
+    }
     if first_mapping.physical_page != first_frame
         || second_mapping.physical_page != second_frame
         || first_mapping.physical_page == second_mapping.physical_page
@@ -635,7 +694,12 @@ pub fn smoke_test() -> Result<AddressSpaceTestStatus, AddressSpaceError> {
 
     let removed_first = first.unmap_user_page(USER_VIRTUAL_BASE)?;
     let removed_second = second.unmap_user_page(USER_VIRTUAL_BASE)?;
-    if removed_first != first_frame || removed_second != second_frame {
+    let duplicate_unmap = first.unmap_user_page(USER_VIRTUAL_BASE);
+    if removed_first != first_frame
+        || removed_second != second_frame
+        || duplicate_unmap != Err(AddressSpaceError::NotMapped)
+        || first.translate(USER_VIRTUAL_BASE) != Err(AddressSpaceError::MissingPageTableEntry)
+    {
         return Err(AddressSpaceError::MappingVerificationFailed);
     }
 
