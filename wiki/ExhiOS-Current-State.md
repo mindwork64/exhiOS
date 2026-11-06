@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: e19db15bf891805c2e22cb3251ebade7872bf515 (P2.5.1 address-space lifecycle/mapping hardening; runtime validation pending).
+Кодовый checkpoint: e0bbdf021693f25a80a35d3f9d92a9f18e328f8f (P2.6 TSS/IST code; CI QEMU runtime pending).
 
 ## Закрыто и проверено в QEMU
 
@@ -134,13 +134,22 @@ Headless CI QEMU/OVMF [run 42217123278](https://github.com/mindwork64/exhiOS/act
 - Private page tables reclaimed; data frames safely returned.
 - Kernel handoff successful; QEMU debug-exit status 33.
 
-P2.5 initial address-space layer закрыт по CI и локальному runtime evidence. Smoke test выполняется на Ring 0: CPL3 execution и аппаратные user/supervisor fault tests ещё не реализованы. Дополнительные lifecycle/error-path и негативные permission tests остаются полезным hardening до полноценного user-mode этапа. Эти проверки вынесены в P2.5.1: защита от use-after-destroy, запрет destroy активного CR3, W^X отказ, проверки invalid/duplicate map и повторного unmap, валидация page-table frame pointers и retry-safe teardown. Код [e19db15](https://github.com/mindwork64/exhiOS/commit/e19db15bf891805c2e22cb3251ebade7872bf515) закоммичен; CI и локальный QEMU runtime пока ожидаются.
+P2.5 initial address-space layer закрыт по CI и локальному runtime evidence. Smoke test выполняется на Ring 0: CPL3 execution и аппаратные user/supervisor fault tests ещё не реализованы. P2.5.1 завершён и проверен локально + в CI. Проверки включают use-after-destroy, идемпотентный destroy, запрет destroy активного CR3, W^X, invalid/duplicate map, double-unmap, page-table frame validation и retry-safe teardown. Headless CI/OVMF [run 42238977281](https://github.com/mindwork64/exhiOS/actions/runs/42238977281) прошёл сборку и QEMU runtime. Пользовательский Linux Mint/QEMU лог (2026-11-06) завершился P2.5 smoke success и debug-exit 33; поскольку негативные проверки встроены перед этой success line, каждая из них вернула ожидаемый отказ.
 
 Ограничения: test пока выполняется в Ring 0, он подтверждает раздельные mappings/CR3 и permission bits в page tables, но ещё не запускает код в Ring 3 и не проверяет аппаратные user-mode faults. Это подготовка address-space layer, не завершённая process isolation.
 
-## Следующий технический этап
+## P2.6 — TSS and double-fault IST (implementation in progress)
 
-P2.5 initial address-space layer принят. До реального Ring 3 остаются дополнительные проверки lifecycle/error paths и отказов при некорректных permission/mapping requests. Отдельный P2.6 должен добавить TSS + IST stack для double fault; guard page под boot kernel stack включать только после проверки независимого IST path.
+Latest code checkpoint: [e0bbdf0](https://github.com/mindwork64/exhiOS/commit/e0bbdf021693f25a80a35d3f9d92a9f18e328f8f).
+
+- 64-bit TSS descriptor is added to GDT and loaded with LTR.
+- A dedicated 16 KiB, page-aligned IST1 stack is reserved in kernel BSS.
+- IDT vector 8 selects IST1; IdtStatus verifies its IST index.
+- The common exception stub passes the normalized frame pointer as the sixth SysV argument; the #DF handler checks that it lies inside the IST1 range.
+- The QEMU debug-exit variant intentionally makes #PF delivery fail and reads a verified-unmapped VA to force #DF. The handler reports success and exits only if the frame is on IST1.
+- CI and local runtime validation for this new #DF path are pending. No guard page has been enabled.
+
+Guard page remains deferred until the separate IST path is confirmed in runtime.
 
 ## Wiki и автоматическая синхронизация
 
