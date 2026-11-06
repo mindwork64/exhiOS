@@ -316,3 +316,23 @@ Commits:
 The writer preserves the early-boot ordering: diagnostics before framebuffer setup remain COM1-only. If GOP initialization fails, the unified writer still outputs through COM1. `write_fmt` uses `core::fmt::write` and does not allocate. It remains a single-core, polling-only writer; calls must be serialized and interrupts stay disabled.
 
 CI workflow [42274252754](https://github.com/mindwork64/exhiOS/actions/runs/42274252754): the build job passed all host tests and all kernel build variants. At the time of this log entry, the separate headless QEMU runtime job is still in progress. Local QEMU verification of the mirrored writer output remains pending.
+
+
+## 2026-11-06 — P3.3 initial PIT timer and monotonic tick interface
+
+Commits:
+- [7fc67cc](https://github.com/mindwork64/exhiOS/commit/7fc67cc053b95eeae57beff499228ae5ad41329b) — added the PIT channel 0 timer module and 64-bit monotonic counter.
+- [9463bbe](https://github.com/mindwork64/exhiOS/commit/9463bbe10df149ca3fb68fbf3e338b3b91c12822) — added PIC IRQ0 mask/unmask operations while preserving other PIC lines.
+- [bb1bdad](https://github.com/mindwork64/exhiOS/commit/bb1bdad91546bb74f5ba5ba95437af45825cc0d1) — installed and validates IDT IRQ0 gate at vector 0x20.
+- [a4146d2](https://github.com/mindwork64/exhiOS/commit/a4146d2a30ab72cf51f43bcd12f9e02be0f49aa8) — added opt-in five-tick runtime smoke test.
+- [d2ed6b2](https://github.com/mindwork64/exhiOS/commit/d2ed6b2d40260340396af1db8284b607eba1c4ad) — final integration of build/run script and CI coverage.
+
+Implementation:
+- PIT channel 0 is programmed in mode 2 with requested rate 100 Hz, input 1,193,182 Hz and divisor 11,932 (approximately 99.9985 Hz).
+- The IDT installs the timer interrupt gate at vector 0x20 and checks its selector, attributes, IST field and handler address before reporting IDT valid.
+- PIC APIs unmask/mask only IRQ0; remaining master lines and all slave lines preserve their masks.
+- The IRQ0 stub is assembly-only: it saves RAX, atomically increments the aligned 64-bit `EXHIOS_PIT_TICKS` symbol, sends EOI to master PIC and executes IRETQ. It avoids Rust calls, heap use and SIMD clobbering.
+- Public API: `ticks()` and `elapsed_ticks(start)`, with wrapping subtraction for the 64-bit monotonic counter.
+- `EXHIOS_TIMER_TEST=1` combined with `EXHIOS_QEMU_EXIT_TEST=1` selects the isolated timer test variant and controlled QEMU shutdown. It deliberately skips the P2.6 guard-fault trigger so the timer can execute; the ordinary debug-exit variant continues to run the full P2.6 guard/#DF/IST1 test.
+- CI run [42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072) passed all host tests, all kernel build variants, the standard headless P2.6 runtime test and the second PIT IRQ0 timer runtime test. Timer output confirmed five delivered ticks, IRQ0 remasked, and debug-exit status 33.
+- User-local Linux Mint/QEMU validation of P3.3 remains pending.
