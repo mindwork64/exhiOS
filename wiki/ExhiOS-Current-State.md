@@ -202,5 +202,6 @@ Code checkpoint: [2cffee5](https://github.com/mindwork64/exhiOS/commit/2cffee513
 - RGB-reserved GOP format 0 and BGR-reserved format 1 are packed separately; BitMask and BltOnly modes return an explicit unsupported-format error.
 - The renderer honors `pixels_per_scan_line` independently of visible width, validates backing-buffer length, and uses volatile pixel writes. It supports clear, text, decimal numbers, CR/LF/tab, line wrap and scroll.
 - Kernel-side initialization checks dimensions, alignment, buffer byte count and that the framebuffer range lies within the current 4 GiB identity map. On success the first screen shows the kernel banner, resolution, scanline stride and pixel format.
-- Host tests and target builds are passing in CI workflow run [42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662). The headless QEMU runtime job is still in progress; no local visual check has been supplied yet.
+- Host tests, all target build variants and headless QEMU/OVMF runtime passed in [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662). Serial output confirms framebuffer initialization; the P2.6 IST1/debug-exit regression also passed (status 33).
+- Local visual confirmation in the user's Linux Mint/QEMU window is still pending.
 - Known first-version limits: ASCII-only glyphs, GOP formats 0/1 only, no framebuffer cache policy setup (PAT/MTRR) yet.
