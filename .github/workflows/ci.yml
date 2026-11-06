@@ -48,6 +48,9 @@ jobs:
       - name: Build kernel interactive serial RX variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features serial-rx-smoke-test
 
+      - name: Build kernel PIT timer smoke-test variant
+        run: cargo build -p exhi-kernel --target x86_64-unknown-none --features qemu-debug-exit-smoke-test,timer-smoke-test
+
       - name: Verify fixed-address kernel image
         run: |
           readelf -h target/x86_64-unknown-none/debug/exhi-kernel
@@ -67,3 +70,6 @@ jobs:
 
       - name: Run headless UEFI and kernel smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run headless PIT IRQ0 timer smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
