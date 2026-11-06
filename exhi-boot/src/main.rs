@@ -8,7 +8,7 @@ use uefi::prelude::*;
 use uefi::{boot, cstr16};
 use uefi::fs::FileSystem;
 
-const KERNEL_PATH: &uefi::CStr16 = cstr16!("/exhi-kernel.elf");
+const KERNEL_PATH: &uefi::CStr16 = cstr16!("\\exhi-kernel.elf");
 const MAX_KERNEL_SIZE: u64 = 64 * 1024 * 1024;
 
 #[entry]
@@ -32,13 +32,13 @@ fn main() -> Status {
     let metadata = match file_system.metadata(KERNEL_PATH) {
         Ok(metadata) => metadata,
         Err(error) => {
-            uefi::println!("ERROR: cannot find /exhi-kernel.elf: {error:?}");
+            uefi::println!("ERROR: cannot find \\exhi-kernel.elf: {error:?}");
             return finish(Status::NOT_FOUND);
         }
     };
 
     if metadata.is_directory() {
-        uefi::println!("ERROR: /exhi-kernel.elf is a directory.");
+        uefi::println!("ERROR: \\exhi-kernel.elf is a directory.");
         return finish(Status::LOAD_ERROR);
     }
 

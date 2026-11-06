@@ -45,7 +45,7 @@ Then run:
 
 The script creates a GPT disk with a FAT32 EFI System Partition, copies the application to `EFI/BOOT/BOOTX64.EFI`, copies the kernel to `/exhi-kernel.elf`, and starts QEMU with the disk attached as emulated USB storage.
 
-The loader obtains the filesystem associated with its own UEFI image handle, reads the kernel file, and validates its ELF64 headers and loadable segments. The diagnostic remains visible for 15 seconds before the application returns to firmware.
+The loader obtains the filesystem associated with its own UEFI image handle and reads the kernel from the EFI System Partition root using the UEFI path `\\exhi-kernel.elf` (UEFI paths use backslash separators). It then validates the ELF64 headers and loadable segments. The diagnostic remains visible for 15 seconds before the application returns to firmware.
 
 Expected output includes:
 
