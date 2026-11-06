@@ -81,6 +81,9 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     }
 
     serial::COM1.write(b"IDT: installed and verified (CPU exceptions 0-31).\r\n");
+    serial::COM1.write(b"IDT IRQ0 timer gate: ");
+    serial::COM1.write(if idt_status.timer_irq_valid { b"valid" } else { b"bad  " });
+    serial::COM1.write(b"\r\n");
 
     #[cfg(feature = "exception-smoke-test")]
     {
