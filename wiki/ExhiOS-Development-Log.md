@@ -384,3 +384,21 @@ Implementation:
 - QEMU runtime test runs two tasks in deterministic A/B alternation; each verifies stack-local state after yields, records a different local-stack address, then exits. Both scheduler entries must be Finished before boot resumes.
 - Self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) passed all build variants and standard/PIT/registry/P4.2 QEMU runtime tests. The P4.2 trace proves A→B→A→B→A→B, preserved locals, Finished=2, TSS.RSP0 restored and debug-exit 33.
 - Local Linux Mint/QEMU confirmation is pending; do not close P4.2 until the user supplies this run's serial output.
+
+
+## 2026-11-06 — P4.2 local QEMU acceptance
+
+- User supplied the full Linux Mint/QEMU serial log. The P4.2 trace shows task A and task B entering on independent stacks and alternating A→B→A→B→A→B.
+- Both task progress counters reached 3; task-local stack addresses were distinct (A 0x17CF38, B 0x181F38 in this run).
+- Scheduler reported Finished=2 and TSS.RSP0 restored=yes; the runtime pass marker was printed and QEMU exited with status 33.
+- P4.2 is now accepted locally and in self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157).
+
+## 2026-11-07 — P4.3 PIT-backed cooperative task runtime accounting (implementation)
+
+- Extended `exhi-task::Task` with a per-task saturating `runtime_ticks` counter and added `Scheduler::account_current_ticks()`.
+- Added three host tests for independent per-task accounting, saturation and invalid scheduler state. The task crate suite is now expected to contain 14 tests.
+- Added a feature-gated kernel runtime test: two guarded Ring 0 tasks wait on actual PIT IRQ0 ticks, alternate cooperatively and account elapsed ticks at yield/finish boundaries.
+- IRQ0 assembly remains unchanged and does not call Rust or the scheduler. The P4.3 path clears IF across accounting and call-based stack switching, while tasks enable interrupts during `sti; hlt` waits.
+- Added `EXHIOS_TASK_ACCOUNTING_TEST=1` to the build/QEMU scripts and the self-hosted CI workflow, including a dedicated headless QEMU test.
+- Code commits: [5bc193b](https://github.com/mindwork64/exhiOS/commit/5bc193be27e7f309b4a2b60fa775b274c2ded7ba), [cca09ab](https://github.com/mindwork64/exhiOS/commit/cca09ab4fe94f4374dd0b620cbab475aa165680c), [d55f2c2](https://github.com/mindwork64/exhiOS/commit/d55f2c201e45a2a159ede57c85f6e6f621dc9d08), [7fa7a10](https://github.com/mindwork64/exhiOS/commit/7fa7a10e1a9312e2038eaee016db4d6c7d62cc0e).
+- The dedicated self-hosted CI result and user-local QEMU runtime output are not yet confirmed; P4.3 remains open.
