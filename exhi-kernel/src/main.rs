@@ -375,6 +375,40 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial_write(b"P2.3: original identity mapping restored; page-table frame safely reclaimed.\r\n");
             serial_write(b"P2.3: virtual memory manager 4 KiB mapping smoke test passed.\r\n");
 
+            serial_write(b"P2.4: initializing page-backed kernel heap.\r\n");
+            let heap_status = match heap::initialize() {
+                Ok(status) => status,
+                Err(error) => {
+                    serial_write(b"P2.4: kernel heap initialization failed: ");
+                    serial_write(heap_init_error_message(error));
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+            serial_write(b"Kernel heap virtual base: 0x");
+            serial_write_hex(heap_status.virtual_base);
+            serial_write(b"\r\nKernel heap mapped pages: 0x");
+            serial_write_hex(heap_status.mapped_pages as u64);
+            serial_write(b"\r\nKernel heap mapped bytes: 0x");
+            serial_write_hex(heap_status.mapped_bytes);
+            serial_write(b"\r\n");
+
+            heap_status = match heap::allocation_smoke_test() {
+                Ok(status) => status,
+                Err(error) => {
+                    serial_write(b"P2.4: kernel heap allocation test failed: ");
+                    serial_write(heap_test_error_message(error));
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+            serial_write(b"P2.4: aligned allocation, 48 KiB growth, cross-page read/write, free and reuse verified.\r\n");
+            serial_write(b"Kernel heap pages after growth: 0x");
+            serial_write_hex(heap_status.mapped_pages as u64);
+            serial_write(b"\r\nKernel heap free bytes: 0x");
+            serial_write_hex(heap_status.free_bytes as u64);
+            serial_write(b"\r\nP2.4: kernel heap allocator ready.\r\n");
+
         } else {
             serial_write(b"BootInfo: invalid; cannot initialize physical memory.\r\n");
             halt_forever();

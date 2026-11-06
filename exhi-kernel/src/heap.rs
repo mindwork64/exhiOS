@@ -88,6 +88,15 @@ pub fn initialize() -> Result<HeapStatus, HeapInitError> {
 
 /// Runs allocator alignment, cross-page write/read, growth, free and reuse tests.
 pub fn allocation_smoke_test() -> Result<HeapStatus, HeapTestError> {
+    {
+        let _guard = HeapLockGuard::acquire();
+        // SAFETY: Access is serialized by HEAP_LOCK with local interrupts disabled.
+        let state = unsafe { &mut *ptr::addr_of_mut!(HEAP_STATE) };
+        if !state.initialized {
+            return Err(HeapTestError::NotInitialized);
+        }
+    }
+
     let small_layout = Layout::from_size_align(256, 64).map_err(|_| HeapTestError::AllocationFailed)?;
     let large_layout = Layout::from_size_align(48 * 1024, 4096)
         .map_err(|_| HeapTestError::AllocationFailed)?;
