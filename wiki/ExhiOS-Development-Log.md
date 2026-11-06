@@ -173,3 +173,20 @@ Headless QEMU/OVMF CI [run 42217123278](https://github.com/mindwork64/exhiOS/act
 
 Commit a856090 adds explicit validation that kernel code, current stack and heap remain supervisor-only while the PML4 entry allows user mappings elsewhere; map_user_page now has an unsafe caller-ownership/scrub contract. Headless QEMU/OVMF CI [run 42217369804](https://github.com/mindwork64/exhiOS/actions/runs/42217369804) passed the hardened source. User's local QEMU verification of P2.5 is pending. Ring 3 execution and hardware privilege fault tests remain future work.
 
+
+## 2026-11-06 — P2.5 confirmed by user's local Linux Mint/QEMU run
+
+User ran the safety-hardened address-space implementation (code checkpoint [a856090](https://github.com/mindwork64/exhiOS/commit/a856090c0d6e25215e5b56d269894b00696bd01d)) under local QEMU/OVMF and supplied the serial log.
+
+- Kernel address-space root: 0x11B000.
+- Address-space A PML4: 0x177000; B PML4: 0x179000.
+- Shared kernel translation: 0x104000.
+- Shared heap translation: 0x163000.
+- User virtual test page 0x200000000 maps to physical frame 0x17B000 in A and 0x17C000 in B.
+- The serial success marker confirms separate roots, shared kernel maps, private user mappings and CR3 switching.
+- Private page tables were reclaimed; data frames were safely returned.
+- Kernel handoff succeeded; QEMU debug-exit returned status 33.
+
+The local addresses differ from CI addresses as expected because UEFI memory allocation/layout varies between boots. The relationships and tested behavior match CI. P2.5's initial address-space layer is closed with both CI and user-local runtime evidence. This test runs at Ring 0; it does not claim CPL3 execution or hardware-enforced user/supervisor isolation.
+
+Next hardening: add lifecycle/error-path and negative permission tests; keep TSS/IST double-fault stack work in P2.6 ahead of any kernel-stack guard page. Ring 3 remains a later user-mode milestone.
