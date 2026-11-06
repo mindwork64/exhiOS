@@ -323,24 +323,24 @@ mod tests {
     #[test]
     fn rgb_byte_order_and_padding_are_correct() {
         let sentinel = 0xDEAD_BEEFu32;
-        let mut pixels = vec![sentinel; 16 * 16];
-        let mut console = FramebufferConsole::new(&mut pixels, 12, 16, 16, 0).unwrap();
+        let mut pixels = vec![sentinel; 28 * 16];
+        let mut console = FramebufferConsole::new(&mut pixels, 24, 16, 28, 0).unwrap();
         console.set_colors(Color::new(0x12, 0x34, 0x56), Color::new(0, 0, 0));
         console.clear();
         console.write(b"A");
         drop(console);
-        assert_eq!(pixels[16 + 3], 0x0056_3412);
-        assert!(pixels[12..16].iter().all(|pixel| *pixel == sentinel));
+        assert_eq!(pixels[28 + 3], 0x0056_3412);
+        assert!(pixels[24..28].iter().all(|pixel| *pixel == sentinel));
     }
 
     #[test]
     fn bgr_byte_order_is_correct() {
-        let mut pixels = vec![0u32; 12 * 16];
-        let mut console = FramebufferConsole::new(&mut pixels, 12, 16, 12, 1).unwrap();
+        let mut pixels = vec![0u32; 24 * 16];
+        let mut console = FramebufferConsole::new(&mut pixels, 24, 16, 24, 1).unwrap();
         console.set_colors(Color::new(0x12, 0x34, 0x56), Color::new(0, 0, 0));
         console.write(b"A");
         drop(console);
-        assert_eq!(pixels[16 + 3], 0x0012_3456);
+        assert_eq!(pixels[24 + 3], 0x0012_3456);
     }
 
     #[test]
