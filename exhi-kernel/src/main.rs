@@ -376,7 +376,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial_write(b"P2.3: virtual memory manager 4 KiB mapping smoke test passed.\r\n");
 
             serial_write(b"P2.4: initializing page-backed kernel heap.\r\n");
-            let heap_status = match heap::initialize() {
+            let mut heap_status = match heap::initialize() {
                 Ok(status) => status,
                 Err(error) => {
                     serial_write(b"P2.4: kernel heap initialization failed: ");
