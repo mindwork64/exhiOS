@@ -54,16 +54,30 @@
 - [x] Populate BootInfo memory-map address, size, descriptor size and descriptor version.
 - [x] Switch to a dedicated kernel stack with the System V x86-64 entry ABI.
 - [x] Disable interrupts until the kernel has installed its own IDT.
-- [ ] Run the P0.4 handoff in QEMU and confirm the kernel serial banner and BootInfo fields.
+- [x] Run the P0.4 handoff in QEMU and confirm the kernel serial banner and BootInfo fields.
 
 **P0 acceptance:** QEMU + OVMF starts the ExhiOS UEFI loader, the loader loads the project's ELF64 kernel, Boot Services are exited, and the kernel prints `ExhiOS Kernel 0.1` through COM1 with valid BootInfo metadata.
 
 ## P1 — Kernel foundation
 
-- [ ] GDT and IDT.
-- [ ] CPU exception handlers with readable diagnostics.
-- [ ] PIC/APIC interrupt strategy for the initial QEMU platform.
-- [ ] Controlled test termination through QEMU's debug-exit device.
+### P1.1 — Kernel-owned GDT
+
+- [x] Define null, 64-bit kernel code and kernel data descriptors.
+- [x] Load the kernel GDT with LGDT.
+- [x] Reload CS with a far return and reload DS, ES and SS.
+- [x] Read back and verify the active segment selectors.
+- [ ] Run the GDT installation and selector check in QEMU.
+
+### P1.2 — IDT and CPU exceptions
+
+- [ ] Define and load a kernel-owned IDT.
+- [ ] Add exception stubs and readable diagnostics.
+- [ ] Install handlers for CPU exceptions before enabling interrupts.
+
+### P1.3 — Interrupt controllers and test exit
+
+- [ ] Define the initial QEMU PIC/APIC interrupt strategy.
+- [ ] Add controlled test termination through QEMU's debug-exit device.
 
 ## P2 — Memory management
 

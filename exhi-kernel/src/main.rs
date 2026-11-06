@@ -1,6 +1,9 @@
 #![no_main]
 #![no_std]
 
+mod arch;
+
+use arch::x86_64::gdt;
 use core::arch::asm;
 use core::hint::spin_loop;
 use core::panic::PanicInfo;
@@ -16,6 +19,27 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     serial_init();
     serial_write(b"ExhiOS Kernel 0.1\r\n");
     serial_write(b"Kernel entry point reached.\r\n");
+
+    serial_write(b"GDT: installing kernel GDT.\r\n");
+    gdt::initialize();
+
+    let selectors = gdt::read_segment_selectors();
+    serial_write(b"GDT selectors: CS=0x");
+    serial_write_hex(u64::from(selectors.cs));
+    serial_write(b" DS=0x");
+    serial_write_hex(u64::from(selectors.ds));
+    serial_write(b" ES=0x");
+    serial_write_hex(u64::from(selectors.es));
+    serial_write(b" SS=0x");
+    serial_write_hex(u64::from(selectors.ss));
+    serial_write(b"\r\n");
+
+    if !selectors.is_valid() {
+        serial_write(b"GDT: selector verification failed.\r\n");
+        halt_forever();
+    }
+
+    serial_write(b"GDT: installed and verified.\r\n");
 
     if !boot_info.is_null() {
         // SAFETY: The bootloader passes a pointer to a dedicated LOADER_DATA
@@ -68,6 +92,10 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     serial_write(b"ExhiOS: interrupts remain disabled until the IDT is ready.\r\n");
     serial_write(b"ExhiOS: halt loop entered.\r\n");
 
+    halt_forever()
+}
+
+fn halt_forever() -> ! {
     loop {
         unsafe {
             asm!("hlt", options(nomem, nostack, preserves_flags));

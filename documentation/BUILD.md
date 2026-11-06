@@ -77,3 +77,22 @@ The kernel intentionally leaves interrupts disabled and halts after printing the
 ## Scope of this checkpoint
 
 P0.4 validates the complete UEFI-to-kernel handoff and memory-map delivery. GDT/IDT setup, exception handling, kernel-owned page tables, physical memory manager and drivers are subsequent milestones.
+
+
+## P1.1: install the kernel GDT
+
+At kernel entry, ExhiOS replaces the firmware-provided GDT with its own three-entry table:
+
+- selector 0x08: 64-bit kernel code segment;
+- selector 0x10: kernel data/stack segment;
+- selector 0x00: mandatory null descriptor.
+
+The loader already enters the kernel with interrupts disabled. The GDT setup loads GDTR, performs a far return to reload CS, and reloads DS, ES and SS. It does not enable interrupts or change the active paging structures.
+
+After installation, the kernel reads CS, DS, ES and SS back and verifies the expected selector values. The QEMU serial output should include:
+
+    GDT: installing kernel GDT.
+    GDT selectors: CS=0x0008 DS=0x0010 ES=0x0010 SS=0x0010
+    GDT: installed and verified.
+
+The QEMU runtime check is still required before P1.1 is considered complete.
