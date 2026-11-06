@@ -56,6 +56,19 @@ if [[ "${EXHIOS_CONTEXT_SWITCH_TEST:-0}" == "1" ]]; then
     fi
 fi
 
+if [[ "${EXHIOS_TASK_ACCOUNTING_TEST:-0}" == "1" ]]; then
+    if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]] ||
+       [[ "${EXHIOS_EXCEPTION_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_SERIAL_RX_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_TIMER_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_KEYBOARD_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_CONTEXT_SWITCH_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_DRIVER_REGISTRY_TEST:-0}" == "1" ]]; then
+        echo "EXHIOS_TASK_ACCOUNTING_TEST requires EXHIOS_QEMU_EXIT_TEST and cannot be combined with other smoke-test modes." >&2
+        exit 1
+    fi
+fi
+
 if [[ "${EXHIOS_DRIVER_REGISTRY_TEST:-0}" == "1" ]]; then
     if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]] ||
        [[ "${EXHIOS_EXCEPTION_TEST:-0}" == "1" ]] ||
@@ -101,6 +114,11 @@ fi
 if [[ "${EXHIOS_CONTEXT_SWITCH_TEST:-0}" == "1" ]]; then
     KERNEL_FEATURES+=(context-switch-smoke-test)
     echo "Building the kernel with the x86-64 cooperative context-switch smoke test."
+fi
+
+if [[ "${EXHIOS_TASK_ACCOUNTING_TEST:-0}" == "1" ]]; then
+    KERNEL_FEATURES+=(task-accounting-smoke-test)
+    echo "Building the kernel with PIT-backed cooperative task runtime accounting."
 fi
 
 if [[ "${EXHIOS_DRIVER_REGISTRY_TEST:-0}" == "1" ]]; then
