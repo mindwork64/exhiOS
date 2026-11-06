@@ -3,7 +3,7 @@
 Снимок: **2026-11-07**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: P3.5, P4.1 и P4.2 закрыты по соответствующим локальным и CI evidence. P4.2: пользовательский Linux Mint/QEMU log от 2026-11-06 подтвердил A/B переключения, два независимых task stacks, Finished=2, восстановление TSS.RSP0 и debug-exit 33; self-hosted CI — [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157). P4.3 реализован в коде как PIT-backed cooperative runtime accounting; его CI и локальная QEMU-приёмка ожидаются.
+Кодовый checkpoint: P3.5, P4.1 и P4.2 закрыты по локальным и CI evidence. P4.2 подтверждён пользовательским Linux Mint/QEMU log и self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157). P4.3 PIT-backed cooperative runtime accounting прошёл host tests и headless self-hosted QEMU CI [run 42306726315](https://github.com/mindwork64/exhiOS/actions/runs/42306726315); локальная QEMU-приёмка P4.3 ожидается.
 
 ## Закрыто и проверено в QEMU
 
@@ -285,15 +285,16 @@ Implementation:
 - Self-hosted QEMU [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) and user-local Linux Mint/QEMU log (2026-11-06) both confirm A/B alternation A→B→A→B→A→B, preserved task-local values at distinct stack addresses, both tasks Finished, boot context resumed, TSS.RSP0 restored and QEMU status 33.
 - P4.2 is closed. It remains cooperative, Ring 0 and single-CPU; timer preemption, Ring 3 and per-process CR3 isolation are not included.
 
-## P4.3 — PIT-backed cooperative task runtime accounting (implementation; runtime pending)
+## P4.3 — PIT-backed cooperative task runtime accounting (CI runtime passed; local pending)
 
-- Added `runtime_ticks: u64` to each `exhi-task::Task` and `Scheduler::account_current_ticks()`; accumulation saturates rather than wrapping and is covered by three additional host tests.
-- The feature-gated x86-64 test uses the existing 100 Hz PIT counter. Two tasks wait for real PIT intervals, alternate through the cooperative scheduler and accumulate their own elapsed ticks at yield/finish boundaries.
-- The IRQ0 stub is unchanged: assembly-only locked tick increment + master PIC EOI. It never calls Rust or touches scheduler state.
-- Interrupts are enabled while a task waits using `sti; hlt`; IF is cleared before accounting and every call-based context switch, then re-enabled by the resumed task. This prevents IRQ0 from interrupting the current stack-restore sequence.
-- Runtime command:
-  `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TASK_ACCOUNTING_TEST=1 ./scripts/run-qemu.sh`.
-- Code is pushed; self-hosted CI and user-local QEMU runtime evidence are pending. This slice is accounting only, not timer preemption.
+- Added `runtime_ticks: u64` to each `exhi-task::Task` and `Scheduler::account_current_ticks()`; accumulation saturates rather than wrapping. Three new scheduler unit tests cover independent task totals, saturation and invalid state; all 14 task tests pass.
+- The feature-gated x86-64 runtime test uses the real 100 Hz PIT. Two guarded Ring 0 tasks wait for PIT ticks, alternate cooperatively and account their own elapsed intervals at yield/finish boundaries.
+- The IRQ0 stub remains assembly-only: locked tick increment + master PIC EOI. It never calls Rust or accesses the scheduler.
+- Tasks enable interrupts with `sti; hlt` while waiting. IF is cleared across accounting and each call-based context switch, then enabled by the resumed task; this prevents IRQ0 from interrupting an incomplete stack restore.
+- Runtime command: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TASK_ACCOUNTING_TEST=1 ./scripts/run-qemu.sh`.
+- Corrected self-hosted CI [run 42306726315](https://github.com/mindwork64/exhiOS/actions/runs/42306726315) passed all host tests (including 14/14 task tests), kernel build variants, standard/PIT/registry/P4.2 regressions and the actual P4.3 QEMU runtime test. Serial output: two tasks each completed three PIT intervals; elapsed=0x12 ticks, task A=0x9, task B=0x9, Finished=2, IRQ0 masked=yes, TSS.RSP0 restored=yes, P4.3 pass marker and debug-exit status 33.
+- An earlier CI run exited through the generic P2.6 guard/#DF probe before reaching P4.3. The P2.6 test cfg was corrected to exclude this dedicated accounting mode; run 42306726315 is the valid P4.3 runtime evidence.
+- P4.3 remains open only for user-local Linux Mint/QEMU confirmation. This is cooperative accounting, not timer preemption.
 
 ## P4.4 — Timer-driven preemption (planned)
 
