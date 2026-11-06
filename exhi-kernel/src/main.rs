@@ -2,10 +2,12 @@
 #![no_std]
 
 mod arch;
+mod console;
 mod heap;
 mod memory;
 
 use arch::x86_64::{address_space, framebuffer, gdt, idt, paging, pic, serial, stack_guard, vmm};
+use console::KernelConsole;
 use exhi_console::Color;
 use core::arch::asm;
 use core::panic::PanicInfo;
@@ -539,10 +541,12 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         halt_forever();
     }
 
-    serial::COM1.write(b"ExhiOS: kernel handoff successful.\r\n");
-    if let Some(console) = framebuffer_console.as_mut() {
-        console.write(b"\r\nKERNEL HANDOFF: SUCCESS\r\n");
+    let mut kernel_console = KernelConsole::new(framebuffer_console);
+    kernel_console.write_fmt(format_args!("ExhiOS: kernel handoff successful.\r\n"));
+    if kernel_console.has_framebuffer() {
+        kernel_console.write(b"P3.2: unified COM1/framebuffer writer ready.\r\n");
     }
+    kernel_console.write(b"\r\nKERNEL HANDOFF: SUCCESS\r\n");
 
     #[cfg(feature = "serial-rx-smoke-test")]
     {
@@ -553,7 +557,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     {
         #[cfg(feature = "qemu-debug-exit-smoke-test")]
         {
-        serial::COM1.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
+        kernel_console.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
         // SAFETY: The QEMU test script attaches isa-debug-exit at port 0xF4.
         // Writing value 0x10 makes QEMU terminate with status (0x10 << 1) | 1.
         unsafe {
@@ -564,11 +568,11 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 options(nomem, nostack, preserves_flags)
             );
         }
-        serial::COM1.write(b"QEMU debug-exit: device did not terminate the guest.\r\n");
+        kernel_console.write(b"QEMU debug-exit: device did not terminate the guest.\r\n");
     }
 
-        serial::COM1.write(b"ExhiOS: interrupts remain disabled until IRQ handlers are installed.\r\n");
-        serial::COM1.write(b"ExhiOS: halt loop entered.\r\n");
+        kernel_console.write(b"ExhiOS: interrupts remain disabled until IRQ handlers are installed.\r\n");
+        kernel_console.write(b"ExhiOS: halt loop entered.\r\n");
 
         halt_forever()
     }
