@@ -9,7 +9,7 @@ mod memory;
 use arch::x86_64::{address_space, framebuffer, gdt, idt, keyboard, paging, pic, serial, stack_guard, timer, vmm};
 use console::KernelConsole;
 use exhi_console::Color;
-use exhi_driver::{DriverRegistry, DriverState, RegistryError};
+use exhi_driver::{DriverClass, DriverId, DriverRegistry, DriverState, RegistryError};
 use core::arch::asm;
 use core::panic::PanicInfo;
 
@@ -537,7 +537,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 }
             }
 
-            #[cfg(all(feature = "qemu-debug-exit-smoke-test", not(any(feature = "timer-smoke-test", feature = "keyboard-smoke-test"))))]
+            #[cfg(all(feature = "qemu-debug-exit-smoke-test", not(any(feature = "timer-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test"))))]
             {
                 serial::COM1.write(b"P2.6: forcing an exception-frame write into the unmapped stack guard page.\r\n");
                 idt::trigger_double_fault_guard_stack_smoke_test(
@@ -629,12 +629,58 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         serial_rx_smoke_test()
     }
 
+    #[cfg(feature = "driver-registry-smoke-test")]
+    {
+        let serial_entry = driver_registry.get(DriverId::SerialCom1);
+        let pit_entry = driver_registry.get(DriverId::PitChannel0);
+        let keyboard_entry = driver_registry.get(DriverId::Ps2Keyboard);
+        let registry_valid = driver_registry.len() == 3
+            && driver_registry.initialized_count() == 1
+            && driver_registry.failed_count() == 0
+            && serial_entry.is_some_and(|entry| {
+                entry.descriptor.class() == DriverClass::Serial
+                    && entry.state == DriverState::Initialized
+            })
+            && pit_entry.is_some_and(|entry| {
+                entry.descriptor.class() == DriverClass::Clock
+                    && entry.state == DriverState::Registered
+            })
+            && keyboard_entry.is_some_and(|entry| {
+                entry.descriptor.class() == DriverClass::Input
+                    && entry.state == DriverState::Registered
+            });
+
+        if registry_valid {
+            kernel_console.write(b"P3.5: driver registry runtime smoke test passed.\r\n");
+        } else {
+            kernel_console.write(b"P3.5: driver registry runtime smoke test failed.\r\n");
+            halt_forever();
+        }
+
+        kernel_console.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
+        unsafe {
+            asm!(
+                "out dx, eax",
+                in("dx") QEMU_DEBUG_EXIT_PORT,
+                in("eax") QEMU_DEBUG_EXIT_VALUE,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+        kernel_console.write(b"QEMU debug-exit: device did not terminate the guest.\r\n");
+        halt_forever();
+    }
+
+    #[cfg(feature = "serial-rx-smoke-test")]
+    {
+        serial_rx_smoke_test()
+    }
+
     #[cfg(feature = "keyboard-smoke-test")]
     {
         keyboard_smoke_test(&mut kernel_console, &mut driver_registry);
     }
 
-    #[cfg(not(any(feature = "serial-rx-smoke-test", feature = "keyboard-smoke-test")))]
+    #[cfg(not(any(feature = "serial-rx-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test")))]
     {
         #[cfg(feature = "qemu-debug-exit-smoke-test")]
         {
