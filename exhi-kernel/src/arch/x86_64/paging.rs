@@ -57,6 +57,7 @@ pub enum PagingError {
     MissingPageTableEntry,
     UnexpectedPageSize,
     Cr3Mismatch,
+    NotMapped,
     IdentityMappingVerificationFailed,
 }
 
@@ -76,6 +77,7 @@ impl PagingError {
             Self::MissingPageTableEntry => b"required page-table entry is not present",
             Self::UnexpectedPageSize => b"unexpected page-table entry size",
             Self::Cr3Mismatch => b"CR3 readback does not match the new PML4 address",
+            Self::NotMapped => b"virtual address is not mapped",
             Self::IdentityMappingVerificationFailed => b"identity mapping verification failed",
         }
     }
@@ -333,10 +335,11 @@ fn translate_from_root(root_address: u64, virtual_address: u64) -> Result<u64, P
     let pml4_index = ((virtual_address >> 39) & 0x1FF) as usize;
     let pdpt_index = ((virtual_address >> 30) & 0x1FF) as usize;
     let pd_index = ((virtual_address >> 21) & 0x1FF) as usize;
+    let pt_index = ((virtual_address >> 12) & 0x1FF) as usize;
 
-    // SAFETY: Before the switch root_address is the kernel-owned BSS PML4;
-    // after the switch it is the active PML4. All children are builder-owned
-    // identity-mapped BSS tables, and indexes are masked to 0..512.
+    // SAFETY: Every table used by the current VMM is identity-mapped below
+    // 4 GiB. Table frames are allocated by the physical allocator from that
+    // same range and remain allocated while referenced by an active entry.
     unsafe {
         let pml4e = read_entry(root_address, pml4_index);
         if pml4e & PRESENT == 0 {
@@ -357,12 +360,20 @@ fn translate_from_root(root_address: u64, virtual_address: u64) -> Result<u64, P
         if pde & PRESENT == 0 {
             return Err(PagingError::MissingPageTableEntry);
         }
-        if pde & HUGE_PAGE == 0 {
-            return Err(PagingError::UnexpectedPageSize);
+
+        if pde & HUGE_PAGE != 0 {
+            let physical_base = pde & LARGE_PAGE_ADDRESS_MASK;
+            return Ok(physical_base | (virtual_address & (TWO_MIB - 1)));
         }
 
-        let physical_base = pde & LARGE_PAGE_ADDRESS_MASK;
-        Ok(physical_base | (virtual_address & (TWO_MIB - 1)))
+        let table_address = pde & PAGE_TABLE_ADDRESS_MASK;
+        let pte = read_entry(table_address, pt_index);
+        if pte & PRESENT == 0 {
+            return Err(PagingError::NotMapped);
+        }
+
+        let physical_base = pte & PAGE_TABLE_ADDRESS_MASK;
+        Ok(physical_base | (virtual_address & (PAGE_SIZE - 1)))
     }
 }
 

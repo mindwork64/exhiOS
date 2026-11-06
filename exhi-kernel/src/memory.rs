@@ -66,4 +66,25 @@ pub fn allocation_reuse_smoke_test() -> Result<u64, MemoryError> {
     }
 }
 
+/// Allocates one physical frame for page-table or kernel use.
+///
+/// Callers must not free the returned frame while it is referenced by an
+/// active page-table entry. The allocator is currently used on one CPU with
+/// interrupts disabled.
+pub fn allocate_frame() -> Result<u64, MemoryError> {
+    let allocator = core::ptr::addr_of_mut!(PHYSICAL_ALLOCATOR);
 
+    // SAFETY: Kernel startup and the current VMM are single-threaded; callers
+    // keep IF clear while mutating the allocator.
+    unsafe { (&mut *allocator).allocate_page() }
+}
+
+/// Releases a physical frame after all virtual mappings and page-table
+/// references to it have been removed and invalidated.
+pub fn release_frame(physical_address: u64) -> Result<(), MemoryError> {
+    let allocator = core::ptr::addr_of_mut!(PHYSICAL_ALLOCATOR);
+
+    // SAFETY: Kernel startup and the current VMM are single-threaded; callers
+    // keep IF clear while mutating the allocator.
+    unsafe { (&mut *allocator).free_page(physical_address) }
+}

@@ -4,7 +4,7 @@
 mod arch;
 mod memory;
 
-use arch::x86_64::{gdt, idt, paging, pic};
+use arch::x86_64::{gdt, idt, paging, pic, vmm};
 use core::arch::asm;
 use core::hint::spin_loop;
 use core::panic::PanicInfo;
@@ -217,6 +217,144 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             }
 
             serial_write(b"\r\nP2.2: kernel page tables active; CR3 and identity mappings verified.\r\n");
+
+            serial_write(b"P2.3: initializing virtual memory manager.\r\n");
+            let vmm_status = match vmm::initialize() {
+                Ok(status) => status,
+                Err(error) => {
+                    serial_write(b"P2.3: VMM initialization failed: ");
+                    serial_write(error.message());
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+            serial_write(b"4 KiB page size: 0x");
+            serial_write_hex(vmm_status.page_size);
+            serial_write(b"\r\nNX support: ");
+            serial_write(if vmm_status.nx_enabled { b"enabled" } else { b"unavailable" });
+            serial_write(b"\r\nVMM identity-map limit: 0x");
+            serial_write_hex(vmm_status.identity_map_limit);
+            serial_write(b"\r\n");
+
+            // Exercise a page inside an otherwise unused 1 GiB virtual range.
+            // The test temporarily splits one 2 MiB huge page, maps a managed
+            // physical frame with RW+NX supervisor permissions, and restores
+            // the original identity mapping after validating the page.
+            const VMM_SMOKE_VIRTUAL_PAGE: u64 = 0x4000_0000;
+            let data_frame = match memory::allocate_frame() {
+                Ok(frame) => frame,
+                Err(error) => {
+                    serial_write(b"P2.3: test data-frame allocation failed: ");
+                    serial_write(error.message());
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+
+            let original_frame = match vmm::unmap_page(VMM_SMOKE_VIRTUAL_PAGE) {
+                Ok(frame) => frame,
+                Err(error) => {
+                    let _ = memory::release_frame(data_frame);
+                    serial_write(b"P2.3: initial 4 KiB unmap failed: ");
+                    serial_write(error.message());
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+            if original_frame != VMM_SMOKE_VIRTUAL_PAGE {
+                serial_write(b"P2.3: bootstrap identity mapping did not match expected frame.\r\n");
+                halt_forever();
+            }
+
+            if let Err(error) = vmm::map_page(
+                VMM_SMOKE_VIRTUAL_PAGE,
+                data_frame,
+                vmm::PageFlags::kernel_data(),
+            ) {
+                let _ = memory::release_frame(data_frame);
+                serial_write(b"P2.3: 4 KiB map failed: ");
+                serial_write(error.message());
+                serial_write(b"\r\n");
+                halt_forever();
+            }
+
+            let mapping = match vmm::query_page(VMM_SMOKE_VIRTUAL_PAGE) {
+                Ok(mapping) => mapping,
+                Err(error) => {
+                    serial_write(b"P2.3: mapping query failed: ");
+                    serial_write(error.message());
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+            if mapping.physical_page != data_frame
+                || !mapping.flags.writable
+                || mapping.flags.executable
+                || mapping.flags.user
+            {
+                serial_write(b"P2.3: page permissions or physical translation mismatch.\r\n");
+                halt_forever();
+            }
+
+            let test_bytes = [0x45u8, 0x58, 0x48, 0x49, 0x4F, 0x53, 0x21, 0xA5];
+            // SAFETY: The test virtual page is mapped to an allocated,
+            // writable physical frame above and remains mapped for this access.
+            unsafe {
+                for (index, byte) in test_bytes.iter().copied().enumerate() {
+                    core::ptr::write_volatile((VMM_SMOKE_VIRTUAL_PAGE as *mut u8).add(index), byte);
+                }
+                for (index, expected) in test_bytes.iter().copied().enumerate() {
+                    let actual =
+                        core::ptr::read_volatile((VMM_SMOKE_VIRTUAL_PAGE as *const u8).add(index));
+                    if actual != expected {
+                        serial_write(b"P2.3: mapped-page read/write verification failed.\r\n");
+                        halt_forever();
+                    }
+                }
+            }
+
+            let removed_frame = match vmm::unmap_page(VMM_SMOKE_VIRTUAL_PAGE) {
+                Ok(frame) => frame,
+                Err(error) => {
+                    serial_write(b"P2.3: test-page unmap failed: ");
+                    serial_write(error.message());
+                    serial_write(b"\r\n");
+                    halt_forever();
+                }
+            };
+            if removed_frame != data_frame
+                || paging::translate_current(VMM_SMOKE_VIRTUAL_PAGE) != Err(paging::PagingError::NotMapped)
+            {
+                serial_write(b"P2.3: TLB invalidation or unmap verification failed.\r\n");
+                halt_forever();
+            }
+            if let Err(error) = memory::release_frame(data_frame) {
+                serial_write(b"P2.3: released-frame bookkeeping failed: ");
+                serial_write(error.message());
+                serial_write(b"\r\n");
+                halt_forever();
+            }
+
+            if let Err(error) = vmm::map_page(
+                VMM_SMOKE_VIRTUAL_PAGE,
+                original_frame,
+                vmm::PageFlags::kernel_read_write_execute(),
+            ) {
+                serial_write(b"P2.3: identity-map restoration failed: ");
+                serial_write(error.message());
+                serial_write(b"\r\n");
+                halt_forever();
+            }
+            if paging::translate_current(VMM_SMOKE_VIRTUAL_PAGE) != Ok(original_frame) {
+                serial_write(b"P2.3: restored identity mapping verification failed.\r\n");
+                halt_forever();
+            }
+
+            serial_write(b"P2.3: 2 MiB page split into 4 KiB entries.\r\n");
+            serial_write(b"P2.3: RW supervisor NX map, read/write, unmap and TLB invalidation verified.\r\n");
+            serial_write(b"P2.3: original identity mapping restored; page-table frame retained.\r\n");
+            serial_write(b"P2.3: virtual memory manager 4 KiB mapping smoke test passed.\r\n");
+
         } else {
             serial_write(b"BootInfo: invalid; cannot initialize physical memory.\r\n");
             halt_forever();
