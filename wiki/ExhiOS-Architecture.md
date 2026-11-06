@@ -100,7 +100,7 @@ Module: `exhi-kernel/src/console.rs`; implementation commits [c3d2b8c](https://g
 - `write_fmt` uses `core::fmt` without heap allocation.
 - It is instantiated only after GOP setup; prior boot diagnostics remain serial-only. If GOP setup fails, output remains available over COM1.
 - QEMU debug-exit and final halt messages use the shared writer. It is single-core and polling-only, with no locking/IRQ support yet.
-- CI build job passed all host tests and kernel build variants in [run 42274252754](https://github.com/mindwork64/exhiOS/actions/runs/42274252754); headless QEMU runtime and local mirrored-output validation are pending.
+- CI build and headless QEMU runtime passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072). Local Linux Mint/QEMU serial output also confirms the unified writer readiness, kernel handoff and halt messages.
 
 ## P3.1 — Polling serial driver
 
@@ -111,6 +111,18 @@ Module: `exhi-kernel/src/arch/x86_64/serial.rs`.
 - RX API: non-blocking `try_read_byte` and polling `read_byte_blocking`.
 - Driver is single-core and polling; no UART IRQs or interrupt-safe output locking yet. Early kernel diagnostics use COM1; after GOP setup, `KernelConsole` mirrors post-handoff output to COM1 and framebuffer.
 - Headless CI build and QEMU regression passed [run 42270059656](https://github.com/mindwork64/exhiOS/actions/runs/42270059656). Local interactive byte reception is verified: `hello exhiOS` echoed, Enter prompted again and Ctrl+D ended the loop with 13 received bytes.
+
+## P3.3 — PIT timer and monotonic ticks
+
+Module: `exhi-kernel/src/arch/x86_64/timer.rs`; code checkpoint [d2ed6b2](https://github.com/mindwork64/exhiOS/commit/d2ed6b2d40260340396af1db8284b607eba1c4ad).
+- PIT channel 0 runs in mode 2 at a requested 100 Hz using input clock 1,193,182 Hz and divisor 11,932 (approximately 99.9985 actual ticks/second).
+- The IDT installs and validates a dedicated IRQ0 interrupt gate at vector 0x20.
+- PIC APIs unmask or mask only master IRQ0 while preserving the state of all other lines. The timer setup leaves IF policy to its caller.
+- The IRQ stub is pure assembly: saves RAX, uses a locked 64-bit increment of `EXHIOS_PIT_TICKS`, sends master PIC EOI and executes IRETQ. It makes no Rust calls, heap allocations or SIMD state changes.
+- `timer::ticks()` reads the monotonic 64-bit counter; `timer::elapsed_ticks(start)` uses wrapping subtraction.
+- The opt-in smoke test enables IF only after PIT/IDT/PIC setup, receives five real IRQ0 ticks, disables IF, masks IRQ0 again and verifies all other PIC lines remain masked.
+- CI build + headless QEMU/OVMF passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072); the timer log reports five ticks and QEMU debug-exit status 33. Local Linux Mint/QEMU timer validation remains pending.
+- This is the initial legacy PIT/PIC implementation; APIC/IOAPIC, HPET/TSC calibration, SMP delivery and scheduler integration are deferred.
 
 ## P2.6 — TSS, double-fault IST and boot-stack guard page
 
