@@ -31,11 +31,11 @@ impl IdtEntry {
         reserved: 0,
     };
 
-    fn interrupt_gate(handler: u64) -> Self {
+    fn interrupt_gate(handler: u64, ist_index: u8) -> Self {
         Self {
             offset_low: handler as u16,
             selector: KERNEL_CODE_SELECTOR,
-            ist: 0,
+            ist: ist_index & 0x7,
             attributes: INTERRUPT_GATE_ATTRIBUTES,
             offset_middle: (handler >> 16) as u16,
             offset_high: (handler >> 32) as u32,
@@ -60,6 +60,7 @@ struct IdtRegister {
 pub struct IdtStatus {
     pub base: u64,
     pub limit: u16,
+    pub double_fault_ist: u8,
     pub valid: bool,
 }
 
@@ -107,7 +108,13 @@ pub fn initialize() -> IdtStatus {
     unsafe {
         let entries = ptr::addr_of_mut!(IDT.0).cast::<IdtEntry>();
         for (index, handler) in handlers.iter().copied().enumerate() {
-            ptr::write_volatile(entries.add(index), IdtEntry::interrupt_gate(handler));
+            // Vector 8 (double fault) is the only initial exception gate that
+            // uses IST. Its stack is prepared and loaded in the TSS by GDT init.
+            let ist_index = if index == 8 { 1 } else { 0 };
+            ptr::write_volatile(
+                entries.add(index),
+                IdtEntry::interrupt_gate(handler, ist_index),
+            );
         }
     }
 
@@ -141,11 +148,60 @@ pub fn initialize() -> IdtStatus {
 
     let active_base = active.base;
     let active_limit = active.limit;
+    // SAFETY: IDT entry 8 was initialized above and remains in writable kernel
+    // storage. Read the byte field without creating a reference to a packed field.
+    let double_fault_ist = unsafe {
+        let gate = entries.add(8);
+        ptr::read_volatile(ptr::addr_of!((*gate).ist)) & 0x7
+    };
 
     IdtStatus {
         base: active_base,
         limit: active_limit,
-        valid: active_base == expected_base && active_limit == expected_limit,
+        double_fault_ist,
+        valid: active_base == expected_base
+            && active_limit == expected_limit
+            && double_fault_ist == 1,
+    }
+}
+
+/// Deliberately makes #PF delivery fail so the CPU raises #DF.
+///
+/// The debug-exit build invokes this only after the GDT/TSS and IDT are live.
+/// The faulting address is in the reserved, unmapped upper part of the current
+/// lower-canonical kernel window. This function never returns on success.
+#[cfg(feature = "qemu-debug-exit-smoke-test")]
+pub fn trigger_double_fault_smoke_test() -> ! {
+    const UNMAPPED_PROBE: u64 = 0x0000_007F_FFFF_F000;
+
+    // Confirm the probe is absent before disabling the #PF gate. A mistaken
+    // address must not turn this diagnostic into an unexpected valid access.
+    if super::vmm::query_page(UNMAPPED_PROBE).is_ok() {
+        unsafe {
+            asm!("ud2", options(nomem, nostack));
+        }
+    }
+
+    // SAFETY: This is a deliberate terminal QEMU test. The #PF gate is
+    // temporarily made not-present, then a read from an unmapped VA triggers
+    // #PF delivery failure and consequently a processor-generated #DF.
+    unsafe {
+        let entries = ptr::addr_of_mut!(IDT.0).cast::<IdtEntry>();
+        let page_fault_gate = entries.add(14);
+        let attributes = ptr::read_volatile(ptr::addr_of!((*page_fault_gate).attributes));
+        ptr::write_volatile(
+            ptr::addr_of_mut!((*page_fault_gate).attributes),
+            attributes & !0x80,
+        );
+        asm!("mfence", options(nostack, preserves_flags));
+        ptr::read_volatile(UNMAPPED_PROBE as *const u8);
+        asm!("ud2", options(nomem, nostack));
+    }
+
+    loop {
+        unsafe {
+            asm!("hlt", options(nomem, nostack, preserves_flags));
+        }
     }
 }
 
