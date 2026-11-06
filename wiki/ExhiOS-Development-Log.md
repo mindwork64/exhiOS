@@ -191,7 +191,7 @@ The local addresses differ from CI addresses as expected because UEFI memory all
 
 Next hardening: add lifecycle/error-path and negative permission tests; keep TSS/IST double-fault stack work in P2.6 ahead of any kernel-stack guard page. Ring 3 remains a later user-mode milestone.
 
-## 2026-11-06 — P2.5.1 address-space lifecycle and mapping hardening (runtime pending)
+## 2026-11-06 — P2.5.1 address-space lifecycle and mapping hardening (local + CI runtime verified)
 
 Commits:
 - [dae333c](https://github.com/mindwork64/exhiOS/commit/dae333cf9cee1bcfd9fc0a76ef35a96177291eac) — reject use-after-destroy, make destroy idempotent, reject destruction of the active address space; add QEMU negative checks.
@@ -202,4 +202,34 @@ Commits:
 
 QEMU startup smoke test now exercises invalid virtual alignment/range, invalid physical alignment, W+X denial before table allocation, duplicate mapping, active-space destroy rejection, double unmap, post-destroy translate/unmap/activate/map rejection and idempotent destroy. It also exercises the normal two-space map/switch/read/reclaim path.
 
-This is a code checkpoint only. CI build, headless QEMU/OVMF and user-local QEMU output have not yet been confirmed for P2.5.1. Do not mark this substage complete until runtime evidence is reviewed.
+Headless CI/OVMF [run 42238977281](https://github.com/mindwork64/exhiOS/actions/runs/42238977281) passed both build and QEMU runtime jobs. The user's local Linux Mint/QEMU log (2026-11-06) reaches the address-space smoke-test success line and debug-exit status 33. The negative checks execute inside that smoke test before the success marker, so P2.5.1 is closed with local + CI evidence.
+
+## 2026-11-06 — P2.6 TSS, double-fault IST and boot-stack guard page (CI runtime verified)
+
+Commits:
+- [5ceab05](https://github.com/mindwork64/exhiOS/commit/5ceab059cea53eb85a4559e474cf69b0222016ff) — initial 64-bit TSS descriptor in GDT, dedicated 16 KiB aligned IST1 stack, LTR and TR readback.
+- [9c78d80](https://github.com/mindwork64/exhiOS/commit/9c78d80f96843856d30db6b5093be456660ef25a) — IDT vector 8 configured with IST index 1 and readback in IdtStatus.
+- [8e27dec](https://github.com/mindwork64/exhiOS/commit/8e27dec596fd778f7b69fdfa7969b6ad208980b1) — exception frame pointer passed as the sixth SysV argument.
+- [e0bbdf0](https://github.com/mindwork64/exhiOS/commit/e0bbdf021693f25a80a35d3f9d92a9f18e328f8f) — controlled #DF/IST1 test path and warning cleanup.
+- [cf93050](https://github.com/mindwork64/exhiOS/commit/cf930507a626004691169a5a02a6c6e444ce7e39) — BootInfo ABI v2 includes kernel stack base/size.
+- [0140362](https://github.com/mindwork64/exhiOS/commit/014036220e27854a81acaf74dcb46f283935bfc9) and [92f64aa](https://github.com/mindwork64/exhiOS/commit/92f64aa5f263245cabbeef96d725bc751928029d) — physical page reservation for the guard frame.
+- [c31f516](https://github.com/mindwork64/exhiOS/commit/c31f516f0aa6934756ece4069bf4ad053fc8b03c) — validate and map the full boot stack range in bootstrap paging.
+- [aa434e8](https://github.com/mindwork64/exhiOS/commit/aa434e8b36b4d6a0c4d353eb6a818c916e9b2812), [d941d95](https://github.com/mindwork64/exhiOS/commit/d941d95c12f7ba7b9634177994fba74db7b1878b), [18d686c](https://github.com/mindwork64/exhiOS/commit/18d686cf83615cbe2515155dbee9bfd5024e5db7), [0bc9bc3](https://github.com/mindwork64/exhiOS/commit/0bc9bc3468a833f8870aefe8e76fce46396ccf0f) and [2749f78](https://github.com/mindwork64/exhiOS/commit/2749f78de1bbdbc449af40a7d0c43701d08c3665) — guard page installation, deliberate stack-overflow #DF trigger, and dedicated contiguous loader allocation.
+- Latest cleanup checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b46c8702e3725281e9a42654524649d1d04b4fe8).
+
+Implementation:
+- GDT contains null, kernel code, kernel data and a two-qword 64-bit available-TSS descriptor (selector 0x18).
+- TSS is 104 bytes; IST1 points to a dedicated 16 KiB page-aligned static stack in kernel BSS. RSP0 is intentionally left unset until task-specific kernel stacks and privilege transitions are added.
+- IDT vector 8 uses IST1. The exception stub passes the normalized exception-frame pointer to the Rust handler; #DF verifies it is inside IST1.
+- BootInfo magic/version advanced to EXHIOS02/version 2 and now transfers the exact boot stack base/size.
+- UEFI loader reserves one contiguous 17-page LOADER_DATA allocation: first page is the guard reservation, following 16 pages are the 64 KiB usable stack.
+- Kernel reserves the guard frame in the physical allocator before later allocations, then removes its virtual identity mapping through VMM after parsing the UEFI map.
+- QEMU debug-exit build sets RSP to the first byte of the mapped stack and reads the guard page. The first #PF's exception-frame push faults into the guard page and forces a processor #DF, which must switch to IST1. Handler exits with status 33 only if the exception frame lies inside IST1.
+
+Headless CI/OVMF [run 42256795134](https://github.com/mindwork64/exhiOS/actions/runs/42256795134) passed build and QEMU runtime:
+- Loader guard physical address 0x1E6FF000; usable stack 0x1E700000..0x1E710000.
+- Kernel confirms guard is unmapped and first/last stack pages remain supervisor mapped.
+- Exception stack pointer 0x16AFC8 is inside IST1.
+- P2.6 double-fault IST runtime success marker and QEMU debug-exit status 33.
+
+Local Linux Mint/QEMU verification of this P2.6 guard-page checkpoint is still pending. Do not yet mark P2.6 fully closed by the project's local+CI acceptance rule.
