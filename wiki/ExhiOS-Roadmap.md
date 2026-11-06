@@ -148,14 +148,14 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] Local Linux Mint/QEMU (2026-11-06): i8042 config 0x65, IRQ1 ready, 28 key transitions from letters/Enter/Backspace/navigation/Ctrl+D, zero dropped scan codes, IRQ1 remasked and debug-exit status 33. Ctrl state was visible on D; no separate Shift usage event was present in this log (decoder Shift handling is covered by host tests).
 
 ### P3.5 — Driver registration
-**Первая реализация добавлена; host tests и все build-варианты CI прошли, QEMU runtime-smoke ожидает завершения CI.**
+**Реализация и CI runtime завершены; локальная проверка ожидается.**
 - [x] New no_std `exhi-driver` crate with static descriptors, stable driver IDs/classes and lifecycle states.
 - [x] Fixed-capacity registry; no heap allocation, duplicate-ID and capacity checks, lookup/iteration and lifecycle transition validation.
 - [x] COM1, PIT channel 0 and PS/2 keyboard expose static descriptors and are registered during kernel startup.
 - [x] Boot diagnostics report registered/initialized/failed counts and each registered driver.
 - [x] Serial is marked Initialized after its early init; PIT and PS/2 become Initialized only after their respective hardware init succeeds; failures are tracked as Failed.
-- [x] CI: 8/8 registry host tests and registry-smoke kernel build passed in [run 42299327751](https://github.com/mindwork64/exhiOS/actions/runs/42299327751).
-- [ ] CI headless QEMU registry runtime smoke test and local Linux Mint/QEMU boot log.
+- [x] CI: 8/8 registry host tests, all kernel build variants, shell syntax checks and headless QEMU tests (standard boot, PIT timer and driver registry) passed in [run 42299723267](https://github.com/mindwork64/exhiOS/actions/runs/42299723267).
+- [ ] Local Linux Mint/QEMU boot log: expected 3 registered, 1 initialized, 0 failed, followed by the registry runtime smoke-test pass marker and debug-exit status 33.
 
 ## P4 — Tasks and scheduling
 - [ ] Task representation/stacks, context switching, cooperative scheduler, timer preemption.

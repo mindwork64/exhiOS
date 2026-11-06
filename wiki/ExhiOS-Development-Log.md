@@ -14,7 +14,7 @@
 - Registry validates capacity, duplicate IDs, unknown IDs and state transitions; supports lookup, iteration and counts without heap allocation.
 - COM1, PIT channel 0 and PS/2 keyboard now expose descriptors. Kernel startup registers all three; serial is initialized early, while PIT and keyboard transition only after their respective hardware init succeeds.
 - Boot diagnostics print registry summary and each entry.
-- Host tests passed 8/8 and all kernel feature variants, including the dedicated registry smoke-test variant, built in [run 42299327751](https://github.com/mindwork64/exhiOS/actions/runs/42299327751). CI headless QEMU runtime and local Linux Mint/QEMU confirmation remain pending.
+- Host tests passed 8/8; CI `bash -n` validation, all kernel feature variants and headless QEMU smoke tests (standard boot, PIT timer and registry runtime) passed in [run 42299723267](https://github.com/mindwork64/exhiOS/actions/runs/42299723267). Local Linux Mint/QEMU registry confirmation remains pending.
 
 
 

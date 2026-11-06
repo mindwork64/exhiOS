@@ -134,7 +134,7 @@ The registry lives in the host-testable no_std `exhi-driver` crate. Hardware mod
 - The registry is fixed-capacity and allocation-free. It offers lookup, iteration and state counts.
 - The registry records lifecycle but does not invoke init callbacks. The kernel keeps hardware initialization in the explicit boot path to preserve ordering constraints and make interrupt dependencies auditable.
 - Normal boot reports three registered drivers: COM1 initialized, PIT and PS/2 registered. Timer and keyboard smoke modes mark their own driver initialized after successful setup.
-- Eight host tests passed and CI compiled the registry-smoke kernel mode in [run 42299327751](https://github.com/mindwork64/exhiOS/actions/runs/42299327751). Headless QEMU and local runtime evidence remain pending.
+- Eight host tests passed; CI shell syntax, all kernel build variants and headless standard/PIT/driver-registry QEMU runtime tests passed in [run 42299723267](https://github.com/mindwork64/exhiOS/actions/runs/42299723267). Local Linux Mint/QEMU evidence remains pending.
 - Dedicated test: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_DRIVER_REGISTRY_TEST=1 ./scripts/run-qemu.sh`.
 
 

@@ -3,7 +3,7 @@
 Снимок: **2026-11-06**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: [8fca30b](https://github.com/mindwork64/exhiOS/commit/8fca30b78eac0a2267ec27f7163bf98b4586bb5e) adds a QEMU runtime smoke mode for P3.5. P3.3 PIT timer and P3.4 PS/2 keyboard are locally and CI runtime-verified. P3.5 host tests (8/8), kernel variants and smoke-mode build passed CI; headless runtime is pending.
+Кодовый checkpoint: [8fca30b](https://github.com/mindwork64/exhiOS/commit/8fca30b78eac0a2267ec27f7163bf98b4586bb5e) adds a QEMU runtime smoke mode for P3.5. P3.3 PIT timer and P3.4 PS/2 keyboard are locally and CI runtime-verified. P3.5 host tests (8/8), kernel variants and dedicated headless QEMU registry runtime passed CI [run 42299723267](https://github.com/mindwork64/exhiOS/actions/runs/42299723267); local Linux Mint/QEMU verification remains pending.
 
 ## Закрыто и проверено в QEMU
 
@@ -245,7 +245,7 @@ New no_std crate: `exhi-driver`.
 - COM1, PIT channel 0 and the i8042 PS/2 keyboard expose descriptors from their own driver modules. The boot path registers all three after PIC initialization; COM1 is marked initialized after early UART setup. Timer/keyboard states transition to Initialized only after their hardware setup succeeds, or Failed on an initialization error.
 - The registry is an inventory/lifecycle layer only. It does not call hardware initialization callbacks; boot order remains explicit so IDT/PIC/device dependencies are visible.
 - Boot diagnostics print registry totals and each driver's ID/class/state. Dedicated runtime mode: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_DRIVER_REGISTRY_TEST=1 ./scripts/run-qemu.sh`.
-- CI registry host tests: 8/8 passed; ordinary/registry kernel variants built successfully in [run 42299327751](https://github.com/mindwork64/exhiOS/actions/runs/42299327751). Headless QEMU smoke test and local runtime remain pending.
+- CI registry host tests: 8/8 passed; all kernel build variants and shell syntax checks passed. Headless standard boot, PIT timer and driver-registry runtime smoke tests passed in [run 42299723267](https://github.com/mindwork64/exhiOS/actions/runs/42299723267). Local Linux Mint/QEMU registry verification remains pending.
 
 
 New no_std crate: `exhi-input`; hardware driver: `exhi-kernel/src/arch/x86_64/keyboard.rs`.
