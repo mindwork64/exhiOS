@@ -140,7 +140,7 @@ P2.5 initial address-space layer закрыт по CI и локальному ru
 
 ## P2.6 — TSS, double-fault IST and boot-stack guard page
 
-Code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b46c8702e3725281e9a42654524649d1d04b4fe8). Headless CI/OVMF runtime: [run 42256795134](https://github.com/mindwork64/exhiOS/actions/runs/42256795134).
+Code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b46c8702e3725281e9a42654524649d1d04b4fe8). Headless CI/OVMF runtime: [run 42256850017](https://github.com/mindwork64/exhiOS/actions/runs/42256850017) (build and QEMU runtime both passed).
 
 Implementation:
 - 64-bit TSS descriptor is added to GDT and loaded with LTR (selector 0x18).
