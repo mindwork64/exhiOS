@@ -5,7 +5,8 @@ mod arch;
 mod heap;
 mod memory;
 
-use arch::x86_64::{address_space, gdt, idt, paging, pic, serial, stack_guard, vmm};
+use arch::x86_64::{address_space, framebuffer, gdt, idt, paging, pic, serial, stack_guard, vmm};
+use exhi_console::Color;
 use core::arch::asm;
 use core::panic::PanicInfo;
 
@@ -18,6 +19,7 @@ const QEMU_DEBUG_EXIT_VALUE: u32 = 0x10;
 
 #[no_mangle]
 pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
+    let mut framebuffer_console: Option<exhi_console::FramebufferConsole<'static>> = None;
     serial::COM1.initialize();
     serial::COM1.write(b"ExhiOS Kernel 0.1\r\n");
     serial::COM1.write(b"P3.1: COM1 polling serial driver ready.\r\n");
@@ -488,6 +490,37 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial::COM1.write(b"P2.5: private page tables reclaimed; data frames safely returned.\r\n");
             serial::COM1.write(b"P2.5: kernel address-space smoke test passed.\r\n");
 
+            // SAFETY: GOP memory remains allocated after ExitBootServices and is
+            // covered by the active 0..4 GiB supervisor identity mapping.
+            match unsafe { framebuffer::initialize(&info.framebuffer) } {
+                Ok(mut console) => {
+                    console.set_colors(Color::new(205, 225, 255), Color::new(8, 12, 22));
+                    console.clear();
+                    console.write(b"EXHIOS KERNEL 0.1\r\n");
+                    console.write(b"P3.2 FRAMEBUFFER CONSOLE READY\r\n");
+                    console.write(b"RESOLUTION: ");
+                    console.write_u32(info.framebuffer.width);
+                    console.write(b" X ");
+                    console.write_u32(info.framebuffer.height);
+                    console.write(b"\r\nSCANLINE STRIDE: ");
+                    console.write_u32(info.framebuffer.pixels_per_scan_line);
+                    console.write(b"\r\nPIXEL FORMAT: ");
+                    match info.framebuffer.pixel_format {
+                        0 => console.write(b"RGBX"),
+                        1 => console.write(b"BGRX"),
+                        _ => console.write(b"UNSUPPORTED"),
+                    }
+                    console.write(b"\r\nCOM1 SERIAL: READY\r\n");
+                    framebuffer_console = Some(console);
+                    serial::COM1.write(b"P3.2: framebuffer console initialized; GOP format and stride validated.\r\n");
+                }
+                Err(error) => {
+                    serial::COM1.write(b"P3.2: framebuffer console unavailable: ");
+                    serial::COM1.write(error.message());
+                    serial::COM1.write(b"\r\n");
+                }
+            }
+
             #[cfg(feature = "qemu-debug-exit-smoke-test")]
             {
                 serial::COM1.write(b"P2.6: forcing an exception-frame write into the unmapped stack guard page.\r\n");
@@ -507,6 +540,9 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     }
 
     serial::COM1.write(b"ExhiOS: kernel handoff successful.\r\n");
+    if let Some(console) = framebuffer_console.as_mut() {
+        console.write(b"\r\nKERNEL HANDOFF: SUCCESS\r\n");
+    }
 
     #[cfg(feature = "serial-rx-smoke-test")]
     {
