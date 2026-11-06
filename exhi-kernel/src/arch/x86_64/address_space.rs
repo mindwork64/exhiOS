@@ -438,11 +438,33 @@ impl AddressSpace {
         if self.root_frame == 0 && self.pdpt_frame == 0 {
             return Ok(());
         }
+        if self.root_frame == 0 {
+            return Err(AddressSpaceError::InvalidAddressSpace);
+        }
+        validate_table_frame(self.root_frame)?;
+
+        // A previous destroy attempt may have released the PDPT successfully
+        // but failed to release the PML4 frame. Finish that final step safely.
+        if self.pdpt_frame == 0 {
+            if is_active(self.root_frame) {
+                return Err(AddressSpaceError::AddressSpaceActive);
+            }
+            if unsafe { read_entry(self.root_frame, 0) } & PRESENT != 0 {
+                return Err(AddressSpaceError::InvalidAddressSpace);
+            }
+            release_table(self.root_frame)?;
+            self.root_frame = 0;
+            return Ok(());
+        }
+
         self.ensure_live()?;
         if is_active(self.root_frame) {
             return Err(AddressSpaceError::AddressSpaceActive);
         }
 
+        // Pass 1: validate the complete private tree before releasing anything.
+        // This prevents a malformed late entry from leaving an already-partially
+        // destroyed address space.
         for pdpt_index in USER_FIRST_PDPT_INDEX..PAGE_ENTRIES {
             let pdpt_entry = unsafe { read_entry(self.pdpt_frame, pdpt_index) };
             if pdpt_entry & PRESENT == 0 {
@@ -462,17 +484,39 @@ impl AddressSpace {
                 if directory_entry & PAGE_SIZE_BIT != 0 {
                     return Err(AddressSpaceError::UnexpectedLargePage);
                 }
+                validate_table_frame(directory_entry & PAGE_TABLE_ADDRESS_MASK)?;
+            }
+        }
+
+        // Pass 2: release children first. Clear each parent entry only after its
+        // child frame was successfully returned, so a failed release can be
+        // retried without double-freeing earlier children.
+        for pdpt_index in USER_FIRST_PDPT_INDEX..PAGE_ENTRIES {
+            let pdpt_entry = unsafe { read_entry(self.pdpt_frame, pdpt_index) };
+            if pdpt_entry & PRESENT == 0 {
+                continue;
+            }
+
+            let directory_frame = pdpt_entry & PAGE_TABLE_ADDRESS_MASK;
+            for directory_index in 0..PAGE_ENTRIES {
+                let directory_entry = unsafe { read_entry(directory_frame, directory_index) };
+                if directory_entry & PRESENT == 0 {
+                    continue;
+                }
 
                 let table_frame = directory_entry & PAGE_TABLE_ADDRESS_MASK;
-                validate_table_frame(table_frame)?;
                 release_table(table_frame)?;
+                write_entry(directory_frame, directory_index, 0);
             }
+
             release_table(directory_frame)?;
+            write_entry(self.pdpt_frame, pdpt_index, 0);
         }
 
         release_table(self.pdpt_frame)?;
-        release_table(self.root_frame)?;
         self.pdpt_frame = 0;
+        write_entry(self.root_frame, 0, 0);
+        release_table(self.root_frame)?;
         self.root_frame = 0;
         Ok(())
     }
