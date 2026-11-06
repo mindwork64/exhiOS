@@ -113,18 +113,6 @@ pub struct AddressSpace {
     pdpt_frame: u64,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct AddressSpaceStatus {
-    pub kernel_root: u64,
-    pub first_root: u64,
-    pub second_root: u64,
-    pub user_virtual_page: u64,
-    pub first_physical_page: u64,
-    pub second_physical_page: u64,
-    pub shared_kernel_translation: u64,
-    pub shared_heap_translation: u64,
-}
-
 /// Captures the active kernel root after the VMM and kernel heap are ready.
 ///
 /// The first five PDPT entries are the shared kernel region: 0..4 GiB physical
@@ -221,7 +209,12 @@ impl AddressSpace {
         self.root_frame
     }
 
-    pub fn map_user_page(
+    /// Maps a caller-owned physical frame into this address space's private user range.
+    ///
+    /// # Safety
+    /// The caller must own the frame, keep it allocated until unmapping, and
+    /// initialize/scrub its contents before exposing it to untrusted user code.
+    pub unsafe fn map_user_page(
         &mut self,
         virtual_address: u64,
         physical_address: u64,
@@ -501,14 +494,16 @@ pub fn smoke_test() -> Result<AddressSpaceTestStatus, AddressSpaceError> {
         }
     };
 
-    if let Err(error) = first.map_user_page(USER_VIRTUAL_BASE, first_frame, UserPageFlags::read_write_nx()) {
+    // SAFETY: first_frame was freshly allocated and remains owned by this test.
+    if let Err(error) = unsafe { first.map_user_page(USER_VIRTUAL_BASE, first_frame, UserPageFlags::read_write_nx()) } {
         let _ = memory::release_frame(first_frame);
         let _ = memory::release_frame(second_frame);
         let _ = first.destroy();
         let _ = second.destroy();
         return Err(error);
     }
-    if let Err(error) = second.map_user_page(USER_VIRTUAL_BASE, second_frame, UserPageFlags::read_write_nx()) {
+    // SAFETY: second_frame was freshly allocated and remains owned by this test.
+    if let Err(error) = unsafe { second.map_user_page(USER_VIRTUAL_BASE, second_frame, UserPageFlags::read_write_nx()) } {
         let _ = first.unmap_user_page(USER_VIRTUAL_BASE);
         let _ = memory::release_frame(first_frame);
         let _ = memory::release_frame(second_frame);
@@ -541,6 +536,9 @@ pub fn smoke_test() -> Result<AddressSpaceTestStatus, AddressSpaceError> {
     if kernel_translation.physical_page != (kernel_entry & !(PAGE_SIZE - 1))
         || stack_translation.physical_page != (stack_pointer & !(PAGE_SIZE - 1))
         || heap_translation.physical_page == HEAP_PROBE
+        || kernel_translation.user
+        || stack_translation.user
+        || heap_translation.user
     {
         return Err(AddressSpaceError::MappingVerificationFailed);
     }
@@ -623,13 +621,13 @@ fn translate_from_root(
     let page_index = ((virtual_address >> 12) & 0x1FF) as usize;
     let pml4_entry = unsafe { read_entry(root_frame, pml4_index) };
     if pml4_entry & PRESENT == 0 {
-        return Err(AddressSpaceError::NotMapped);
+        return Err(AddressSpaceError::MissingPageTableEntry);
     }
 
     let pdpt_frame = pml4_entry & PAGE_TABLE_ADDRESS_MASK;
     let pdpt_entry = unsafe { read_entry(pdpt_frame, pdpt_index) };
     if pdpt_entry & PRESENT == 0 {
-        return Err(AddressSpaceError::NotMapped);
+        return Err(AddressSpaceError::MissingPageTableEntry);
     }
     if pdpt_entry & PAGE_SIZE_BIT != 0 {
         return Err(AddressSpaceError::UnexpectedLargePage);
@@ -638,7 +636,7 @@ fn translate_from_root(
     let directory_frame = pdpt_entry & PAGE_TABLE_ADDRESS_MASK;
     let directory_entry = unsafe { read_entry(directory_frame, directory_index) };
     if directory_entry & PRESENT == 0 {
-        return Err(AddressSpaceError::NotMapped);
+        return Err(AddressSpaceError::MissingPageTableEntry);
     }
 
     if directory_entry & PAGE_SIZE_BIT != 0 {
