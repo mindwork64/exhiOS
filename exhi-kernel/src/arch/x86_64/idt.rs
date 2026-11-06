@@ -61,6 +61,7 @@ pub struct IdtStatus {
     pub base: u64,
     pub limit: u16,
     pub double_fault_ist: u8,
+    pub timer_irq_valid: bool,
     pub valid: bool,
 }
 
@@ -120,6 +121,16 @@ pub fn initialize() -> IdtStatus {
         }
     }
 
+    // Install the first hardware IRQ gate. All other PIC IRQs remain masked
+    // until their own handlers and routing are explicitly initialized.
+    let timer_irq_handler = super::timer::irq0_stub_address();
+    unsafe {
+        ptr::write_volatile(
+            entries.add(usize::from(super::timer::IRQ0_VECTOR)),
+            IdtEntry::interrupt_gate(timer_irq_handler, 0),
+        );
+    }
+
     let expected_base = ptr::addr_of!(IDT) as u64;
     let expected_limit = (size_of::<InterruptDescriptorTable>() - 1) as u16;
     let descriptor = IdtRegister {
@@ -156,14 +167,28 @@ pub fn initialize() -> IdtStatus {
         let gate = entries.add(8);
         ptr::read_volatile(ptr::addr_of!((*gate).ist)) & 0x7
     };
+    // Copy the packed entry before reading its fields so no unaligned
+    // references to IDT storage are created.
+    let timer_irq_gate = unsafe {
+        ptr::read_volatile(entries.add(usize::from(super::timer::IRQ0_VECTOR)))
+    };
+    let timer_irq_gate_address = u64::from(timer_irq_gate.offset_low)
+        | (u64::from(timer_irq_gate.offset_middle) << 16)
+        | (u64::from(timer_irq_gate.offset_high) << 32);
+    let timer_irq_valid = timer_irq_gate_address == timer_irq_handler
+        && timer_irq_gate.selector == KERNEL_CODE_SELECTOR
+        && timer_irq_gate.ist & 0x7 == 0
+        && timer_irq_gate.attributes == INTERRUPT_GATE_ATTRIBUTES;
 
     IdtStatus {
         base: active_base,
         limit: active_limit,
         double_fault_ist,
+        timer_irq_valid,
         valid: active_base == expected_base
             && active_limit == expected_limit
-            && double_fault_ist == 1,
+            && double_fault_ist == 1
+            && timer_irq_valid,
     }
 }
 
