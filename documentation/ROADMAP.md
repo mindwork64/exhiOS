@@ -136,7 +136,8 @@ The implementation and dedicated headless QEMU smoke-test paths now exist for P5
 - [ ] **P5.7 — Capabilities and default-deny access rules:** define process capabilities and enforce access checks at kernel service boundaries.
 
   - Progress (2026-11-07): `exhi-task` now has a typed capability set, rejects unknown serialized bits, gives new user tasks an empty set, and exposes a scheduler authorization check for the current task. This is the policy foundation, not completion: production syscall dispatch and actual kernel service boundaries still need to consume the check.
-  - Runtime progress (2026-11-07): the P5.6 Ring 3 lifecycle smoke path now checks `TaskYield` and `TaskExit` before dispatch. Task A receives both grants; task B receives only `TaskExit`, attempts `SYS_YIELD`, verifies the `-1` denial result, and continues without a scheduler transition. This is test-only syscall dispatch coverage; production syscall services are still not implemented.
+  - Runtime progress (2026-11-07): the P5.6 Ring 3 lifecycle smoke path checks `TaskYield` and `TaskExit` before scheduler dispatch. Task A receives both grants; task B receives only `TaskExit`, attempts `SYS_YIELD`, verifies the `-1` denial result, and continues without a scheduler transition.
+  - Service progress (2026-11-07): `exhi-abi` now defines stable syscall numbers, the six-register argument convention and negative return statuses. The feature-gated Ring 3 runtime implements `SYS_CONSOLE_WRITE`: it requires `ConsoleWrite`, validates and copies the complete user range before writing, and reports the actual byte count. QEMU checks that task A's authorized write succeeds while task B's unauthorized write returns `-1` and emits no bytes. This remains smoke-runtime integration; production user-process startup and a general production syscall runtime are not yet implemented.
 
 ## P6 — Storage
 

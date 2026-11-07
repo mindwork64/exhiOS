@@ -1,8 +1,7 @@
-//! Minimal Ring 3 transition and CPL3 exception-frame smoke test.
+//! Ring 3 transition, user-memory and syscall smoke-test harness.
 //!
-//! This milestone proves privilege-level entry and a processor-originated
-//! exception return to a TSS RSP0 stack. It does not implement syscalls,
-//! process scheduling, or a userspace ABI.
+//! Feature-gated paths exercise the architecture boundary; they are not yet
+//! the production user-process runtime.
 
 use core::arch::asm;
 #[cfg(any(
@@ -13,6 +12,8 @@ use core::arch::global_asm;
 use core::mem::size_of;
 use core::ptr;
 
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+use exhi_abi::{SyscallError, SyscallNumber};
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 use exhi_task::{Capability, CapabilitySet, Scheduler, TaskContext, TaskId, UserTaskMetadata};
 
@@ -101,6 +102,7 @@ struct UserTaskCounters {
     yields: u64,
     exits: u64,
     denied: u64,
+    console_writes: u64,
     switches: u64,
 }
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
@@ -109,6 +111,7 @@ static mut USER_TASK_COUNTERS: UserTaskCounters = UserTaskCounters {
     yields: 0,
     exits: 0,
     denied: 0,
+    console_writes: 0,
     switches: 0,
 };
 
@@ -854,7 +857,8 @@ exhi_syscall_entry:
 
 #[cfg(any(
     feature = "user-pointer-range-smoke-test",
-    feature = "user-copy-smoke-test"
+    feature = "user-copy-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
 ))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UserAccess {
@@ -866,7 +870,8 @@ pub enum UserAccess {
 
 #[cfg(any(
     feature = "user-pointer-range-smoke-test",
-    feature = "user-copy-smoke-test"
+    feature = "user-copy-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
 ))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UserRangeError {
@@ -875,15 +880,22 @@ pub enum UserRangeError {
     NotUserMemory,
     PermissionDenied,
     AddressSpace(address_space::AddressSpaceError),
-    #[cfg(feature = "user-copy-smoke-test")]
+    #[cfg(any(
+        feature = "user-copy-smoke-test",
+        feature = "user-task-lifecycle-smoke-test"
+    ))]
     AddressSpaceNotActive,
-    #[cfg(feature = "user-copy-smoke-test")]
+    #[cfg(any(
+        feature = "user-copy-smoke-test",
+        feature = "user-task-lifecycle-smoke-test"
+    ))]
     InterruptsEnabled,
 }
 
 #[cfg(any(
     feature = "user-pointer-range-smoke-test",
-    feature = "user-copy-smoke-test"
+    feature = "user-copy-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
 ))]
 const MAX_USER_POINTER_RANGE: u64 = 16 * 1024 * 1024;
 
@@ -891,7 +903,8 @@ const MAX_USER_POINTER_RANGE: u64 = 16 * 1024 * 1024;
 /// Zero-length buffers are accepted without dereferencing their pointer.
 #[cfg(any(
     feature = "user-pointer-range-smoke-test",
-    feature = "user-copy-smoke-test"
+    feature = "user-copy-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
 ))]
 pub fn validate_user_range(
     space: &AddressSpace,
@@ -941,7 +954,10 @@ pub fn validate_user_range(
 /// Copies a user buffer into a kernel-owned slice after validating every page.
 /// The address space must be active and IF must be clear so it cannot be switched
 /// or modified while the validated mapping is being accessed.
-#[cfg(feature = "user-copy-smoke-test")]
+#[cfg(any(
+    feature = "user-copy-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
+))]
 pub fn copy_from_user(
     space: &AddressSpace,
     user_source: u64,
@@ -993,7 +1009,10 @@ pub fn copy_to_user(
     Ok(())
 }
 
-#[cfg(feature = "user-copy-smoke-test")]
+#[cfg(any(
+    feature = "user-copy-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
+))]
 fn ensure_user_copy_context(space: &AddressSpace) -> Result<(), UserRangeError> {
     let flags: u64;
     unsafe {
@@ -1123,6 +1142,7 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
                 yields: 0,
                 exits: 0,
                 denied: 0,
+                console_writes: 0,
                 switches: 0,
             },
         );
@@ -1213,7 +1233,8 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
                     ptr::addr_of!(USER_TASK_FX_STATES[0]) as usize,
                     CapabilitySet::empty()
                         .with(Capability::TaskYield)
-                        .with(Capability::TaskExit),
+                        .with(Capability::TaskExit)
+                        .with(Capability::ConsoleWrite),
                 ),
             )
             .unwrap_or_else(|_| {
@@ -1393,8 +1414,9 @@ fn build_user_task_program(
     initial_marker: u32,
     resumed_marker: u32,
     expect_yield_denied: bool,
-) -> ([u8; 64], usize) {
-    let mut code = [0u8; 64];
+) -> ([u8; 256], usize) {
+    const CONSOLE_MESSAGE_OFFSET: usize = 128;
+    let mut code = [0u8; 256];
     let mut position = 0;
     code[position..position + 9].copy_from_slice(&[
         0x48,
@@ -1408,18 +1430,78 @@ fn build_user_task_program(
         (initial_marker >> 24) as u8,
     ]);
     position += 9;
-    code[position..position + 5].copy_from_slice(&[0xB8, 1, 0, 0, 0]); // SYS_YIELD
+
+    let yield_number = SyscallNumber::Yield as u32;
+    code[position..position + 5].copy_from_slice(&[
+        0xB8,
+        yield_number as u8,
+        (yield_number >> 8) as u8,
+        (yield_number >> 16) as u8,
+        (yield_number >> 24) as u8,
+    ]);
     position += 5;
     code[position..position + 2].copy_from_slice(&[0x0F, 0x05]);
     position += 2;
     if expect_yield_denied {
-        // Access denied is returned as -1. Trap if the kernel performs the
-        // forbidden yield or returns a different status.
-        code[position..position + 6].copy_from_slice(&[0x48, 0x83, 0xF8, 0xFF, 0x74, 0x01]); // cmp rax,-1; je +1
+        // B has no TaskYield grant. Trap unless the denial is returned as -1.
+        code[position..position + 6].copy_from_slice(&[0x48, 0x83, 0xF8, 0xFF, 0x74, 0x01]);
         position += 6;
         code[position] = 0xCC;
         position += 1;
     }
+
+    let message: &[u8] = if expect_yield_denied {
+        b"P5.7: user B unauthorized output must not appear\r\n"
+    } else {
+        b"P5.7: user A authorized ConsoleWrite reached COM1\r\n"
+    };
+    let message_address = USER_CODE_ADDRESS + CONSOLE_MESSAGE_OFFSET as u64;
+    code[position..position + 2].copy_from_slice(&[0x48, 0xBF]); // movabs rdi, imm64
+    position += 2;
+    code[position..position + 8].copy_from_slice(&message_address.to_le_bytes());
+    position += 8;
+    let message_length = message.len() as u32;
+    code[position..position + 5].copy_from_slice(&[
+        0xBE,
+        message_length as u8,
+        (message_length >> 8) as u8,
+        (message_length >> 16) as u8,
+        (message_length >> 24) as u8,
+    ]); // mov esi, length
+    position += 5;
+    let console_number = SyscallNumber::ConsoleWrite as u32;
+    code[position..position + 5].copy_from_slice(&[
+        0xB8,
+        console_number as u8,
+        (console_number >> 8) as u8,
+        (console_number >> 16) as u8,
+        (console_number >> 24) as u8,
+    ]);
+    position += 5;
+    code[position..position + 2].copy_from_slice(&[0x0F, 0x05]);
+    position += 2;
+
+    if expect_yield_denied {
+        // The denied ConsoleWrite must not consume or print B's user buffer.
+        code[position..position + 6].copy_from_slice(&[0x48, 0x83, 0xF8, 0xFF, 0x74, 0x01]);
+        position += 6;
+        code[position] = 0xCC;
+        position += 1;
+    } else {
+        // A must receive the exact number of bytes actually written.
+        code[position..position + 6].copy_from_slice(&[
+            0x48,
+            0x3D,
+            message_length as u8,
+            (message_length >> 8) as u8,
+            (message_length >> 16) as u8,
+            (message_length >> 24) as u8,
+        ]);
+        position += 6;
+        code[position..position + 3].copy_from_slice(&[0x74, 0x01, 0xCC]);
+        position += 3;
+    }
+
     code[position..position + 9].copy_from_slice(&[
         0x48,
         0xC7,
@@ -1432,13 +1514,24 @@ fn build_user_task_program(
         (resumed_marker >> 24) as u8,
     ]);
     position += 9;
-    code[position..position + 5].copy_from_slice(&[0xB8, 2, 0, 0, 0]); // SYS_EXIT
+    let exit_number = SyscallNumber::Exit as u32;
+    code[position..position + 5].copy_from_slice(&[
+        0xB8,
+        exit_number as u8,
+        (exit_number >> 8) as u8,
+        (exit_number >> 16) as u8,
+        (exit_number >> 24) as u8,
+    ]);
     position += 5;
     code[position..position + 2].copy_from_slice(&[0x0F, 0x05]);
     position += 2;
     code[position] = 0xCC; // Must be unreachable after SYS_EXIT.
     position += 1;
-    (code, position)
+
+    code[CONSOLE_MESSAGE_OFFSET..CONSOLE_MESSAGE_OFFSET + message.len()]
+        .copy_from_slice(message);
+    let code_length = core::cmp::max(position, CONSOLE_MESSAGE_OFFSET + message.len());
+    (code, code_length)
 }
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
@@ -1655,31 +1748,47 @@ extern "sysv64" fn exhi_user_task_syscall_handler(frame: *mut UserTaskInterruptF
         ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
     }
 
-    let required_capability = match syscall_number {
-        1 => Capability::TaskYield,
-        2 => Capability::TaskExit,
-        _ => {
+    let syscall = match SyscallNumber::try_from(syscall_number) {
+        Ok(syscall) => syscall,
+        Err(_) => {
             unsafe {
-                ptr::write_volatile(ptr::addr_of_mut!((*frame).rax), u64::MAX);
-                let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.denied);
-                ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
+                ptr::write_volatile(
+                    ptr::addr_of_mut!((*frame).rax),
+                    SyscallError::NotImplemented.as_return_value(),
+                );
             }
             return frame_address;
         }
     };
+    let required_capability = match syscall {
+        SyscallNumber::Yield => Capability::TaskYield,
+        SyscallNumber::Exit => Capability::TaskExit,
+        SyscallNumber::ConsoleWrite => Capability::ConsoleWrite,
+    };
     if unsafe { (*scheduler).authorize_current(required_capability).is_err() } {
-        // Denied calls resume the same frame with -1 in RAX; no service or
-        // scheduler side effect is allowed to occur.
+        // Denied calls resume the same frame with -1 in RAX. The service is
+        // never entered, so it cannot read user memory or produce side effects.
         unsafe {
-            ptr::write_volatile(ptr::addr_of_mut!((*frame).rax), u64::MAX);
+            ptr::write_volatile(
+                ptr::addr_of_mut!((*frame).rax),
+                SyscallError::AccessDenied.as_return_value(),
+            );
             let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.denied);
             ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
         }
         return frame_address;
     }
 
-    let next = match syscall_number {
-        1 => unsafe {
+    if syscall == SyscallNumber::ConsoleWrite {
+        let result = user_task_console_write(index, frame);
+        unsafe {
+            ptr::write_volatile(ptr::addr_of_mut!((*frame).rax), result);
+        }
+        return frame_address;
+    }
+
+    let next = match syscall {
+        SyscallNumber::Yield => unsafe {
             let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.yields);
             ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
             (*scheduler)
@@ -1690,7 +1799,7 @@ extern "sysv64" fn exhi_user_task_syscall_handler(frame: *mut UserTaskInterruptF
                     exhi_task::ScheduleDecision::Continue { .. } => None,
                 })
         },
-        2 => {
+        SyscallNumber::Exit => {
             let next = unsafe {
                 let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.exits);
                 ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
@@ -1699,9 +1808,6 @@ extern "sysv64" fn exhi_user_task_syscall_handler(frame: *mut UserTaskInterruptF
             if let Some(next) = next {
                 Some(next)
             } else {
-                // Both user tasks are now Finished. Wake the supervisor reaper
-                // from the scheduler's explicit idle state; it runs on its own
-                // kernel stack and CR3 before reclaiming either address space.
                 let reaper = TaskId::from_raw(3);
                 unsafe {
                     if (*scheduler).wake(reaper).is_err() {
@@ -1711,12 +1817,49 @@ extern "sysv64" fn exhi_user_task_syscall_handler(frame: *mut UserTaskInterruptF
                 }
             }
         }
-        _ => unreachable!("syscall number was validated above"),
+        SyscallNumber::ConsoleWrite => unreachable!("handled before scheduler dispatch"),
     }
     .unwrap_or_else(|| {
         user_task_runtime_failed(b"P5.7: authorized syscall did not select a task.\r\n")
     });
     user_task_select_context(next)
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn user_task_console_write(index: usize, frame: *mut UserTaskInterruptFrame) -> u64 {
+    const MAX_CONSOLE_WRITE: usize = 256;
+    let user_address = unsafe { ptr::read_volatile(ptr::addr_of!((*frame).rdi)) };
+    let requested_length = unsafe { ptr::read_volatile(ptr::addr_of!((*frame).rsi)) };
+    let Ok(length) = usize::try_from(requested_length) else {
+        return SyscallError::InvalidArgument.as_return_value();
+    };
+    if length > MAX_CONSOLE_WRITE {
+        return SyscallError::InvalidArgument.as_return_value();
+    }
+
+    let space = match index {
+        0 => unsafe { (&*ptr::addr_of!(USER_TASK_SPACE_A)).as_ref() },
+        1 => unsafe { (&*ptr::addr_of!(USER_TASK_SPACE_B)).as_ref() },
+        _ => None,
+    };
+    let Some(space) = space else {
+        return SyscallError::InvalidArgument.as_return_value();
+    };
+
+    let mut buffer = [0u8; MAX_CONSOLE_WRITE];
+    if copy_from_user(space, user_address, &mut buffer[..length]).is_err() {
+        return SyscallError::InvalidArgument.as_return_value();
+    }
+    let written = serial::COM1.write_count(&buffer[..length]);
+    if written != length {
+        return SyscallError::Io.as_return_value();
+    }
+
+    unsafe {
+        let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.console_writes);
+        ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
+    }
+    written as u64
 }
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
@@ -1746,9 +1889,11 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
         (*scheduler).get(TaskId::from_raw(1)).is_some_and(|task| {
             task.capabilities().contains(Capability::TaskYield)
                 && task.capabilities().contains(Capability::TaskExit)
+                && task.capabilities().contains(Capability::ConsoleWrite)
         }) && (*scheduler).get(TaskId::from_raw(2)).is_some_and(|task| {
             !task.capabilities().contains(Capability::TaskYield)
                 && task.capabilities().contains(Capability::TaskExit)
+                && !task.capabilities().contains(Capability::ConsoleWrite)
         })
     };
     let syscall_count =
@@ -1756,6 +1901,8 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     let yield_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.yields)) };
     let exit_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.exits)) };
     let denied_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.denied)) };
+    let console_write_count =
+        unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.console_writes)) };
     let switch_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.switches)) };
     let a_code = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_CODE_FRAMES[0])) };
     let b_code = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_CODE_FRAMES[1])) };
@@ -1781,10 +1928,11 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     report_user_task_saved_context(TaskId::from_raw(1), b"A");
     report_user_task_saved_context(TaskId::from_raw(2), b"B");
     let passed = tasks_ok
-        && syscall_count == 4
+        && syscall_count == 6
         && yield_count == 1
         && exit_count == 2
-        && denied_count == 1
+        && denied_count == 2
+        && console_write_count == 1
         && switch_count == 3
         && capability_grants_ok
         && roots_private
@@ -1801,6 +1949,8 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     serial::COM1.write_hex(exit_count);
     serial::COM1.write(b" denied=");
     serial::COM1.write_hex(denied_count);
+    serial::COM1.write(b" console_writes=");
+    serial::COM1.write_hex(console_write_count);
     serial::COM1.write(b" switches=");
     serial::COM1.write_hex(switch_count);
     serial::COM1
@@ -1810,7 +1960,8 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     } else {
         b"no "
     });
-    serial::COM1.write(b"\r\nP5.6: A markers=");
+    serial::COM1.write(b"\r\nP5.7: ConsoleWrite A=allowed B=denied user-copy=validated unauthorized-output=no\r\n");
+    serial::COM1.write(b"P5.6: A markers=");
     serial::COM1.write(if a_markers_ok { b"both" } else { b"bad " });
     serial::COM1.write(b" B markers=");
     serial::COM1.write(if b_markers_ok { b"both" } else { b"bad " });

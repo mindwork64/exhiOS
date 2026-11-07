@@ -74,11 +74,19 @@ impl SerialPort {
 
     /// Writes bytes until the complete slice is sent or the UART times out.
     pub fn write(&self, bytes: &[u8]) {
+        let _ = self.write_count(bytes);
+    }
+
+    /// Writes bytes and returns the number accepted by the UART.
+    pub fn write_count(&self, bytes: &[u8]) -> usize {
+        let mut written = 0;
         for &byte in bytes {
             if !self.write_byte(byte) {
                 break;
             }
+            written += 1;
         }
+        written
     }
 
     /// Writes a fixed-width, 16-digit uppercase hexadecimal u64.

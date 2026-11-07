@@ -109,3 +109,7 @@ mod tests {
         assert_eq!(info.version, 2);
     }
 }
+
+
+pub mod syscall;
+pub use syscall::{SyscallError, SyscallNumber, SyscallRequest, UnknownSyscallNumber};
