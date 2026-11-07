@@ -1,8 +1,13 @@
-use core::arch::{asm, global_asm};
+use core::arch::global_asm;
+#[cfg(feature = "keyboard-smoke-test")]
+use core::arch::asm;
+#[cfg(feature = "keyboard-smoke-test")]
 use core::hint::spin_loop;
+#[cfg(feature = "keyboard-smoke-test")]
 use core::ptr;
 
 use exhi_driver::{DriverClass, DriverDescriptor, DriverId};
+#[cfg(feature = "keyboard-smoke-test")]
 use exhi_input::{KeyEvent, KeyboardDecoder, EXHIOS_KEYBOARD_SCANCODE_QUEUE};
 
 pub const DRIVER: DriverDescriptor = DriverDescriptor::new(
@@ -13,20 +18,30 @@ pub const DRIVER: DriverDescriptor = DriverDescriptor::new(
 
 use super::pic;
 
+#[cfg(feature = "keyboard-smoke-test")]
 const DATA_PORT: u16 = 0x60;
+#[cfg(feature = "keyboard-smoke-test")]
 const STATUS_COMMAND_PORT: u16 = 0x64;
+#[cfg(feature = "keyboard-smoke-test")]
 const STATUS_OUTPUT_FULL: u8 = 1 << 0;
+#[cfg(feature = "keyboard-smoke-test")]
 const STATUS_INPUT_FULL: u8 = 1 << 1;
+#[cfg(feature = "keyboard-smoke-test")]
 const WAIT_LIMIT: usize = 200_000;
+#[cfg(feature = "keyboard-smoke-test")]
 const ENABLE_SCANNING: u8 = 0xF4;
+#[cfg(feature = "keyboard-smoke-test")]
 const ACK: u8 = 0xFA;
+#[cfg(feature = "keyboard-smoke-test")]
 const RESEND: u8 = 0xFE;
 
 pub const IRQ1_VECTOR: u8 = pic::MASTER_VECTOR_OFFSET + 1;
 
+#[cfg(feature = "keyboard-smoke-test")]
 static mut DECODER: KeyboardDecoder = KeyboardDecoder::new();
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg(feature = "keyboard-smoke-test")]
 pub enum KeyboardError {
     InputBufferTimeout,
     OutputBufferTimeout,
@@ -35,6 +50,7 @@ pub enum KeyboardError {
     IrqUnmaskFailed,
 }
 
+#[cfg(feature = "keyboard-smoke-test")]
 impl KeyboardError {
     pub const fn message(self) -> &'static [u8] {
         match self {
@@ -55,6 +71,7 @@ impl KeyboardError {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg(feature = "keyboard-smoke-test")]
 pub struct KeyboardStatus {
     pub controller_config: u8,
     pub translated_set1: bool,
@@ -63,6 +80,7 @@ pub struct KeyboardStatus {
     pub slave_mask: u8,
 }
 
+#[cfg(feature = "keyboard-smoke-test")]
 impl KeyboardStatus {
     pub const fn is_valid(self) -> bool {
         self.translated_set1 && self.irq1_unmasked && self.master_mask & 0x02 == 0
@@ -72,6 +90,7 @@ impl KeyboardStatus {
 /// Initializes the legacy i8042 keyboard port and enables only PIC IRQ1.
 /// It executes CLI and returns with maskable interrupts disabled; the caller
 /// owns the later STI after all required interrupt handlers are installed.
+#[cfg(feature = "keyboard-smoke-test")]
 pub fn initialize() -> Result<KeyboardStatus, KeyboardError> {
     unsafe {
         asm!("cli", options(nomem, nostack));
@@ -117,6 +136,7 @@ pub fn initialize() -> Result<KeyboardStatus, KeyboardError> {
 }
 
 /// Returns the next decoded physical key transition from the foreground path.
+#[cfg(feature = "keyboard-smoke-test")]
 pub fn try_read_event() -> Option<KeyEvent> {
     while let Some(scancode) = EXHIOS_KEYBOARD_SCANCODE_QUEUE.try_pop() {
         // SAFETY: This is the single foreground consumer. The IRQ handler only
@@ -129,10 +149,12 @@ pub fn try_read_event() -> Option<KeyEvent> {
     None
 }
 
+#[cfg(feature = "keyboard-smoke-test")]
 pub fn dropped_scancodes() -> u64 {
     EXHIOS_KEYBOARD_SCANCODE_QUEUE.dropped_count()
 }
 
+#[cfg(feature = "keyboard-smoke-test")]
 pub fn mask_irq1() -> pic::PicStatus {
     pic::mask_irq1()
 }
@@ -145,23 +167,27 @@ unsafe extern "sysv64" {
     fn exhi_irq1_stub();
 }
 
+#[cfg(feature = "keyboard-smoke-test")]
 fn controller_command(value: u8) -> Result<(), KeyboardError> {
     wait_input_empty()?;
     unsafe { outb(STATUS_COMMAND_PORT, value) };
     Ok(())
 }
 
+#[cfg(feature = "keyboard-smoke-test")]
 fn write_data(value: u8) -> Result<(), KeyboardError> {
     wait_input_empty()?;
     unsafe { outb(DATA_PORT, value) };
     Ok(())
 }
 
+#[cfg(feature = "keyboard-smoke-test")]
 fn read_data() -> Result<u8, KeyboardError> {
     wait_output_full()?;
     Ok(unsafe { inb(DATA_PORT) })
 }
 
+#[cfg(feature = "keyboard-smoke-test")]
 fn send_keyboard_command(command: u8) -> Result<(), KeyboardError> {
     for _ in 0..3 {
         write_data(command)?;
@@ -174,6 +200,7 @@ fn send_keyboard_command(command: u8) -> Result<(), KeyboardError> {
     Err(KeyboardError::ResendLimit)
 }
 
+#[cfg(feature = "keyboard-smoke-test")]
 fn flush_output_buffer() {
     for _ in 0..32 {
         if unsafe { inb(STATUS_COMMAND_PORT) } & STATUS_OUTPUT_FULL == 0 {
@@ -183,6 +210,7 @@ fn flush_output_buffer() {
     }
 }
 
+#[cfg(feature = "keyboard-smoke-test")]
 fn wait_input_empty() -> Result<(), KeyboardError> {
     for _ in 0..WAIT_LIMIT {
         if unsafe { inb(STATUS_COMMAND_PORT) } & STATUS_INPUT_FULL == 0 {
@@ -193,6 +221,7 @@ fn wait_input_empty() -> Result<(), KeyboardError> {
     Err(KeyboardError::InputBufferTimeout)
 }
 
+#[cfg(feature = "keyboard-smoke-test")]
 fn wait_output_full() -> Result<(), KeyboardError> {
     for _ in 0..WAIT_LIMIT {
         if unsafe { inb(STATUS_COMMAND_PORT) } & STATUS_OUTPUT_FULL != 0 {
@@ -203,6 +232,7 @@ fn wait_output_full() -> Result<(), KeyboardError> {
     Err(KeyboardError::OutputBufferTimeout)
 }
 
+#[cfg(feature = "keyboard-smoke-test")]
 unsafe fn outb(port: u16, value: u8) {
     unsafe {
         asm!(
@@ -214,6 +244,7 @@ unsafe fn outb(port: u16, value: u8) {
     }
 }
 
+#[cfg(feature = "keyboard-smoke-test")]
 unsafe fn inb(port: u16) -> u8 {
     let value: u8;
     unsafe {

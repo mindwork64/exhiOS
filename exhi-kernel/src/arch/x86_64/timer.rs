@@ -8,7 +8,13 @@
 //! program the PIT with interrupts disabled, and only then execute STI.
 
 use core::arch::global_asm;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::AtomicU64;
+#[cfg(any(
+    feature = "timer-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
+use core::sync::atomic::Ordering;
 
 use exhi_driver::{DriverClass, DriverDescriptor, DriverId};
 
@@ -17,8 +23,23 @@ pub const DRIVER: DriverDescriptor =
 
 use super::pic;
 
+#[cfg(any(
+    feature = "timer-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub const TICK_HZ: u32 = 100;
+#[cfg(any(
+    feature = "timer-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub const PIT_INPUT_HZ: u32 = 1_193_182;
+#[cfg(any(
+    feature = "timer-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub const PIT_DIVISOR: u16 = ((PIT_INPUT_HZ + (TICK_HZ / 2)) / TICK_HZ) as u16;
 pub const IRQ0_VECTOR: u8 = pic::MASTER_VECTOR_OFFSET;
 
@@ -29,6 +50,11 @@ pub const IRQ0_VECTOR: u8 = pic::MASTER_VECTOR_OFFSET;
 pub static EXHIOS_PIT_TICKS: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg(any(
+    feature = "timer-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub struct TimerStatus {
     pub requested_hz: u32,
     pub pit_divisor: u16,
@@ -41,6 +67,11 @@ pub struct TimerStatus {
 ///
 /// Call this with IF clear after IDT vector 0x20 has been installed. This
 /// function does not execute STI; interrupt policy remains with the caller.
+#[cfg(any(
+    feature = "timer-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub fn initialize() -> TimerStatus {
     EXHIOS_PIT_TICKS.store(0, Ordering::Relaxed);
 
@@ -63,18 +94,33 @@ pub fn initialize() -> TimerStatus {
 
 /// Returns the monotonic number of PIT ticks since timer initialization.
 #[inline]
+#[cfg(any(
+    feature = "timer-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub fn ticks() -> u64 {
     EXHIOS_PIT_TICKS.load(Ordering::Relaxed)
 }
 
 /// Returns elapsed ticks with wrapping subtraction, valid across counter wrap.
 #[inline]
+#[cfg(any(
+    feature = "timer-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub fn elapsed_ticks(start: u64) -> u64 {
     ticks().wrapping_sub(start)
 }
 
 /// Masks IRQ0 again. The caller should execute CLI before calling this when
 /// it is shutting down a timer test or changing interrupt policy.
+#[cfg(any(
+    feature = "timer-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub fn mask_irq0() -> pic::PicStatus {
     pic::mask_irq0()
 }
@@ -87,6 +133,11 @@ unsafe extern "sysv64" {
     fn exhi_irq0_stub();
 }
 
+#[cfg(any(
+    feature = "timer-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 unsafe fn outb(port: u16, value: u8) {
     unsafe {
         core::arch::asm!(

@@ -1,12 +1,19 @@
 use core::arch::{asm, global_asm};
 use core::mem::size_of;
 use core::ptr;
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 use core::sync::atomic::{compiler_fence, Ordering};
 
 pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
 pub const KERNEL_DATA_SELECTOR: u16 = 0x10;
 pub const TSS_SELECTOR: u16 = 0x18;
+#[cfg(feature = "ring3-smoke-test")]
 pub const USER_DATA_SELECTOR: u16 = 0x2B;
+#[cfg(feature = "ring3-smoke-test")]
 pub const USER_CODE_SELECTOR: u16 = 0x33;
 
 const GDT_NULL: u64 = 0;
@@ -243,6 +250,11 @@ exhi_load_gdt:
 ///
 /// Zero clears the field for the early boot context. Non-zero values must be
 /// 16-byte aligned and remain inside the mapped kernel physical range.
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub fn set_rsp0(stack_top: u64) -> bool {
     if stack_top != 0 && (stack_top % 16 != 0 || stack_top >= PHYSICAL_LIMIT) {
         return false;
@@ -265,6 +277,7 @@ pub fn set_rsp0(stack_top: u64) -> bool {
 }
 
 /// Reads the current TSS RSP0 value for boot-time diagnostics and tests.
+#[cfg(feature = "timer-preemption-smoke-test")]
 pub fn read_rsp0() -> u64 {
     let rsp0_pointer = unsafe {
         ptr::addr_of!(TSS.0)

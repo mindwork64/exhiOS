@@ -29,6 +29,11 @@ impl PicStatus {
 /// Local APIC/IOAPIC routing is deferred until ACPI MADT parsing is available.
 /// Unmasks only IRQ0 while preserving the current state of every other
 /// master PIC line. Slave PIC lines remain untouched.
+#[cfg(any(
+    feature = "timer-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub fn unmask_irq0() -> PicStatus {
     // SAFETY: Called during single-core startup with IF clear, after the IRQ0
     // IDT gate is installed. The caller enables CPU interrupts separately.
@@ -43,6 +48,11 @@ pub fn unmask_irq0() -> PicStatus {
 }
 
 /// Masks IRQ0 without changing the state of any other PIC line.
+#[cfg(any(
+    feature = "timer-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub fn mask_irq0() -> PicStatus {
     // SAFETY: Called with IF clear while changing timer interrupt policy.
     unsafe {
@@ -56,6 +66,7 @@ pub fn mask_irq0() -> PicStatus {
 }
 
 /// Unmasks only master PIC IRQ1 while preserving every other line.
+#[cfg(feature = "keyboard-smoke-test")]
 pub fn unmask_irq1() -> PicStatus {
     // SAFETY: Called with IF clear after the keyboard IDT gate is installed.
     unsafe {
@@ -69,6 +80,7 @@ pub fn unmask_irq1() -> PicStatus {
 }
 
 /// Masks IRQ1 without changing the state of any other PIC line.
+#[cfg(feature = "keyboard-smoke-test")]
 pub fn mask_irq1() -> PicStatus {
     // SAFETY: Called with IF clear while changing keyboard interrupt policy.
     unsafe {

@@ -22,7 +22,15 @@ const TASK_COUNT: usize = 2;
 const PAGE_SIZE: usize = 4096;
 const STACK_USABLE_SIZE: usize = 16 * 1024;
 const STACK_TOTAL_SIZE: usize = PAGE_SIZE + STACK_USABLE_SIZE;
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 const INITIAL_CONTEXT_WORDS: usize = 8;
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 const INITIAL_CONTEXT_SIZE: usize = INITIAL_CONTEXT_WORDS * size_of::<usize>();
 
 #[repr(C, align(4096))]
@@ -131,12 +139,27 @@ static mut SCHEDULER: Scheduler<TASK_COUNT> = Scheduler::new();
 static mut BOOT_STACK_POINTER: usize = 0;
 static mut FINISHED_STACK_POINTER: usize = 0;
 
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 static TASK_A_PROGRESS: AtomicUsize = AtomicUsize::new(0);
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 static TASK_B_PROGRESS: AtomicUsize = AtomicUsize::new(0);
+#[cfg(feature = "context-switch-smoke-test")]
 static TASK_FAILURES: AtomicUsize = AtomicUsize::new(0);
+#[cfg(feature = "context-switch-smoke-test")]
 static TASK_A_LOCAL_ADDRESS: AtomicUsize = AtomicUsize::new(0);
+#[cfg(feature = "context-switch-smoke-test")]
 static TASK_B_LOCAL_ADDRESS: AtomicUsize = AtomicUsize::new(0);
 
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 unsafe extern "sysv64" {
     fn exhi_context_switch(old_rsp: *mut usize, new_rsp: usize);
     fn exhi_task_bootstrap() -> !;
@@ -149,15 +172,21 @@ unsafe extern "sysv64" {
     fn exhi_preemptive_task_bootstrap() -> !;
     fn exhi_preemptive_task_a() -> !;
     fn exhi_preemptive_task_b() -> !;
+    #[cfg(feature = "preemptive-task-exit-smoke-test")]
     fn exhi_preemptive_task_exit_bootstrap() -> !;
+    #[cfg(feature = "preemptive-task-exit-smoke-test")]
     fn exhi_preemptive_task_exit_a();
+    #[cfg(feature = "preemptive-task-exit-smoke-test")]
     fn exhi_preemptive_task_exit_b();
+    #[cfg(feature = "idle-wakeup-smoke-test")]
     fn exhi_block_interrupt_stub();
+    #[cfg(feature = "idle-wakeup-smoke-test")]
     fn exhi_idle_loop();
 }
 
 /// Runs two tasks that repeatedly yield to each other, then returns to the
 /// original boot stack after both task entry functions finish.
+#[cfg(feature = "context-switch-smoke-test")]
 pub fn context_switch_smoke_test() -> bool {
     unsafe {
         asm!("cli", options(nomem, nostack, preserves_flags));
@@ -1914,6 +1943,10 @@ fn finish_preemption_test(target_reached: bool) -> ! {
     }
 }
 
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 unsafe fn prepare_stack(index: usize, entry: extern "sysv64" fn()) -> Option<(usize, u64)> {
     if index >= TASK_COUNT {
         return None;
@@ -1954,6 +1987,10 @@ unsafe fn prepare_stack(index: usize, entry: extern "sysv64" fn()) -> Option<(us
     Some((initial_rsp, stack_top))
 }
 
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 fn switch_between(from: TaskId, to: TaskId) {
     let scheduler = ptr::addr_of_mut!(SCHEDULER);
     let (old_rsp, new_rsp, stack_top) = unsafe {
@@ -2036,6 +2073,10 @@ fn wait_for_pit_ticks(minimum: u64) {
     }
 }
 
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 fn yield_current() {
     let scheduler = ptr::addr_of_mut!(SCHEDULER);
     let decision = unsafe { (*scheduler).yield_current() };
@@ -2048,6 +2089,10 @@ fn yield_current() {
 
 /// Called by the assembly bootstrap after a task entry function returns.
 #[no_mangle]
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 pub extern "sysv64" fn exhi_task_finished() -> ! {
     #[cfg(feature = "task-accounting-smoke-test")]
     unsafe {
@@ -2124,6 +2169,7 @@ extern "sysv64" fn task_b_accounting() {
 }
 
 #[inline(never)]
+#[cfg(feature = "context-switch-smoke-test")]
 extern "sysv64" fn task_a() {
     let mut local_probe = [0xA1A1_A1A1_A1A1_A1A1u64; 8];
     let local_pointer = local_probe.as_mut_ptr();
@@ -2150,6 +2196,7 @@ extern "sysv64" fn task_a() {
 }
 
 #[inline(never)]
+#[cfg(feature = "context-switch-smoke-test")]
 extern "sysv64" fn task_b() {
     let mut local_probe = [0xB2B2_B2B2_B2B2_B2B2u64; 8];
     let local_pointer = local_probe.as_mut_ptr();
@@ -2184,6 +2231,10 @@ fn task_fatal(message: &'static [u8]) -> ! {
     }
 }
 
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 global_asm!(
     r#"
     .section .text

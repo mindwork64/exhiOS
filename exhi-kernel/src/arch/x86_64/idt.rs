@@ -285,7 +285,17 @@ pub fn initialize() -> IdtStatus {
 // The debug-exit build invokes this only after the GDT/TSS and IDT are live.
 // The faulting address is in the reserved, unmapped upper part of the current
 // lower-canonical kernel window. This function never returns on success.
-#[cfg(feature = "qemu-debug-exit-smoke-test")]
+#[cfg(all(
+    feature = "qemu-debug-exit-smoke-test",
+    not(any(
+        feature = "timer-smoke-test",
+        feature = "keyboard-smoke-test",
+        feature = "driver-registry-smoke-test",
+        feature = "context-switch-smoke-test",
+        feature = "task-accounting-smoke-test",
+        feature = "timer-preemption-smoke-test"
+    ))
+))]
 unsafe extern "sysv64" {
     fn exhi_trigger_guard_stack_overflow(stack_bottom: u64, fault_address: u64) -> !;
 }
@@ -293,7 +303,17 @@ unsafe extern "sysv64" {
 /// Forces a real page fault while RSP points at the first byte of the mapped
 /// boot stack. CPU exception-frame pushes descend into the unmapped guard page,
 /// so #PF delivery faults and the processor must escalate to #DF on IST1.
-#[cfg(feature = "qemu-debug-exit-smoke-test")]
+#[cfg(all(
+    feature = "qemu-debug-exit-smoke-test",
+    not(any(
+        feature = "timer-smoke-test",
+        feature = "keyboard-smoke-test",
+        feature = "driver-registry-smoke-test",
+        feature = "context-switch-smoke-test",
+        feature = "task-accounting-smoke-test",
+        feature = "timer-preemption-smoke-test"
+    ))
+))]
 pub fn trigger_double_fault_guard_stack_smoke_test(stack_bottom: u64, guard_page: u64) {
     if guard_page.checked_add(4096) != Some(stack_bottom)
         || super::vmm::query_page(guard_page) != Err(super::vmm::VmmError::NotMapped)

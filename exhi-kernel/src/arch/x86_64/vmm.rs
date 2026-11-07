@@ -67,17 +67,6 @@ impl PageFlags {
         }
     }
 
-    /// Supervisor, read-only, executable mapping.
-    pub const fn kernel_read_only_execute() -> Self {
-        Self {
-            writable: false,
-            user: false,
-            executable: true,
-            write_through: false,
-            cache_disable: false,
-            global: false,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
