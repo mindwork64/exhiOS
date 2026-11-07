@@ -185,14 +185,23 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] CI и локальный Linux Mint/QEMU serial: elapsed PIT ticks=0x12, task A runtime=0x9, task B runtime=0x9, Finished=2, IRQ0 masked=yes, TSS.RSP0 restored=yes, pass marker, debug-exit 33.
 
 ### P4.4 — Timer-driven preemption
-**Реализация и self-hosted CI runtime завершены; ожидается локальная Linux Mint/QEMU приёмка.**
+**Завершено; self-hosted CI и локальный Linux Mint/QEMU подтверждены 2026-11-07.**
 - [x] Полный long-mode interrupt frame: 15 сохранённых GPR + RIP/CS/RFLAGS/RSP/SS (20 qwords, 160 bytes). Начальный synthetic IRETQ frame явно задаёт RSP=task stack top и SS=0x10.
 - [x] Отдельный IRQ0 preemption stub сохраняет GPR и per-task FX state через FXSAVE64/FXRSTOR64; generic P3.3 IRQ0 stub не изменён.
 - [x] Rust preemption handler учитывает runtime, выполняет round-robin scheduler selection, переключает FX state и TSS.RSP0; выбранный complete frame восстанавливается через IRETQ.
 - [x] Две задачи busy-loop без cooperative yield. Test проверяет timer preemption, runtime, независимые stack locals, XMM state, scheduler state, TSS.RSP0 и маску IRQ0.
-- [x] Фатальные исключения в preemption test теперь завершают QEMU failure debug-exit, а не оставляют runner в HLT до таймаута.
-- [x] Self-hosted CI [run 42334341610](https://github.com/mindwork64/exhiOS/actions/runs/42334341610): build и все QEMU regressions прошли. P4.4 serial: elapsed=0x12 ticks, switches=0x12, runtime A=0x9/B=0x9, XMM preserved для обеих задач, stacks distinct=yes, TSS.RSP0 active=yes, IRQ0 masked=yes, pass marker, debug-exit 33.
-- [ ] Локальный Linux Mint/QEMU: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_PREEMPTION_TEST=1 ./scripts/run-qemu.sh`; требуется пользовательский serial log для приёмки.
+- [x] Фатальные исключения в preemption test завершают QEMU failure debug-exit, а не оставляют runner в HLT до таймаута.
+- [x] Self-hosted CI [run 42334341610](https://github.com/mindwork64/exhiOS/actions/runs/42334341610) и regression workflow [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555) прошли. Serial: elapsed=0x12 ticks, switches=0x12, runtime A=0x9/B=0x9, XMM preserved для обеих задач, stacks distinct=yes, TSS.RSP0 active=yes, IRQ0 masked=yes, pass marker, debug-exit 33.
+- [x] Локальный Linux Mint/QEMU (2026-11-07): elapsed=0x12 ticks, switches=0x12, runtime A=0x9/B=0x9, XMM preserved, stacks distinct=yes, TSS.RSP0 active=yes, IRQ0 masked=yes, pass marker и debug-exit 33.
+
+### P4.5 — Preemptive task termination
+**Реализация и self-hosted CI runtime завершены; ожидается локальная Linux Mint/QEMU приёмка.**
+- [x] Отдельный feature/test mode `preemptive-task-exit-smoke-test` / `EXHIOS_PREEMPTIVE_TASK_EXIT_TEST=1`; P4.4 runtime test оставлен отдельной регрессией.
+- [x] Returning task entry вызывает terminal trampoline на собственном стеке. Он запрещает interrupts, начисляет финальный runtime, переводит current task в Finished через `Scheduler::finish_current()`, выбирает Ready peer и восстанавливает его interrupt frame через IRETQ.
+- [x] Последняя завершившаяся задача оставляет scheduler без current task; test очищает TSS.RSP0 и active FX-state pointer, маскирует IRQ0 и выполняет controlled debug-exit. Память стеков пока статическая и не освобождается.
+- [x] Проверены две задачи без cooperative yield: A завершилась первой; B продолжила работу и затем тоже вернулась. Проверяются оба Finished state, отсутствие current/Ready/Blocked задач, runtime, frame bounds, XMM, отдельные stacks, очищенный TSS.RSP0 и IRQ0 mask.
+- [x] Self-hosted CI [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555): build и все QEMU regression modes прошли. P4.5 serial: elapsed=0x18 ticks, switches=0x10, runtime A=0x8/B=0xA, A finished=yes, B finished=yes, XMM preserved, stacks distinct=yes, current=none, Finished=2, TSS.RSP0 cleared=yes, IRQ0 masked=yes, pass marker, debug-exit 33.
+- [ ] Локальный Linux Mint/QEMU: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PREEMPTIVE_TASK_EXIT_TEST=1 ./scripts/run-qemu.sh`; требуется пользовательский serial log для приёмки.
 
 ## P5 — User-mode isolation
 - [ ] Ring 3, per-process address spaces, syscalls, user-pointer validation, capabilities.

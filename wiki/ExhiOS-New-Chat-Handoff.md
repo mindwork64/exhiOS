@@ -38,7 +38,7 @@
 - P3.2 initial GOP framebuffer console is implemented in `exhi-console` and kernel startup. It supports GOP formats 0/1, visible width + separate scanline stride, ASCII text, wrap and scroll. Host tests, build variants and headless QEMU runtime passed in CI [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662). User's local QEMU serial log (2026-11-06) confirms GOP framebuffer 0x80000000, 1280x800, stride 1280, pixel format 1, successful console initialization, kernel handoff and halt loop. User-provided screenshot description confirms the expected visible strings for kernel banner, framebuffer ready, 1280x800, stride 1280, BGRX, COM1 ready and kernel handoff success. Fine visual details (font sharpness, spacing, artifacts) were not independently assessed. P3.2 initial functional acceptance is complete.
 - Follow-up commits [c3d2b8c](https://github.com/mindwork64/exhiOS/commit/c3d2b8ccaa34c6b399b7f12905ae11658455916b) and [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a) add an allocation-free `KernelConsole` writer. After GOP setup it mirrors byte and formatted output to COM1 + framebuffer; on GOP failure it remains serial-only. Early startup diagnostics remain COM1-only. `write_fmt` uses `core::fmt` without heap allocation. CI build + headless QEMU runtime passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072); local QEMU serial output confirms unified-writer readiness and final handoff/halt messages.
 
-## Последняя подтверждённая точка — P4.1–P4.3 закрыты локально + CI; P4.4 CI runtime прошёл, локальная проверка ожидается
+## Последняя подтверждённая точка — P4.1–P4.4 закрыты локально + CI; P4.5 CI runtime прошёл, локальная проверка ожидается
 
 - User local QEMU log (2026-11-06): registry summary `registered=3 initialized=1 failed=0`; COM1/Serial/Initialized, PIT/Clock/Registered, i8042 PS/2/Input/Registered; runtime pass marker and debug-exit status 33.
 - Self-hosted CI workflow migration commit [f161f2a](https://github.com/mindwork64/exhiOS/commit/f161f2a967b4fe0194c05ea968ebab87ed814202). Run [42301446350](https://github.com/mindwork64/exhiOS/actions/runs/42301446350) passed build, host tests, standard boot, PIT and registry QEMU runtime.
@@ -48,20 +48,19 @@
 - Self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) and the user's local Linux Mint/QEMU log (2026-11-06) confirm P4.2: A/B alternation, distinct stack-local addresses, progress=3 for both, Finished=2, TSS.RSP0 restored, boot stack resumed, pass marker and debug-exit 33. P4.2 is closed.
 
 ## Следующие действия
-1. P4.1, P4.2 и P4.3 закрыты локально и в self-hosted CI. Локальный P4.3 serial log (2026-11-07) подтвердил elapsed=0x12 PIT ticks, runtime A=0x9/B=0x9, Finished=2, IRQ0 masked=yes, TSS.RSP0 restored=yes, pass marker и debug-exit 33.
-2. P4.4 реализован; fix commit [b0365e3](https://github.com/mindwork64/exhiOS/commit/b0365e30acbeb40143913299cb25a2d072e3546a). Self-hosted CI [run 42334341610](https://github.com/mindwork64/exhiOS/actions/runs/42334341610) прошёл оба job, все QEMU regression modes и actual P4.4 runtime: 18 ticks, 18 preemption switches, runtime A/B=9/9, XMM preserved, distinct stacks, TSS.RSP0 active, IRQ0 masked, pass marker, exit 33.
-3. Локальная проверка P4.4 после обновления main:
+1. P4.1–P4.4 закрыты локально и в self-hosted CI. Локальный P4.4 serial log (2026-11-07): elapsed=0x12 ticks, switches=0x12, runtime A/B=0x9/0x9, XMM preserved, stacks distinct, TSS.RSP0 active, IRQ0 masked, pass marker, debug-exit 33.
+2. P4.5 реализован commits [dd10f58](https://github.com/mindwork64/exhiOS/commit/dd10f5882ddb3085595b4d6eef45474b0649e56d) и [377e73c](https://github.com/mindwork64/exhiOS/commit/377e73c20e2928116d04cd3141ddbc36db9df89a). Self-hosted CI [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555) прошёл build и все QEMU regression modes, включая P4.4 и actual P4.5 runtime. P4.5 output: elapsed=0x18 ticks, switches=0x10, runtime A=0x8/B=0xA, both tasks Finished, XMM preserved, distinct stacks, current=none, Finished=2, TSS.RSP0 cleared, IRQ0 masked, pass marker, exit 33.
+3. Локальная проверка P4.5 после обновления main:
    ```bash
    git fetch origin
    git reset --hard origin/main
    cargo fmt
    cargo test
-   EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_PREEMPTION_TEST=1 ./scripts/run-qemu.sh
+   EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PREEMPTIVE_TASK_EXIT_TEST=1 ./scripts/run-qemu.sh
    ```
-   Ожидается: `P4.4: elapsed PIT ticks=`, `preemption switches=`, runtime A/B, XMM state preserved, stacks distinct=yes, TSS.RSP0 active=yes, IRQ0 masked=yes, `P4.4: timer-driven preemption runtime smoke test passed.` и QEMU debug-exit status 33.
-4. Не закрывать P4.4 до получения пользовательского Linux Mint/QEMU serial log. Тест пока доказывает preemption только для Ring 0, одного CPU и PIT/legacy PIC; SMP, APIC/IOAPIC, Ring 3 и syscalls не входят в этот этап.
-5. После локальной приёмки P4.4 спланировать следующий P4 task/scheduling slice; Ring 3/syscalls остаются в P5.
-
+   Ожидается: elapsed PIT ticks не менее 24, timer switches не менее 12, runtime A/B не менее 6, `task A finished=yes`, `task B finished=yes`, XMM preserved, stacks distinct, `scheduler current=none Finished=2`, `TSS.RSP0 cleared=yes`, `IRQ0 masked=yes`, P4.5 pass marker и debug-exit 33.
+4. Не закрывать P4.5 до пользовательского Linux Mint/QEMU serial log. Статические task stacks пока не освобождаются; idle-context dispatch и blocked-task wake-up ещё не реализованы.
+5. После локальной приёмки P4.5 следующий узкий этап — idle context + wake-up blocked tasks. Ring 3/syscalls остаются в P5.
 ## Правила работы
 - Русский язык общения.
 - Конкретные порции готового кода, коммиты в main, CI, затем runtime-тест.

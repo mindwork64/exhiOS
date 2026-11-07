@@ -122,7 +122,9 @@
 - [x] Task representation and kernel stacks.
 - [x] CPU context save/restore for cooperative Ring 0 tasks.
 - [x] Cooperative round-robin scheduler.
-- [ ] Timer-driven preemption (implementation and self-hosted CI runtime passed; local Linux Mint/QEMU acceptance pending).
+- [x] Timer-driven preemption for Ring 0 tasks (local Linux Mint/QEMU + self-hosted CI accepted).
+- [ ] Preemptive task termination and Finished-state handoff (self-hosted CI runtime passed; local Linux Mint/QEMU acceptance pending).
+- [ ] Idle-context dispatch and wake-up of blocked tasks.
 
 ## P5 — User-mode isolation
 

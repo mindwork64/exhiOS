@@ -418,3 +418,20 @@ Implementation:
 - Fix commit: [b0365e3](https://github.com/mindwork64/exhiOS/commit/b0365e30acbeb40143913299cb25a2d072e3546a).
 - Self-hosted CI [run 42334341610](https://github.com/mindwork64/exhiOS/actions/runs/42334341610) passed both build and QEMU runtime jobs, including standard boot, PIT, registry, P4.2, P4.3 and the actual P4.4 test. P4.4 serial: elapsed=0x12 PIT ticks, switches=0x12, runtime A=0x9/B=0x9, XMM preserved for A and B, stacks distinct=yes, TSS.RSP0 active=yes, IRQ0 masked=yes, pass marker and debug-exit 33.
 - Local Linux Mint/QEMU acceptance is pending. P4.4 remains Ring 0, single-CPU and PIT/legacy-PIC only; Ring 3 and syscalls remain in P5.
+
+## 2026-11-07 — P4.4 local Linux Mint/QEMU acceptance
+
+- User supplied the complete local serial log for `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_PREEMPTION_TEST=1 ./scripts/run-qemu.sh`.
+- Runtime values: elapsed PIT ticks=0x12, timer preemption switches=0x12, task A runtime=0x9, task B runtime=0x9.
+- Both XMM sentinels were preserved, task stack locals had distinct addresses, TSS.RSP0 remained active for the selected task, IRQ0 was masked at shutdown.
+- `P4.4: timer-driven preemption runtime smoke test passed.` and QEMU debug-exit status 33. P4.4 is accepted locally and in self-hosted CI.
+
+## 2026-11-07 — P4.5 preemptive task termination: implementation and CI runtime
+
+- Added `preemptive-task-exit-smoke-test`, depending on the existing timer-preemption implementation. Added the separate `EXHIOS_PREEMPTIVE_TASK_EXIT_TEST=1` build/QEMU selector, with mutual-exclusion checks and a bounded QEMU timeout. Existing P4.4 remains a separate regression.
+- Added a returning task-entry bootstrap. When an entry returns, assembly calls `exhi_preemptive_task_finished` on the task's own stack. The Rust path clears IF, accounts the task's final PIT interval, calls `Scheduler::finish_current()`, and either dispatches the selected Ready task using its validated interrupt frame or finishes the test when no task remains.
+- When a Ready peer exists, the path updates TSS.RSP0, the next task's runtime baseline and active FXSAVE area, then restores that task via the common interrupt-context entry. The final task clears TSS.RSP0 and active FX pointer, masks IRQ0 and reports controlled debug-exit.
+- Added an independent runtime smoke test: task A returns first; task B resumes and runs alone before returning. The test checks both Finished states, no current/Ready/Blocked tasks, task runtime, saved frame bounds, XMM state, distinct stack locals, TSS cleanup and IRQ0 mask. Static task stacks are intentionally not freed yet.
+- Code commits: [dd10f58](https://github.com/mindwork64/exhiOS/commit/dd10f5882ddb3085595b4d6eef45474b0649e56d), [377e73c](https://github.com/mindwork64/exhiOS/commit/377e73c20e2928116d04cd3141ddbc36db9df89a). The second commit fixes linker visibility of the task-exit trampolines in the timer-preemption test build.
+- Self-hosted CI [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555) passed all host tests/build variants and the complete QEMU runtime suite, including prior P4.4. P4.5 serial: elapsed=0x18 PIT ticks, switches=0x10, runtime A=0x8/B=0xA; both tasks Finished; XMM preserved; stacks distinct; scheduler current=none/Finished=2; TSS.RSP0 cleared; IRQ0 masked; P4.5 pass marker; debug-exit 33.
+- Local Linux Mint/QEMU acceptance is pending. Idle-context dispatch, blocked-task wake-up and stack reclamation are not yet part of this slice.
