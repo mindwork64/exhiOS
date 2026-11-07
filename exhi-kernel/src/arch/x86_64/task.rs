@@ -30,6 +30,21 @@ static mut TASK_STACKS: [TaskStack; TASK_COUNT] = [
     TaskStack([0; STACK_TOTAL_SIZE]),
 ];
 static mut TASK_STACK_TOPS: [u64; TASK_COUNT] = [0; TASK_COUNT];
+
+#[cfg(feature = "idle-wakeup-smoke-test")]
+static mut IDLE_STACK: TaskStack = TaskStack([0; STACK_TOTAL_SIZE]);
+#[cfg(feature = "idle-wakeup-smoke-test")]
+static mut IDLE_STACK_TOP: u64 = 0;
+#[cfg(feature = "idle-wakeup-smoke-test")]
+static mut IDLE_CONTEXT_RSP: usize = 0;
+#[cfg(feature = "idle-wakeup-smoke-test")]
+static mut PENDING_WAKE_DEADLINE: u64 = 0;
+#[cfg(feature = "idle-wakeup-smoke-test")]
+static mut P4_6_IDLE_ENTRIES: u64 = 0;
+#[cfg(feature = "idle-wakeup-smoke-test")]
+static mut P4_6_WAKE_COUNT: u64 = 0;
+#[cfg(feature = "idle-wakeup-smoke-test")]
+static mut P4_6_IDLE_TICKS: u64 = 0;
 #[cfg(feature = "task-accounting-smoke-test")]
 static mut TASK_ACCOUNTING_START_TICKS: [u64; TASK_COUNT] = [0; TASK_COUNT];
 
@@ -46,6 +61,8 @@ static mut PREEMPTION_TASK_B_ID: Option<TaskId> = None;
 struct FxSaveArea([u8; 512]);
 #[cfg(feature = "timer-preemption-smoke-test")]
 static mut TASK_FX_STATES: [FxSaveArea; TASK_COUNT] = [FxSaveArea([0; 512]); TASK_COUNT];
+#[cfg(feature = "idle-wakeup-smoke-test")]
+static mut IDLE_FX_STATE: FxSaveArea = FxSaveArea([0; 512]);
 #[cfg(feature = "timer-preemption-smoke-test")]
 static mut FX_SAVE_TEMPLATE: FxSaveArea = FxSaveArea([0; 512]);
 #[cfg(feature = "timer-preemption-smoke-test")]
@@ -119,6 +136,8 @@ unsafe extern "sysv64" {
     fn exhi_preemptive_task_exit_bootstrap() -> !;
     fn exhi_preemptive_task_exit_a();
     fn exhi_preemptive_task_exit_b();
+    fn exhi_block_interrupt_stub();
+    fn exhi_idle_loop();
 }
 
 /// Runs two tasks that repeatedly yield to each other, then returns to the
@@ -390,6 +409,12 @@ pub fn timer_accounting_smoke_test() -> bool {
 }
 
 
+
+
+#[cfg(feature = "idle-wakeup-smoke-test")]
+pub fn block_interrupt_stub_address() -> u64 {
+    exhi_block_interrupt_stub as *const () as usize as u64
+}
 
 /// Runs the preemptive task-exit lifecycle test. Task A returns first and must
 /// become Finished; task B then runs alone and exits the scheduler cleanly.
