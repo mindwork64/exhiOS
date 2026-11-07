@@ -11,6 +11,7 @@ TIMER_TEST="${EXHIOS_TIMER_TEST:-0}"
 KEYBOARD_TEST="${EXHIOS_KEYBOARD_TEST:-0}"
 DRIVER_REGISTRY_TEST="${EXHIOS_DRIVER_REGISTRY_TEST:-0}"
 TASK_ACCOUNTING_TEST="${EXHIOS_TASK_ACCOUNTING_TEST:-0}"
+TIMER_PREEMPTION_TEST="${EXHIOS_TIMER_PREEMPTION_TEST:-0}"
 CONTEXT_SWITCH_TEST="${EXHIOS_CONTEXT_SWITCH_TEST:-0}"
 SERIAL_RX_TEST="${EXHIOS_SERIAL_RX_TEST:-0}"
 
@@ -52,6 +53,15 @@ if [[ "$TASK_ACCOUNTING_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
 fi
 if [[ "$TASK_ACCOUNTING_TEST" == "1" && ( "$EXCEPTION_TEST" == "1" || "$SERIAL_RX_TEST" == "1" || "$TIMER_TEST" == "1" || "$KEYBOARD_TEST" == "1" || "$CONTEXT_SWITCH_TEST" == "1" || "$DRIVER_REGISTRY_TEST" == "1" ) ]]; then
     echo "EXHIOS_TASK_ACCOUNTING_TEST cannot be combined with other smoke-test modes." >&2
+    exit 1
+fi
+
+if [[ "$TIMER_PREEMPTION_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
+    echo "EXHIOS_TIMER_PREEMPTION_TEST requires EXHIOS_QEMU_EXIT_TEST=1 for controlled QEMU shutdown." >&2
+    exit 1
+fi
+if [[ "$TIMER_PREEMPTION_TEST" == "1" && ( "$EXCEPTION_TEST" == "1" || "$SERIAL_RX_TEST" == "1" || "$TIMER_TEST" == "1" || "$KEYBOARD_TEST" == "1" || "$CONTEXT_SWITCH_TEST" == "1" || "$TASK_ACCOUNTING_TEST" == "1" || "$DRIVER_REGISTRY_TEST" == "1" ) ]]; then
+    echo "EXHIOS_TIMER_PREEMPTION_TEST cannot be combined with other smoke-test modes." >&2
     exit 1
 fi
 
@@ -148,7 +158,10 @@ if [[ "$HEADLESS_TEST" == "1" ]]; then
     QEMU_ARGS+=(-display none -monitor none)
 fi
 
-if [[ "$CONTEXT_SWITCH_TEST" == "1" ]]; then
+if [[ "$TIMER_PREEMPTION_TEST" == "1" ]]; then
+    echo "Starting ExhiOS PIT timer-driven task preemption runtime smoke test."
+    QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
+elif [[ "$CONTEXT_SWITCH_TEST" == "1" ]]; then
     echo "Starting ExhiOS x86-64 cooperative context-switch runtime smoke test."
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
 elif [[ "$TASK_ACCOUNTING_TEST" == "1" ]]; then

@@ -124,6 +124,9 @@ pub fn initialize() -> IdtStatus {
 
     // Install the first hardware IRQ gate. All other PIC IRQs remain masked
     // until their own handlers and routing are explicitly initialized.
+    #[cfg(feature = "timer-preemption-smoke-test")]
+    let timer_irq_handler = super::task::preemption_irq0_stub_address();
+    #[cfg(not(feature = "timer-preemption-smoke-test"))]
     let timer_irq_handler = super::timer::irq0_stub_address();
     unsafe {
         ptr::write_volatile(

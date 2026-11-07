@@ -537,7 +537,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 }
             }
 
-            #[cfg(all(feature = "qemu-debug-exit-smoke-test", not(any(feature = "timer-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test", feature = "task-accounting-smoke-test"))))]
+            #[cfg(all(feature = "qemu-debug-exit-smoke-test", not(any(feature = "timer-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test", feature = "task-accounting-smoke-test", feature = "timer-preemption-smoke-test"))))]
             {
                 serial::COM1.write(b"P2.6: forcing an exception-frame write into the unmapped stack guard page.\r\n");
                 idt::trigger_double_fault_guard_stack_smoke_test(
@@ -733,12 +733,18 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         halt_forever();
     }
 
+    #[cfg(feature = "timer-preemption-smoke-test")]
+    {
+        kernel_console.write(b"P4.4: starting timer-driven task preemption smoke test.\r\n");
+        arch::x86_64::task::timer_preemption_smoke_test();
+    }
+
     #[cfg(feature = "keyboard-smoke-test")]
     {
         keyboard_smoke_test(&mut kernel_console, &mut driver_registry);
     }
 
-    #[cfg(not(any(feature = "serial-rx-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test", feature = "task-accounting-smoke-test")))]
+    #[cfg(not(any(feature = "serial-rx-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test", feature = "task-accounting-smoke-test", feature = "timer-preemption-smoke-test")))]
     {
         #[cfg(feature = "qemu-debug-exit-smoke-test")]
         {

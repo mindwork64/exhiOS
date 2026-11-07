@@ -150,18 +150,26 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
 
     /// Performs a cooperative round-robin yield.
     pub fn yield_current(&mut self) -> Result<ScheduleDecision, SchedulerError> {
+        self.reschedule_current()
+    }
+
+    /// Reschedules the running task from an asynchronous timer interrupt.
+    /// The architecture layer saves the interrupted register frame first.
+    pub fn preempt_current(&mut self) -> Result<ScheduleDecision, SchedulerError> {
+        self.reschedule_current()
+    }
+
+    fn reschedule_current(&mut self) -> Result<ScheduleDecision, SchedulerError> {
         let current = self.current_index.ok_or(SchedulerError::NotStarted)?;
         let running = self.slots[current].as_ref().ok_or(SchedulerError::NotFound)?;
         if running.state != TaskState::Running {
             return Err(SchedulerError::InvalidStateTransition);
         }
         let from = running.id;
-
         let Some(next) = self.find_next_ready(current) else {
             return Ok(ScheduleDecision::Continue { current: from });
         };
         let to = self.slots[next].as_ref().expect("ready slot exists").id;
-
         self.slots[current].as_mut().expect("running slot exists").state = TaskState::Ready;
         self.slots[next].as_mut().expect("ready slot exists").state = TaskState::Running;
         self.current_index = Some(next);
@@ -421,6 +429,26 @@ mod tests {
         assert_eq!(scheduler.blocked_count(), 1);
         assert_eq!(scheduler.finished_count(), 0);
         assert!(scheduler.get(first).is_some());
+    }
+
+    #[test]
+    fn timer_preemption_round_robins_without_a_cooperative_yield() {
+        let mut scheduler = Scheduler::<2>::new();
+        let first = scheduler.spawn("first", context(0x1000)).unwrap();
+        let second = scheduler.spawn("second", context(0x2000)).unwrap();
+        assert_eq!(scheduler.start(), Ok(first));
+        assert_eq!(
+            scheduler.preempt_current(),
+            Ok(ScheduleDecision::Switch { from: first, to: second })
+        );
+        assert_eq!(scheduler.current().map(Task::id), Some(second));
+        assert_eq!(scheduler.get(first).map(Task::state), Some(TaskState::Ready));
+        assert_eq!(scheduler.get(second).map(Task::state), Some(TaskState::Running));
+        assert_eq!(
+            scheduler.preempt_current(),
+            Ok(ScheduleDecision::Switch { from: second, to: first })
+        );
+        assert_eq!(scheduler.current().map(Task::id), Some(first));
     }
 
     #[test]
