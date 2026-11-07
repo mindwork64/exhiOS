@@ -119,10 +119,10 @@
 
 ## P4 — Tasks and scheduling
 
-- [ ] Task representation and kernel stacks.
-- [ ] CPU context save/restore.
-- [ ] Cooperative scheduler.
-- [ ] Timer-driven preemption after the interrupt foundation is stable.
+- [x] Task representation and kernel stacks.
+- [x] CPU context save/restore for cooperative Ring 0 tasks.
+- [x] Cooperative round-robin scheduler.
+- [ ] Timer-driven preemption (implementation and self-hosted CI runtime passed; local Linux Mint/QEMU acceptance pending).
 
 ## P5 — User-mode isolation
 

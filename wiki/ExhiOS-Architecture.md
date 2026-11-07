@@ -189,7 +189,7 @@ The first executable context switch is implemented in the feature-gated `exhi-ke
 - User-local Linux Mint/QEMU runtime was confirmed on 2026-11-06: task A/B alternation, progress=3 for both, distinct task-local stack addresses, Finished=2, TSS.RSP0 restored=yes, pass marker and debug-exit status 33. P4.2 is closed locally and in self-hosted CI.
 
 
-## P4.3 — PIT-backed cooperative task runtime accounting (CI runtime passed; local pending)
+## P4.3 — PIT-backed cooperative task runtime accounting (local + CI accepted)
 
 - Each `exhi-task::Task` now stores a saturating `runtime_ticks: u64` counter, exposed through `Task::runtime_ticks()`.
 - `Scheduler::account_current_ticks(elapsed)` accepts elapsed ticks only when a task is Running. It accumulates with saturation; it is called from the architecture layer at explicit cooperative yield/finish boundaries, never from the IRQ handler.
@@ -200,4 +200,18 @@ The first executable context switch is implemented in the feature-gated `exhi-ke
 - Code and CI workflow are present; self-hosted CI result and user-local QEMU runtime evidence have not yet been accepted.
 - Corrected self-hosted CI [run 42306726315](https://github.com/mindwork64/exhiOS/actions/runs/42306726315) passed: 14/14 task tests, task-accounting kernel feature build, all existing QEMU regressions and the actual P4.3 QEMU runtime. Serial evidence: A/B each completed three intervals; elapsed 0x12 PIT ticks; runtime A=0x9 and B=0x9; Finished=2; IRQ0 remasked; TSS.RSP0 restored; pass marker; debug-exit 33.
 - The earlier run that reached the P2.6 double-fault guard probe before P4.3 was a false positive for P4.3. The P2.6 cfg now explicitly skips that probe in task-accounting mode; the corrected run above proves the P4.3 test itself executed.
-- User-local Linux Mint/QEMU confirmation remains pending. - This is cooperative runtime accounting, not timer preemption. Full interrupt-frame switching is explicitly separated into P4.4.
+- User-local Linux Mint/QEMU (2026-11-07): elapsed=0x12 PIT ticks, runtime A=0x9/B=0x9, Finished=2, IRQ0 masked, TSS.RSP0 restored, pass marker and debug-exit 33. P4.3 is closed. This is cooperative runtime accounting, not timer preemption. Full interrupt-frame switching is P4.4.
+
+
+## P4.4 — Timer-driven preemption
+
+The feature-gated implementation lives in `exhi-kernel/src/arch/x86_64/task.rs` and is exercised by `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_PREEMPTION_TEST=1 ./scripts/run-qemu.sh`.
+
+- The dedicated long-mode interrupt context is 20 qwords: 15 general-purpose registers plus the five-word architectural return frame `RIP, CS, RFLAGS, RSP, SS`. In 64-bit mode the CPU saves the old `SS:RSP` for interrupts regardless of whether CPL changes, and IRETQ restores both. The synthetic first-task frame must therefore initialize both fields; an 18-qword frame is incomplete.
+- The initial task starts with `RSP=task_stack_top`, `SS=KERNEL_DATA_SELECTOR (0x10)`, `CS=KERNEL_CODE_SELECTOR (0x08)` and `RFLAGS=0x202`.
+- A dedicated IRQ0 preemption stub is separate from the minimal P3.3 timer stub. It saves all GPRs, saves the active task's x87/SSE state with FXSAVE64, increments the timer counter and sends PIC EOI, then calls the Rust preemption/accounting handler. The handler validates the saved frame, accounts elapsed PIT ticks, selects the next task, updates TSS.RSP0 and the active FX-state pointer. Assembly restores that task's FX state and register frame before IRETQ.
+- Each task has its own 512-byte aligned FXSAVE area and guarded kernel stack. The smoke tasks do not call yield; a busy loop proves IRQ0-driven scheduling. XMM15 sentinels and stack locals verify that FP/SIMD state and private task stacks survive preemption.
+- The test requires at least 12 preemptions, elapsed PIT ticks, runtime attributed to both tasks, distinct valid stack-local addresses, preserved XMM sentinels, correct scheduler state, TSS.RSP0 pointing at the active task and IRQ0 masked before controlled shutdown.
+- Three earlier CI runs reached the same #PF during initial IRETQ because the synthetic frame omitted RSP and SS. The corrected implementation is commit [b0365e3](https://github.com/mindwork64/exhiOS/commit/b0365e30acbeb40143913299cb25a2d072e3546a). Fatal exceptions in this test now trigger a failure debug-exit instead of leaving QEMU halted until timeout.
+- Self-hosted CI [run 42334341610](https://github.com/mindwork64/exhiOS/actions/runs/42334341610) passed the build and complete QEMU runtime suite. P4.4 serial evidence: elapsed=0x12 ticks, switches=0x12, runtime A=0x9/B=0x9, XMM preserved for both, stacks distinct, scheduler current=A/ready=1, TSS.RSP0 active, IRQ0 masked, pass marker and debug-exit 33.
+- Local Linux Mint/QEMU acceptance is still required. This stage is Ring 0, single-CPU and legacy PIT/PIC only; APIC/IOAPIC, SMP, Ring 3 and syscalls are outside its scope.

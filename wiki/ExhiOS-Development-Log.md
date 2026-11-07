@@ -403,4 +403,18 @@ Implementation:
 - Code commits: [5bc193b](https://github.com/mindwork64/exhiOS/commit/5bc193be27e7f309b4a2b60fa775b274c2ded7ba), [cca09ab](https://github.com/mindwork64/exhiOS/commit/cca09ab4fe94f4374dd0b620cbab475aa165680c), [d55f2c2](https://github.com/mindwork64/exhiOS/commit/d55f2c201e45a2a159ede57c85f6e6f621dc9d08), [7fa7a10](https://github.com/mindwork64/exhiOS/commit/7fa7a10e1a9312e2038eaee016db4d6c7d62cc0e).
 - Corrected self-hosted CI [run 42306726315](https://github.com/mindwork64/exhiOS/actions/runs/42306726315) passed all 14 task tests, all kernel build variants, all QEMU regressions and the actual P4.3 runtime test. Its serial trace shows A/B each completing three PIT intervals, elapsed=0x12, runtime A=0x9/B=0x9, Finished=2, IRQ0 masked, TSS.RSP0 restored, P4.3 pass marker and debug-exit 33.
 - An earlier queued runtime run only reached the P2.6 guard/#DF probe, so exit 33 did not prove P4.3. Commit [49191dd](https://github.com/mindwork64/exhiOS/commit/49191dd3421011d0ea4460c5b5f77748904a2fe7) corrected the P2.6 cfg exclusion for task-accounting mode; run 42306726315 is the valid P4.3 result.
-- User-local Linux Mint/QEMU runtime confirmation remains pending; P4.3 is not yet closed.
+- User-local Linux Mint/QEMU (2026-11-07): supplied serial log confirms 18 PIT ticks, runtime A=9/B=9, Finished=2, IRQ0 remasked, TSS.RSP0 restored, P4.3 pass marker and debug-exit 33. P4.3 is closed locally and in CI.
+
+
+## 2026-11-07 — P4.4 timer-driven preemption: implementation and CI runtime
+
+- Added a dedicated preemption interrupt path for the feature-gated P4.4 test. The ordinary P3.3 IRQ0 handler remains unchanged.
+- The initial implementation used an incomplete 18-qword frame. Three QEMU CI runs all reached the same #PF immediately on the initial IRETQ: error code 0, RIP 0x10AE7D, CR2 0x13C000. The missing architectural slots were saved RSP and SS.
+- In 64-bit mode the processor saves SS:RSP on every interrupt frame, including same-CPL Ring 0 interrupts; IRETQ consumes those slots on return. The corrected `InterruptContext` is 20 qwords (15 GPR + RIP/CS/RFLAGS/RSP/SS), and the synthetic first-task frame supplies task stack top and kernel data selector 0x10.
+- Added a distinct public kernel data selector constant for the synthetic interrupt frame.
+- The IRQ0 preemption stub saves all general-purpose registers, saves per-task x87/SSE state with FXSAVE64, increments PIT ticks, sends PIC EOI, invokes the Rust scheduling/accounting handler, restores the selected task's FX state and returns through IRETQ. The handler validates stack-frame bounds and updates TSS.RSP0 before switching.
+- The two test tasks busy-loop without cooperative yield. Runtime acceptance checks timer switches, per-task PIT runtime, distinct stack-local storage, XMM15 state preservation, scheduler state, active TSS.RSP0 and IRQ0 masking.
+- Fatal CPU exceptions in this opt-in QEMU test now emit the failure debug-exit value so a regression fails promptly instead of hanging in the kernel HLT loop.
+- Fix commit: [b0365e3](https://github.com/mindwork64/exhiOS/commit/b0365e30acbeb40143913299cb25a2d072e3546a).
+- Self-hosted CI [run 42334341610](https://github.com/mindwork64/exhiOS/actions/runs/42334341610) passed both build and QEMU runtime jobs, including standard boot, PIT, registry, P4.2, P4.3 and the actual P4.4 test. P4.4 serial: elapsed=0x12 PIT ticks, switches=0x12, runtime A=0x9/B=0x9, XMM preserved for A and B, stacks distinct=yes, TSS.RSP0 active=yes, IRQ0 masked=yes, pass marker and debug-exit 33.
+- Local Linux Mint/QEMU acceptance is pending. P4.4 remains Ring 0, single-CPU and PIT/legacy-PIC only; Ring 3 and syscalls remain in P5.

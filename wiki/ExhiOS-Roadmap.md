@@ -177,19 +177,22 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] Self-hosted QEMU [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) и локальный пользовательский Linux Mint/QEMU log (2026-11-06) подтвердили A→B→A→B→A→B, сохранность stack-local данных на разных стеках, Finished=2, восстановление boot context/TSS.RSP0 и debug-exit 33.
 
 ### P4.3 — PIT-backed cooperative task runtime accounting
-**Host tests и headless self-hosted CI runtime прошли; ожидается локальный Linux Mint/QEMU.**
+**Завершено; host tests, self-hosted CI и локальный Linux Mint/QEMU подтверждены 2026-11-07.**
 - [x] Per-task `runtime_ticks` в `exhi-task`, saturating accumulation только у Running task.
 - [x] IRQ0 stub остаётся assembly-only: atomic tick increment + EOI; Rust и scheduler из ISR не вызываются.
 - [x] Отдельный QEMU test с двумя задачами, реальными PIT intervals и cooperative accounting на yield/finish boundaries.
 - [x] Host tests: 14/14 `exhi-task`; kernel feature build и все QEMU regression modes прошли в self-hosted CI [run 42306726315](https://github.com/mindwork64/exhiOS/actions/runs/42306726315).
-- [x] P4.3 headless QEMU serial: elapsed PIT ticks=0x12, task A runtime=0x9, task B runtime=0x9, Finished=2, IRQ0 masked=yes, TSS.RSP0 restored=yes, pass marker, debug-exit 33.
-- [ ] Локальный Linux Mint/QEMU: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TASK_ACCOUNTING_TEST=1 ./scripts/run-qemu.sh`; требуется пользовательский serial log для приёмки.
+- [x] CI и локальный Linux Mint/QEMU serial: elapsed PIT ticks=0x12, task A runtime=0x9, task B runtime=0x9, Finished=2, IRQ0 masked=yes, TSS.RSP0 restored=yes, pass marker, debug-exit 33.
 
-### P4.4 — Timer-driven preemption (planned)
-- [ ] Спроектировать полный interrupt frame для безопасного переключения с IRQ0.
-- [ ] Сохранять/восстанавливать все необходимые general-purpose registers, interrupt return state и корректный task stack/TSS.RSP0.
-- [ ] Определить безопасный порядок scheduler mutation, EOI и interrupt return.
-- [ ] Не вызывать напрямую P4.2 call-based context switch из минимального IRQ0 stub.
+### P4.4 — Timer-driven preemption
+**Реализация и self-hosted CI runtime завершены; ожидается локальная Linux Mint/QEMU приёмка.**
+- [x] Полный long-mode interrupt frame: 15 сохранённых GPR + RIP/CS/RFLAGS/RSP/SS (20 qwords, 160 bytes). Начальный synthetic IRETQ frame явно задаёт RSP=task stack top и SS=0x10.
+- [x] Отдельный IRQ0 preemption stub сохраняет GPR и per-task FX state через FXSAVE64/FXRSTOR64; generic P3.3 IRQ0 stub не изменён.
+- [x] Rust preemption handler учитывает runtime, выполняет round-robin scheduler selection, переключает FX state и TSS.RSP0; выбранный complete frame восстанавливается через IRETQ.
+- [x] Две задачи busy-loop без cooperative yield. Test проверяет timer preemption, runtime, независимые stack locals, XMM state, scheduler state, TSS.RSP0 и маску IRQ0.
+- [x] Фатальные исключения в preemption test теперь завершают QEMU failure debug-exit, а не оставляют runner в HLT до таймаута.
+- [x] Self-hosted CI [run 42334341610](https://github.com/mindwork64/exhiOS/actions/runs/42334341610): build и все QEMU regressions прошли. P4.4 serial: elapsed=0x12 ticks, switches=0x12, runtime A=0x9/B=0x9, XMM preserved для обеих задач, stacks distinct=yes, TSS.RSP0 active=yes, IRQ0 masked=yes, pass marker, debug-exit 33.
+- [ ] Локальный Linux Mint/QEMU: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_PREEMPTION_TEST=1 ./scripts/run-qemu.sh`; требуется пользовательский serial log для приёмки.
 
 ## P5 — User-mode isolation
 - [ ] Ring 3, per-process address spaces, syscalls, user-pointer validation, capabilities.

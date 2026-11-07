@@ -3,7 +3,7 @@
 Снимок: **2026-11-07**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: P3.5, P4.1 и P4.2 закрыты по локальным и CI evidence. P4.2 подтверждён пользовательским Linux Mint/QEMU log и self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157). P4.3 PIT-backed cooperative runtime accounting прошёл host tests и headless self-hosted QEMU CI [run 42306726315](https://github.com/mindwork64/exhiOS/actions/runs/42306726315); локальная QEMU-приёмка P4.3 ожидается.
+Кодовый checkpoint: P3.5, P4.1, P4.2 и P4.3 закрыты по локальным + CI evidence. P4.3 локально подтверждён 2026-11-07. P4.4 timer-driven preemption реализован и прошёл self-hosted CI [run 42334341610](https://github.com/mindwork64/exhiOS/actions/runs/42334341610); локальная Linux Mint/QEMU-приёмка P4.4 ожидается. Текущий fix commit: [b0365e3](https://github.com/mindwork64/exhiOS/commit/b0365e30acbeb40143913299cb25a2d072e3546a).
 
 ## Закрыто и проверено в QEMU
 
@@ -285,7 +285,7 @@ Implementation:
 - Self-hosted QEMU [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) and user-local Linux Mint/QEMU log (2026-11-06) both confirm A/B alternation A→B→A→B→A→B, preserved task-local values at distinct stack addresses, both tasks Finished, boot context resumed, TSS.RSP0 restored and QEMU status 33.
 - P4.2 is closed. It remains cooperative, Ring 0 and single-CPU; timer preemption, Ring 3 and per-process CR3 isolation are not included.
 
-## P4.3 — PIT-backed cooperative task runtime accounting (CI runtime passed; local pending)
+## P4.3 — PIT-backed cooperative task runtime accounting (local + CI accepted)
 
 - Added `runtime_ticks: u64` to each `exhi-task::Task` and `Scheduler::account_current_ticks()`; accumulation saturates rather than wrapping. Three new scheduler unit tests cover independent task totals, saturation and invalid state; all 14 task tests pass.
 - The feature-gated x86-64 runtime test uses the real 100 Hz PIT. Two guarded Ring 0 tasks wait for PIT ticks, alternate cooperatively and account their own elapsed intervals at yield/finish boundaries.
@@ -294,7 +294,7 @@ Implementation:
 - Runtime command: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TASK_ACCOUNTING_TEST=1 ./scripts/run-qemu.sh`.
 - Corrected self-hosted CI [run 42306726315](https://github.com/mindwork64/exhiOS/actions/runs/42306726315) passed all host tests (including 14/14 task tests), kernel build variants, standard/PIT/registry/P4.2 regressions and the actual P4.3 QEMU runtime test. Serial output: two tasks each completed three PIT intervals; elapsed=0x12 ticks, task A=0x9, task B=0x9, Finished=2, IRQ0 masked=yes, TSS.RSP0 restored=yes, P4.3 pass marker and debug-exit status 33.
 - An earlier CI run exited through the generic P2.6 guard/#DF probe before reaching P4.3. The P2.6 test cfg was corrected to exclude this dedicated accounting mode; run 42306726315 is the valid P4.3 runtime evidence.
-- P4.3 remains open only for user-local Linux Mint/QEMU confirmation. This is cooperative accounting, not timer preemption.
+- User-local Linux Mint/QEMU serial (2026-11-07): 18 elapsed PIT ticks; runtime A=9/B=9; Finished=2; IRQ0 masked; TSS.RSP0 restored; pass marker; debug-exit 33. P4.3 is closed locally and in CI. This is cooperative accounting, not timer preemption.
 
 ## P4.4 — Timer-driven preemption (planned)
 
@@ -302,3 +302,13 @@ Implementation:
 - Save/restore all required general-purpose registers, interrupt return state and stack ownership; preserve the SysV ABI and active TSS.RSP0.
 - Define scheduler/EOI ordering and failure handling for interrupt-originated switches.
 - Do not call the current P4.2 cooperative switch routine directly from the minimal IRQ0 stub.
+
+
+## P4.4 — Timer-driven preemption (CI runtime passed; local pending)
+
+- Dedicated test mode: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_PREEMPTION_TEST=1 ./scripts/run-qemu.sh`.
+- Long-mode hardware interrupt frames are 20 qwords in this path: 15 saved GPRs followed by RIP, CS, RFLAGS, RSP and SS. IRETQ consumes all five return slots even for a same-CPL Ring 0 return. The initial synthetic context therefore includes explicit task RSP and kernel SS=0x10.
+- An earlier 18-qword frame missed RSP/SS and faulted immediately in IRETQ (#PF at CR2 0x13C000). Commit [b0365e3](https://github.com/mindwork64/exhiOS/commit/b0365e30acbeb40143913299cb25a2d072e3546a) fixes the frame and makes fatal P4.4 exceptions exit QEMU as test failures rather than hanging in HLT.
+- Dedicated IRQ0 preemption stub saves general registers and each task's FXSAVE64 state, increments PIT ticks and sends PIC EOI before calling the Rust scheduler/accounting handler. The selected task's frame and FX state are restored, followed by IRETQ. TSS.RSP0 follows the selected task; IST1 remains independent.
+- Two Ring 0 tasks busy-loop without cooperative yields. Self-hosted CI [run 42334341610](https://github.com/mindwork64/exhiOS/actions/runs/42334341610) passed all build and QEMU jobs: 18 PIT ticks, 18 preemption switches, A/B runtime=9/9, XMM state preserved for both, distinct task stacks, active TSS.RSP0, IRQ0 masked, P4.4 pass marker and debug-exit 33.
+- Local Linux Mint/QEMU acceptance is pending. Scope is single-CPU Ring 0 using legacy PIT/PIC; Ring 3 and syscalls remain in P5.
