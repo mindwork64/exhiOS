@@ -558,6 +558,10 @@ pub fn handle_user_exception(
 
 
 fn initialize_syscall_msrs() -> bool {
+    initialize_syscall_msrs_for_entry(exhi_syscall_entry as *const () as u64)
+}
+
+pub(crate) fn initialize_syscall_msrs_for_entry(entry: u64) -> bool {
     const EFER: u32 = 0xC000_0080;
     const STAR: u32 = 0xC000_0081;
     const LSTAR: u32 = 0xC000_0082;
@@ -569,6 +573,9 @@ fn initialize_syscall_msrs() -> bool {
     const USER_STAR_BASE: u64 = 0x23;
     const FMASK_BITS: u64 = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 18);
 
+    if entry == 0 {
+        return false;
+    }
     let max_extended = unsafe { core::arch::x86_64::__cpuid(0x8000_0000) };
     if max_extended.eax < 0x8000_0001 {
         return false;
@@ -581,18 +588,17 @@ fn initialize_syscall_msrs() -> bool {
     let mut efer = unsafe { read_msr(EFER) };
     efer |= EFER_SCE;
     let star = (USER_STAR_BASE << 48) | (KERNEL_CS << 32);
-    let lstar = exhi_syscall_entry as *const () as u64;
     unsafe {
         write_msr(EFER, efer);
         write_msr(STAR, star);
-        write_msr(LSTAR, lstar);
+        write_msr(LSTAR, entry);
         write_msr(FMASK, FMASK_BITS);
     }
 
     unsafe {
         read_msr(EFER) & EFER_SCE != 0
             && read_msr(STAR) == star
-            && read_msr(LSTAR) == lstar
+            && read_msr(LSTAR) == entry
             && read_msr(FMASK) == FMASK_BITS
     }
 }
