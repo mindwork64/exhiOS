@@ -733,6 +733,12 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         halt_forever();
     }
 
+    #[cfg(feature = "user-task-lifecycle-smoke-test")]
+    {
+        kernel_console.write(b"P5.6: starting two-user-task syscall lifecycle test.\r\n");
+        arch::x86_64::user_mode::user_task_lifecycle_smoke_test();
+    }
+
     #[cfg(feature = "user-copy-smoke-test")]
     {
         kernel_console.write(b"P5.5: starting safe user-copy runtime test.\r\n");
