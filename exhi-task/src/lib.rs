@@ -6,6 +6,10 @@
 pub struct TaskId(u64);
 
 impl TaskId {
+    pub const fn from_raw(value: u64) -> Self {
+        Self(value)
+    }
+
     pub const fn get(self) -> u64 {
         self.0
     }
@@ -371,6 +375,20 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
         self.idle_active
     }
 
+    /// Moves a Ready task to Blocked without requiring it to be current.
+    /// Intended for architecture-owned supervisor/reaper tasks that should
+    /// become runnable only after the user workload has drained.
+    pub fn block_ready(&mut self, id: TaskId) -> Result<(), SchedulerError> {
+        let index = self.find_index(id).ok_or(SchedulerError::NotFound)?;
+        let task = self.slots[index].as_mut().expect("located slot exists");
+        if task.state != TaskState::Ready {
+            return Err(SchedulerError::InvalidStateTransition);
+        }
+        task.state = TaskState::Blocked;
+        task.wake_deadline = None;
+        Ok(())
+    }
+
     /// Wakes a Blocked task, making it Ready.
     pub fn wake(&mut self, id: TaskId) -> Result<(), SchedulerError> {
         let index = self.find_index(id).ok_or(SchedulerError::NotFound)?;
@@ -500,6 +518,26 @@ mod tests {
         let kernel_id = scheduler.spawn("kernel-task", context(0x4000)).unwrap();
         assert!(!scheduler.get(kernel_id).unwrap().is_user_task());
         assert_eq!(scheduler.get(kernel_id).unwrap().user_metadata(), None);
+    }
+
+    #[test]
+    fn blocked_reaper_becomes_runnable_after_last_user_task_exits() {
+        let mut scheduler = Scheduler::<3>::new();
+        let metadata = UserTaskMetadata::new(0x2000, 0x2FF8, 0x4000, 0x5000);
+        let user_a = scheduler.spawn_user("user-A", context(0x3000), metadata).unwrap();
+        let user_b = scheduler.spawn_user("user-B", context(0x6000), metadata).unwrap();
+        let reaper = scheduler.spawn("reaper", context(0x9000)).unwrap();
+        scheduler.block_ready(reaper).unwrap();
+        assert_eq!(scheduler.start(), Ok(user_a));
+        assert_eq!(scheduler.yield_current(), Ok(ScheduleDecision::Switch { from: user_a, to: user_b }));
+        assert_eq!(scheduler.yield_current(), Ok(ScheduleDecision::Switch { from: user_b, to: user_a }));
+        assert_eq!(scheduler.finish_current(), Ok(Some(user_b)));
+        assert_eq!(scheduler.finish_current(), Ok(None));
+        assert!(scheduler.is_idle());
+        scheduler.wake(reaper).unwrap();
+        assert_eq!(scheduler.schedule_from_idle(), Ok(Some(reaper)));
+        assert_eq!(scheduler.current().map(|task| task.id()), Some(reaper));
+        assert_eq!(scheduler.finished_count(), 2);
     }
 
     #[test]
