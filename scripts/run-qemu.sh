@@ -15,6 +15,7 @@ TIMER_PREEMPTION_TEST="${EXHIOS_TIMER_PREEMPTION_TEST:-0}"
 PREEMPTIVE_TASK_EXIT_TEST="${EXHIOS_PREEMPTIVE_TASK_EXIT_TEST:-0}"
 IDLE_WAKEUP_TEST="${EXHIOS_IDLE_WAKEUP_TEST:-0}"
 RING3_TEST="${EXHIOS_RING3_TEST:-0}"
+RING3_SUPERVISOR_FAULT_TEST="${EXHIOS_RING3_SUPERVISOR_FAULT_TEST:-0}"
 CONTEXT_SWITCH_TEST="${EXHIOS_CONTEXT_SWITCH_TEST:-0}"
 SERIAL_RX_TEST="${EXHIOS_SERIAL_RX_TEST:-0}"
 
@@ -74,6 +75,15 @@ if [[ "$PREEMPTIVE_TASK_EXIT_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
 fi
 if [[ "$PREEMPTIVE_TASK_EXIT_TEST" == "1" && ( "$EXCEPTION_TEST" == "1" || "$SERIAL_RX_TEST" == "1" || "$TIMER_TEST" == "1" || "$KEYBOARD_TEST" == "1" || "$CONTEXT_SWITCH_TEST" == "1" || "$TASK_ACCOUNTING_TEST" == "1" || "$DRIVER_REGISTRY_TEST" == "1" || "$TIMER_PREEMPTION_TEST" == "1" ) ]]; then
     echo "EXHIOS_PREEMPTIVE_TASK_EXIT_TEST cannot be combined with other smoke-test modes." >&2
+    exit 1
+fi
+
+if [[ "$RING3_SUPERVISOR_FAULT_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
+    echo "EXHIOS_RING3_SUPERVISOR_FAULT_TEST requires EXHIOS_QEMU_EXIT_TEST=1 for controlled QEMU shutdown." >&2
+    exit 1
+fi
+if [[ "$RING3_SUPERVISOR_FAULT_TEST" == "1" && ( "$EXCEPTION_TEST" == "1" || "$SERIAL_RX_TEST" == "1" || "$TIMER_TEST" == "1" || "$KEYBOARD_TEST" == "1" || "$CONTEXT_SWITCH_TEST" == "1" || "$TASK_ACCOUNTING_TEST" == "1" || "$DRIVER_REGISTRY_TEST" == "1" || "$TIMER_PREEMPTION_TEST" == "1" || "$PREEMPTIVE_TASK_EXIT_TEST" == "1" || "$IDLE_WAKEUP_TEST" == "1" || "$RING3_TEST" == "1" ) ]]; then
+    echo "EXHIOS_RING3_SUPERVISOR_FAULT_TEST cannot be combined with other smoke-test modes." >&2
     exit 1
 fi
 
@@ -188,7 +198,10 @@ if [[ "$HEADLESS_TEST" == "1" ]]; then
     QEMU_ARGS+=(-display none -monitor none)
 fi
 
-if [[ "$RING3_TEST" == "1" ]]; then
+if [[ "$RING3_SUPERVISOR_FAULT_TEST" == "1" ]]; then
+    echo "Starting ExhiOS Ring 3 supervisor-only access fault smoke test."
+    QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
+elif [[ "$RING3_TEST" == "1" ]]; then
     echo "Starting ExhiOS Ring 3 entry and exception-return smoke test."
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
 elif [[ "$IDLE_WAKEUP_TEST" == "1" ]]; then
@@ -232,7 +245,7 @@ fi
 echo "EFI application and kernel ELF are on the same GPT EFI System Partition."
 
 set +e
-if [[ "$TIMER_PREEMPTION_TEST" == "1" || "$PREEMPTIVE_TASK_EXIT_TEST" == "1" || "$IDLE_WAKEUP_TEST" == "1" || "$RING3_TEST" == "1" ]]; then
+if [[ "$TIMER_PREEMPTION_TEST" == "1" || "$PREEMPTIVE_TASK_EXIT_TEST" == "1" || "$IDLE_WAKEUP_TEST" == "1" || "$RING3_TEST" == "1" || "$RING3_SUPERVISOR_FAULT_TEST" == "1" ]]; then
     timeout --foreground 15s qemu-system-x86_64 "${QEMU_ARGS[@]}"
 else
     qemu-system-x86_64 "${QEMU_ARGS[@]}"
