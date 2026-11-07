@@ -2,7 +2,8 @@ name: CI
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Keep in-progress self-hosted validation alive; queue newer pushes.
+  cancel-in-progress: false
 
 on:
   push:
