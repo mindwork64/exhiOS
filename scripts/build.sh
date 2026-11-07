@@ -99,6 +99,27 @@ if [[ "${EXHIOS_PREEMPTIVE_TASK_EXIT_TEST:-0}" == "1" ]]; then
     fi
 fi
 
+if [[ "${EXHIOS_USER_COPY_TEST:-0}" == "1" ]]; then
+    if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]] ||
+       [[ "${EXHIOS_EXCEPTION_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_SERIAL_RX_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_TIMER_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_KEYBOARD_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_CONTEXT_SWITCH_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_TASK_ACCOUNTING_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_DRIVER_REGISTRY_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_TIMER_PREEMPTION_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_PREEMPTIVE_TASK_EXIT_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_IDLE_WAKEUP_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_RING3_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_RING3_SUPERVISOR_FAULT_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_RING3_SYSCALL_TEST:-0}" == "1" ]] ||
+       [[ "${EXHIOS_USER_POINTER_TEST:-0}" == "1" ]]; then
+        echo "EXHIOS_USER_COPY_TEST requires EXHIOS_QEMU_EXIT_TEST and cannot be combined with other smoke-test modes." >&2
+        exit 1
+    fi
+fi
+
 if [[ "${EXHIOS_USER_POINTER_TEST:-0}" == "1" ]]; then
     if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]] ||
        [[ "${EXHIOS_EXCEPTION_TEST:-0}" == "1" ]] ||
@@ -274,6 +295,11 @@ fi
 if [[ "${EXHIOS_USER_POINTER_TEST:-0}" == "1" ]]; then
     KERNEL_FEATURES+=(user-pointer-range-smoke-test)
     echo "Building the kernel with user-pointer range validation."
+fi
+
+if [[ "${EXHIOS_USER_COPY_TEST:-0}" == "1" ]]; then
+    KERNEL_FEATURES+=(user-copy-smoke-test)
+    echo "Building the kernel with safe user-copy verification."
 fi
 
 if [[ "${EXHIOS_DRIVER_REGISTRY_TEST:-0}" == "1" ]]; then
