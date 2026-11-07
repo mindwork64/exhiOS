@@ -512,7 +512,7 @@ fn initialize_fx_contexts() -> bool {
 #[cfg(feature = "timer-preemption-smoke-test")]
 unsafe fn prepare_preemption_stack(
     index: usize,
-    entry: extern "sysv64" fn() -> !,
+    entry: unsafe extern "sysv64" fn() -> !,
 ) -> Option<(usize, u64)> {
     if index >= TASK_COUNT { return None; }
     let base = unsafe { ptr::addr_of_mut!(TASK_STACKS[index]) as u64 };
