@@ -188,7 +188,7 @@ pub fn ring3_smoke_test() -> ! {
     let frame_rsp = ptr::addr_of_mut!(frame) as usize;
 
     let space = unsafe { &*ptr::addr_of!(RING3_ADDRESS_SPACE) };
-    if space.as_ref().is_none_or(|space| space.activate().is_err()) {
+    if space.as_ref().map_or(true, |space| space.activate().is_err()) {
         setup_failed(b"P5.1: CR3 activation for Ring 3 failed.\r\n");
     }
 
