@@ -85,13 +85,20 @@ static mut USER_TASK_SYSCALL_KERNEL_STACK_TOP: u64 = 0;
 #[no_mangle]
 static mut USER_TASK_SYSCALL_FX_STATE: usize = 0;
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
-static mut USER_TASK_SYSCALL_COUNT: u64 = 0;
+#[repr(C, align(64))]
+struct UserTaskCounters {
+    syscall_calls: u64,
+    yields: u64,
+    exits: u64,
+    switches: u64,
+}
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
-static mut USER_TASK_YIELD_COUNT: u64 = 0;
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
-static mut USER_TASK_EXIT_COUNT: u64 = 0;
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
-static mut USER_TASK_SWITCH_COUNT: u64 = 0;
+static mut USER_TASK_COUNTERS: UserTaskCounters = UserTaskCounters {
+    syscall_calls: 0,
+    yields: 0,
+    exits: 0,
+    switches: 0,
+};
 
 #[repr(C, align(4096))]
 struct KernelStack([u8; STACK_TOTAL_SIZE]);
@@ -1015,10 +1022,10 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
         ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SYSCALL_USER_RSP), 0);
         ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SYSCALL_KERNEL_STACK_TOP), 0);
         ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SYSCALL_FX_STATE), 0);
-        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SYSCALL_COUNT), 0);
-        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_YIELD_COUNT), 0);
-        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_EXIT_COUNT), 0);
-        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SWITCH_COUNT), 0);
+        ptr::write_volatile(
+            ptr::addr_of_mut!(USER_TASK_COUNTERS),
+            UserTaskCounters { syscall_calls: 0, yields: 0, exits: 0, switches: 0 },
+        );
     }
 
     serial::COM1.write(b"P5.6: preparing two isolated Ring 3 tasks and one kernel reaper task.\r\n");
@@ -1447,7 +1454,7 @@ fn user_task_select_context(id: TaskId) -> usize {
     }
 
     unsafe {
-        let count = ptr::addr_of_mut!(USER_TASK_SWITCH_COUNT);
+        let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.switches);
         ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
     }
     frame
@@ -1499,14 +1506,14 @@ extern "sysv64" fn exhi_user_task_syscall_handler(
             .user_metadata_mut()
             .unwrap()
             .set_user_stack_pointer(user_rsp);
-        let count = ptr::addr_of_mut!(USER_TASK_SYSCALL_COUNT);
+        let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.syscall_calls);
         ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
     }
 
     let next = match syscall_number {
         1 => {
             unsafe {
-                let count = ptr::addr_of_mut!(USER_TASK_YIELD_COUNT);
+                let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.yields);
                 ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
                 (*scheduler).yield_current()
                     .ok()
@@ -1518,7 +1525,7 @@ extern "sysv64" fn exhi_user_task_syscall_handler(
         }
         2 => {
             let next = unsafe {
-                let count = ptr::addr_of_mut!(USER_TASK_EXIT_COUNT);
+                let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.exits);
                 ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
                 (*scheduler).finish_current().ok().flatten()
             };
@@ -1560,10 +1567,10 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
             && (*scheduler).ready_count() == 0
             && (*scheduler).blocked_count() == 0
     };
-    let syscall_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_SYSCALL_COUNT)) };
-    let yield_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_YIELD_COUNT)) };
-    let exit_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_EXIT_COUNT)) };
-    let switch_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_SWITCH_COUNT)) };
+    let syscall_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.syscall_calls)) };
+    let yield_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.yields)) };
+    let exit_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.exits)) };
+    let switch_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.switches)) };
     let a_code = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_CODE_FRAMES[0])) };
     let b_code = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_CODE_FRAMES[1])) };
     let a_stack = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_STACK_FRAMES[0])) };
@@ -1583,6 +1590,8 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
         && a_stack != b_stack;
     let tss_valid = gdt::read_rsp0()
         == unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_KERNEL_STACK_TOPS[2])) };
+    let saved_a_ok = user_task_saved_context_matches(TaskId::from_raw(1));
+    let saved_b_ok = user_task_saved_context_matches(TaskId::from_raw(2));
     let passed = tasks_ok
         && syscall_count == 6
         && yield_count == 4
@@ -1590,8 +1599,8 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
         && switch_count == 6
         && roots_private
         && a_markers_ok && b_markers_ok
-        && user_task_saved_context_matches(TaskId::from_raw(1))
-        && user_task_saved_context_matches(TaskId::from_raw(2))
+        && saved_a_ok
+        && saved_b_ok
         && tss_valid;
     serial::COM1.write(b"P5.6: syscalls=");
     serial::COM1.write_hex(syscall_count);
@@ -1607,6 +1616,10 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     serial::COM1.write(if b_markers_ok { b"both" } else { b"bad " });
     serial::COM1.write(b" distinct CR3/code/stack=");
     serial::COM1.write(if roots_private { b"yes" } else { b"no " });
+    serial::COM1.write(b" contexts A/B=");
+    serial::COM1.write(if saved_a_ok { b"ok" } else { b"bad" });
+    serial::COM1.write(b"/");
+    serial::COM1.write(if saved_b_ok { b"ok" } else { b"bad" });
     serial::COM1.write(b"\r\nP5.6: Finished=");
     serial::COM1.write_hex(if tasks_ok { 2 } else { 0 });
     serial::COM1.write(b" kernel reaper running=yes TSS.RSP0=");
