@@ -39,6 +39,49 @@ impl TaskContext {
     }
 }
 
+/// Architecture-owned metadata required to enter a user task and return to
+/// its dedicated kernel stack. The scheduler stores it but never dereferences
+/// any address or switches CR3 itself.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(C)]
+pub struct UserTaskMetadata {
+    address_space_root: u64,
+    user_stack_pointer: u64,
+    kernel_stack_top: u64,
+    fx_state_pointer: usize,
+}
+
+impl UserTaskMetadata {
+    pub const fn new(
+        address_space_root: u64,
+        user_stack_pointer: u64,
+        kernel_stack_top: u64,
+        fx_state_pointer: usize,
+    ) -> Self {
+        Self {
+            address_space_root,
+            user_stack_pointer,
+            kernel_stack_top,
+            fx_state_pointer,
+        }
+    }
+
+    pub const fn address_space_root(self) -> u64 { self.address_space_root }
+    pub const fn user_stack_pointer(self) -> u64 { self.user_stack_pointer }
+    pub const fn kernel_stack_top(self) -> u64 { self.kernel_stack_top }
+    pub const fn fx_state_pointer(self) -> usize { self.fx_state_pointer }
+
+    pub const fn is_valid(self) -> bool {
+        self.address_space_root != 0
+            && self.address_space_root & 0xFFF == 0
+            && self.user_stack_pointer != 0
+            && self.kernel_stack_top != 0
+            && self.kernel_stack_top & 0xF == 0
+            && self.fx_state_pointer != 0
+            && self.fx_state_pointer & 0xF == 0
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum TaskState {
@@ -56,6 +99,7 @@ pub struct Task {
     context: TaskContext,
     runtime_ticks: u64,
     wake_deadline: Option<u64>,
+    user_metadata: Option<UserTaskMetadata>,
 }
 
 impl Task {
@@ -65,12 +109,15 @@ impl Task {
     pub const fn context(&self) -> TaskContext { self.context }
     pub fn context_mut(&mut self) -> &mut TaskContext { &mut self.context }
     pub const fn runtime_ticks(&self) -> u64 { self.runtime_ticks }
+    pub const fn user_metadata(&self) -> Option<UserTaskMetadata> { self.user_metadata }
+    pub const fn is_user_task(&self) -> bool { self.user_metadata.is_some() }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SchedulerError {
     Full,
     InvalidContext,
+    InvalidUserMetadata,
     AlreadyStarted,
     NotStarted,
     NoRunnableTask,
@@ -115,6 +162,30 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
         name: &'static str,
         context: TaskContext,
     ) -> Result<TaskId, SchedulerError> {
+        self.spawn_with_metadata(name, context, None)
+    }
+
+    /// Registers a user task. Address-space and architecture addresses are
+    /// opaque metadata; their validity beyond basic alignment remains the
+    /// responsibility of the architecture layer.
+    pub fn spawn_user(
+        &mut self,
+        name: &'static str,
+        context: TaskContext,
+        metadata: UserTaskMetadata,
+    ) -> Result<TaskId, SchedulerError> {
+        if !metadata.is_valid() {
+            return Err(SchedulerError::InvalidUserMetadata);
+        }
+        self.spawn_with_metadata(name, context, Some(metadata))
+    }
+
+    fn spawn_with_metadata(
+        &mut self,
+        name: &'static str,
+        context: TaskContext,
+        user_metadata: Option<UserTaskMetadata>,
+    ) -> Result<TaskId, SchedulerError> {
         if context.saved_stack_pointer() == 0 {
             return Err(SchedulerError::InvalidContext);
         }
@@ -134,6 +205,7 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
             context,
             runtime_ticks: 0,
             wake_deadline: None,
+            user_metadata,
         });
         self.task_count += 1;
         Ok(id)
@@ -409,6 +481,41 @@ mod tests {
     use super::*;
 
     fn context(pointer: usize) -> TaskContext { TaskContext::new(pointer) }
+
+    #[test]
+    fn stores_user_task_metadata_without_interpreting_architecture_addresses() {
+        let mut scheduler = Scheduler::<2>::new();
+        let metadata = UserTaskMetadata::new(
+            0x2000,
+            0x0000_0002_0000_2FF8,
+            0x0000_0000_0012_0000,
+            0x0000_0000_0013_0000,
+        );
+        let id = scheduler.spawn_user("user-A", context(0x3000), metadata).unwrap();
+        let task = scheduler.get(id).unwrap();
+        assert!(task.is_user_task());
+        assert_eq!(task.user_metadata(), Some(metadata));
+        let kernel_id = scheduler.spawn("kernel-task", context(0x4000)).unwrap();
+        assert!(!scheduler.get(kernel_id).unwrap().is_user_task());
+        assert_eq!(scheduler.get(kernel_id).unwrap().user_metadata(), None);
+    }
+
+    #[test]
+    fn rejects_misaligned_or_incomplete_user_task_metadata() {
+        let mut scheduler = Scheduler::<2>::new();
+        let invalid_roots = [
+            UserTaskMetadata::new(0x2001, 0x3000, 0x4000, 0x5000),
+            UserTaskMetadata::new(0x2000, 0x3000, 0x4008, 0x5000),
+            UserTaskMetadata::new(0x2000, 0x3000, 0x4000, 0x5008),
+            UserTaskMetadata::new(0, 0x3000, 0x4000, 0x5000),
+        ];
+        for metadata in invalid_roots {
+            assert_eq!(
+                scheduler.spawn_user("invalid-user", context(0x1000), metadata),
+                Err(SchedulerError::InvalidUserMetadata)
+            );
+        }
+    }
 
     #[test]
     fn starts_first_ready_task() {
