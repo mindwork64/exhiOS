@@ -20,7 +20,9 @@ use exhi_syscall::{dispatch as dispatch_syscall, DispatchOutcome, SyscallService
 use exhi_task::{Capability, CapabilitySet, Scheduler, TaskContext, TaskId, UserTaskMetadata};
 
 use super::address_space::{self, AddressSpace, UserPageFlags};
-use super::{gdt, serial, task, vmm};
+use super::{gdt, serial, syscall, task, vmm};
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+use super::syscall::UserTaskSyscallFrame as UserTaskInterruptFrame;
 use crate::memory;
 
 const PAGE_SIZE: u64 = 4096;
@@ -89,15 +91,6 @@ static mut USER_TASK_FX_STATES: [UserTaskFxState; 3] = [
     UserTaskFxState([0; 512]),
 ];
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
-#[no_mangle]
-static mut USER_TASK_SYSCALL_USER_RSP: u64 = 0;
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
-#[no_mangle]
-static mut USER_TASK_SYSCALL_KERNEL_STACK_TOP: u64 = 0;
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
-#[no_mangle]
-static mut USER_TASK_SYSCALL_FX_STATE: usize = 0;
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
 #[repr(C, align(64))]
 struct UserTaskCounters {
     syscall_calls: u64,
@@ -145,33 +138,6 @@ struct UserEntryFrame {
 }
 
 const _: [(); 20 * size_of::<u64>()] = [(); size_of::<UserEntryFrame>()];
-
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
-#[repr(C, align(16))]
-struct UserTaskInterruptFrame {
-    r15: u64,
-    r14: u64,
-    r13: u64,
-    r12: u64,
-    r11: u64,
-    r10: u64,
-    r9: u64,
-    r8: u64,
-    rdi: u64,
-    rsi: u64,
-    rbp: u64,
-    rbx: u64,
-    rdx: u64,
-    rcx: u64,
-    rax: u64,
-    rip: u64,
-    cs: u64,
-    rflags: u64,
-    rsp: u64,
-    ss: u64,
-}
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
-const _: [(); 20 * size_of::<u64>()] = [(); size_of::<UserTaskInterruptFrame>()];
 
 static mut RING3_KERNEL_STACK: KernelStack = KernelStack([0; STACK_TOTAL_SIZE]);
 #[no_mangle]
@@ -1053,9 +1019,9 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
         ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_CODE_FRAMES), [0; 2]);
         ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_STACK_FRAMES), [0; 2]);
         ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_KERNEL_STACK_TOPS), [0; 3]);
-        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SYSCALL_USER_RSP), 0);
-        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SYSCALL_KERNEL_STACK_TOP), 0);
-        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SYSCALL_FX_STATE), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_USER_RSP), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_KERNEL_STACK_TOP), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_FX_STATE), 0);
         ptr::write_volatile(
             ptr::addr_of_mut!(USER_TASK_COUNTERS),
             UserTaskCounters {
@@ -1200,11 +1166,11 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
     }
     unsafe {
         ptr::write_volatile(
-            ptr::addr_of_mut!(USER_TASK_SYSCALL_KERNEL_STACK_TOP),
+            ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_KERNEL_STACK_TOP),
             kernel_tops[0],
         );
         ptr::write_volatile(
-            ptr::addr_of_mut!(USER_TASK_SYSCALL_FX_STATE),
+            ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_FX_STATE),
             ptr::addr_of!(USER_TASK_FX_STATES[0]) as usize,
         );
     }
@@ -1588,9 +1554,9 @@ fn user_task_select_context(id: TaskId) -> usize {
             );
         }
         unsafe {
-            ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SYSCALL_KERNEL_STACK_TOP), top);
+            ptr::write_volatile(ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_KERNEL_STACK_TOP), top);
             ptr::write_volatile(
-                ptr::addr_of_mut!(USER_TASK_SYSCALL_FX_STATE),
+                ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_FX_STATE),
                 metadata.fx_state_pointer(),
             );
         }
@@ -1599,9 +1565,9 @@ fn user_task_select_context(id: TaskId) -> usize {
             user_task_runtime_failed(b"P5.6: failed to switch to the kernel reaper context.\r\n");
         }
         unsafe {
-            ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SYSCALL_KERNEL_STACK_TOP), top);
+            ptr::write_volatile(ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_KERNEL_STACK_TOP), top);
             ptr::write_volatile(
-                ptr::addr_of_mut!(USER_TASK_SYSCALL_FX_STATE),
+                ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_FX_STATE),
                 ptr::addr_of!(USER_TASK_FX_STATES[2]) as usize,
             );
         }
@@ -2145,83 +2111,7 @@ fn user_task_runtime_failed(message: &'static [u8]) -> ! {
 global_asm!(
     r#"
     .section .text
-    .global exhi_user_task_syscall_entry
-    .type exhi_user_task_syscall_entry, @function
-exhi_user_task_syscall_entry:
-    # SYSCALL leaves RSP on the untrusted user stack. Save it before moving
-    # to the active task's dedicated kernel stack.
-    mov qword ptr [rip + USER_TASK_SYSCALL_USER_RSP], rsp
-    mov rsp, qword ptr [rip + USER_TASK_SYSCALL_KERNEL_STACK_TOP]
-
-    # First lay down the five-word privilege-return tail. The subsequent
-    # GPR pushes place r15..rax before this tail, matching InterruptContext.
-    push 0x2B
-    push qword ptr [rip + USER_TASK_SYSCALL_USER_RSP]
-    push r11
-    push 0x33
-    push rcx
-
-    push rax
-    push rcx
-    push rdx
-    push rbx
-    push rbp
-    push rsi
-    push rdi
-    push r8
-    push r9
-    push r10
-    push r11
-    push r12
-    push r13
-    push r14
-    push r15
-
-    mov rax, qword ptr [rip + USER_TASK_SYSCALL_FX_STATE]
-    test rax, rax
-    jz .Luser_task_syscall_fatal
-    fxsave64 [rax]
-
-    mov rdi, rsp
-    and rsp, -16
-    cld
-    call exhi_user_task_syscall_handler
-    test rax, rax
-    jz .Luser_task_syscall_fatal
-
-    # The scheduler handler selected the next task and updated CR3, TSS.RSP0,
-    # kernel-stack top and FX-state pointer before returning its saved frame.
-    mov rcx, qword ptr [rip + USER_TASK_SYSCALL_FX_STATE]
-    fxrstor64 [rcx]
-    mov rsp, rax
-
-    pop r15
-    pop r14
-    pop r13
-    pop r12
-    pop r11
-    pop r10
-    pop r9
-    pop r8
-    pop rdi
-    pop rsi
-    pop rbp
-    pop rbx
-    pop rdx
-    pop rcx
-    pop rax
-    iretq
-
-.Luser_task_syscall_fatal:
-    mov dx, 0xF4
-    mov eax, 0x11
-    out dx, eax
-    cli
-.Luser_task_syscall_halt:
-    hlt
-    jmp .Luser_task_syscall_halt
-
-    .global exhi_user_task_kernel_entry
+.global exhi_user_task_kernel_entry
     .type exhi_user_task_kernel_entry, @function
 exhi_user_task_kernel_entry:
     # Same-CPL IRETQ does not pop RSP/SS. Skip those two normalized qwords
@@ -2233,8 +2123,9 @@ exhi_user_task_kernel_entry:
     cli
     hlt
     jmp .Luser_task_finish_halt
-"#
-);
+
+    "#
+);;
 
 fn reclaim_user_address_space() -> bool {
     if address_space::restore_kernel().is_err() {
