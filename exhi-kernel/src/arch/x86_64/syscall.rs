@@ -2,9 +2,11 @@
 //!
 //! This module owns x86-64 syscall MSR setup and the feature-gated Ring 3
 //! lifecycle entry stub. The current assembly entry is a smoke-test adapter:
-//! its stack and FX-state slots are global test state, not production per-CPU
-//! state. Do not expose production Ring 3 tasks until a safe runtime provides
-//! per-CPU entry state, kernel stacks, and a production dispatch path.
+//! it uses a GS-backed boot-CPU context, but the storage is still a single-CPU
+//! harness rather than an AP-ready per-CPU allocator. Exception/NMI paths must
+//! account for the SWAPGS transition window. Do not expose production Ring 3
+//! tasks until CPU-local state, kernel stacks, and production dispatch are
+//! initialized for every online CPU.
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 use core::arch::global_asm;
