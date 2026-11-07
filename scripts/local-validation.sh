@@ -31,6 +31,16 @@ report_failure() {
     echo "Диагностика (последние 50 строк):"
     tail -n 50 "$LOG" || true
     echo
+    if [[ "$CURRENT_STEP" == *rustfmt* ]]; then
+        echo "Причина: rustfmt обнаружил отличия форматирования (это не ошибка компиляции)."
+        echo "Файлы с отличиями:"
+        grep -E '^Diff in ' "$LOG" |
+            sed -E 's/^Diff in (.*):[0-9]+:.*/\1/' |
+            sort -u |
+            sed 's/^/  - /' || true
+        echo "Исправление: cargo fmt --all"
+    fi
+    echo
     echo "Сообщения об ошибках:"
     grep -E -i '(^|[[:space:]])(error|fatal):|failed|not found|No such file|panicked|assertion' "$LOG" | tail -n 20 || true
     exit "$code"

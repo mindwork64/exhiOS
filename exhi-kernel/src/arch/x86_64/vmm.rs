@@ -66,7 +66,6 @@ impl PageFlags {
             global: false,
         }
     }
-
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

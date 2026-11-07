@@ -23,7 +23,6 @@ use core::ptr;
 ))]
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use exhi_task::{ScheduleDecision, Scheduler, TaskId};
 #[cfg(any(
     feature = "context-switch-smoke-test",
     feature = "task-accounting-smoke-test",
@@ -39,6 +38,7 @@ use exhi_task::{ScheduleDecision, Scheduler, TaskId};
     )
 ))]
 use exhi_task::TaskContext;
+use exhi_task::{ScheduleDecision, Scheduler, TaskId};
 
 #[cfg(any(
     feature = "task-accounting-smoke-test",

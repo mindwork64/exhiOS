@@ -13,9 +13,9 @@ use console::KernelConsole;
 use core::arch::asm;
 use core::panic::PanicInfo;
 use exhi_console::Color;
-use exhi_driver::{DriverRegistry, DriverState, RegistryError};
 #[cfg(feature = "driver-registry-smoke-test")]
 use exhi_driver::{DriverClass, DriverId};
+use exhi_driver::{DriverRegistry, DriverState, RegistryError};
 
 use exhi_abi::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
 

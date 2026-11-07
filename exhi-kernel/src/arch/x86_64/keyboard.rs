@@ -1,6 +1,6 @@
-use core::arch::global_asm;
 #[cfg(feature = "keyboard-smoke-test")]
 use core::arch::asm;
+use core::arch::global_asm;
 #[cfg(feature = "keyboard-smoke-test")]
 use core::hint::spin_loop;
 #[cfg(feature = "keyboard-smoke-test")]
