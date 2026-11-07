@@ -146,3 +146,6 @@ jobs:
 
       - name: Run headless idle-context and timed task wake-up smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_IDLE_WAKEUP_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run headless Ring 3 entry and exception-return smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_RING3_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
