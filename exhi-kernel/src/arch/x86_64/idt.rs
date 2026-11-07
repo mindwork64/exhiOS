@@ -280,11 +280,11 @@ pub fn initialize() -> IdtStatus {
     }
 }
 
-/// Deliberately makes #PF delivery fail so the CPU raises #DF.
-///
-/// The debug-exit build invokes this only after the GDT/TSS and IDT are live.
-/// The faulting address is in the reserved, unmapped upper part of the current
-/// lower-canonical kernel window. This function never returns on success.
+// Deliberately makes #PF delivery fail so the CPU raises #DF.
+//
+// The debug-exit build invokes this only after the GDT/TSS and IDT are live.
+// The faulting address is in the reserved, unmapped upper part of the current
+// lower-canonical kernel window. This function never returns on success.
 #[cfg(feature = "qemu-debug-exit-smoke-test")]
 unsafe extern "sysv64" {
     fn exhi_trigger_guard_stack_overflow(stack_bottom: u64, fault_address: u64) -> !;

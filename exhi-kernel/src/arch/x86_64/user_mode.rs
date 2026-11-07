@@ -8,6 +8,7 @@ use core::arch::{asm, global_asm};
 use core::mem::size_of;
 use core::ptr;
 
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
 use exhi_task::{Scheduler, TaskContext, TaskId, UserTaskMetadata};
 
 use super::address_space::{self, AddressSpace, UserPageFlags};
@@ -231,7 +232,7 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         setup_failed(b"P5.1: FXSR/SSE context initialization failed.\r\n");
     };
 
-    let kernel_stack_base = unsafe { ptr::addr_of_mut!(RING3_KERNEL_STACK) as u64 };
+    let kernel_stack_base = ptr::addr_of_mut!(RING3_KERNEL_STACK) as u64;
     let Some(kernel_stack_top) = kernel_stack_base.checked_add(STACK_TOTAL_SIZE as u64) else {
         setup_failed(b"P5.1: kernel stack address overflow.\r\n");
     };
@@ -520,7 +521,7 @@ pub fn handle_user_exception(
     serial::COM1.write_hex(code_selector & 3);
     serial::COM1.write(b"\r\n");
 
-    let kernel_stack_base = unsafe { ptr::addr_of!(RING3_KERNEL_STACK) as u64 };
+    let kernel_stack_base = ptr::addr_of!(RING3_KERNEL_STACK) as u64;
     let kernel_stack_top = unsafe { ptr::read_volatile(ptr::addr_of!(RING3_KERNEL_STACK_TOP)) };
     let frame_bytes = 7 * size_of::<u64>();
     let frame_end = (exception_stack_pointer as u64).checked_add(frame_bytes as u64);
@@ -649,11 +650,11 @@ pub(crate) fn initialize_syscall_msrs_for_entry(entry: u64) -> bool {
     if entry == 0 {
         return false;
     }
-    let max_extended = unsafe { core::arch::x86_64::__cpuid(0x8000_0000) };
+    let max_extended = core::arch::x86_64::__cpuid(0x8000_0000);
     if max_extended.eax < 0x8000_0001 {
         return false;
     }
-    let features = unsafe { core::arch::x86_64::__cpuid(0x8000_0001) };
+    let features = core::arch::x86_64::__cpuid(0x8000_0001);
     if features.edx & (1 << 11) == 0 {
         return false;
     }

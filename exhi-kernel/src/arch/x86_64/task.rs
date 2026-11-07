@@ -177,7 +177,7 @@ pub fn context_switch_smoke_test() -> bool {
         serial::COM1.write(b"P4.2: task A stack setup failed.\r\n");
         return false;
     };
-    let Some((b_initial_rsp, b_top)) = (unsafe { prepare_stack(1, task_b) }) else {
+    let Some((b_initial_rsp, _b_top)) = (unsafe { prepare_stack(1, task_b) }) else {
         serial::COM1.write(b"P4.2: task B stack setup failed.\r\n");
         return false;
     };
@@ -1429,7 +1429,7 @@ pub fn initialize_fx_state_for_user_mode() -> Option<usize> {
 
 #[cfg(feature = "timer-preemption-smoke-test")]
 fn initialize_fx_contexts() -> bool {
-    let features = unsafe { core::arch::x86_64::__cpuid(1) };
+    let features = core::arch::x86_64::__cpuid(1);
     const REQUIRED: u32 = (1 << 24) | (1 << 25) | (1 << 26); // FXSR, SSE, SSE2
     if features.edx & REQUIRED != REQUIRED {
         return false;
@@ -1946,7 +1946,7 @@ unsafe fn prepare_stack(index: usize, entry: extern "sysv64" fn()) -> Option<(us
             ptr::write(frame.add(slot), 0);
         }
         ptr::write(frame.add(3), entry as usize);
-        ptr::write(frame.add(6), exhi_task_bootstrap as usize);
+        ptr::write(frame.add(6), exhi_task_bootstrap as *const () as usize);
         ptr::write(frame.add(7), 0xE7_1A_5A_C0_DE_C0_DE_u64 as usize);
         ptr::write(ptr::addr_of_mut!(TASK_STACK_TOPS[index]), stack_top);
     }

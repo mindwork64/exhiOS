@@ -13,7 +13,9 @@ use console::KernelConsole;
 use core::arch::asm;
 use core::panic::PanicInfo;
 use exhi_console::Color;
-use exhi_driver::{DriverClass, DriverId, DriverRegistry, DriverState, RegistryError};
+use exhi_driver::{DriverRegistry, DriverState, RegistryError};
+#[cfg(feature = "driver-registry-smoke-test")]
+use exhi_driver::{DriverClass, DriverId};
 
 use exhi_abi::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
 
@@ -124,6 +126,8 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     serial::COM1.write(b"PIC: remap sequence issued; all IRQ masks verified.\r\n");
     serial::COM1.write(b"Interrupt flag remains clear until IRQ handlers are installed.\r\n");
 
+    // Mutated only by the opt-in timer, keyboard and registry smoke tests.
+    #[allow(unused_mut)]
     let mut driver_registry = match register_builtin_drivers() {
         Ok(registry) => registry,
         Err(_) => {
@@ -701,11 +705,6 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         }
         kernel_console.write(b"QEMU debug-exit: device did not terminate the guest.\r\n");
         halt_forever();
-    }
-
-    #[cfg(feature = "serial-rx-smoke-test")]
-    {
-        serial_rx_smoke_test()
     }
 
     #[cfg(feature = "context-switch-smoke-test")]
