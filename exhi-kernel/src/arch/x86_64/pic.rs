@@ -32,7 +32,10 @@ impl PicStatus {
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(feature = "ring3-smoke-test")
+    )
 ))]
 pub fn unmask_irq0() -> PicStatus {
     // SAFETY: Called during single-core startup with IF clear, after the IRQ0
@@ -51,7 +54,10 @@ pub fn unmask_irq0() -> PicStatus {
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(feature = "ring3-smoke-test")
+    )
 ))]
 pub fn mask_irq0() -> PicStatus {
     // SAFETY: Called with IF clear while changing timer interrupt policy.

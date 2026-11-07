@@ -12,7 +12,10 @@ use core::sync::atomic::AtomicU64;
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(feature = "ring3-smoke-test")
+    )
 ))]
 use core::sync::atomic::Ordering;
 
@@ -26,19 +29,28 @@ use super::pic;
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(feature = "ring3-smoke-test")
+    )
 ))]
 pub const TICK_HZ: u32 = 100;
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(feature = "ring3-smoke-test")
+    )
 ))]
 pub const PIT_INPUT_HZ: u32 = 1_193_182;
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(feature = "ring3-smoke-test")
+    )
 ))]
 pub const PIT_DIVISOR: u16 = ((PIT_INPUT_HZ + (TICK_HZ / 2)) / TICK_HZ) as u16;
 pub const IRQ0_VECTOR: u8 = pic::MASTER_VECTOR_OFFSET;
@@ -53,7 +65,10 @@ pub static EXHIOS_PIT_TICKS: AtomicU64 = AtomicU64::new(0);
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(feature = "ring3-smoke-test")
+    )
 ))]
 pub struct TimerStatus {
     pub requested_hz: u32,
@@ -70,7 +85,10 @@ pub struct TimerStatus {
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(feature = "ring3-smoke-test")
+    )
 ))]
 pub fn initialize() -> TimerStatus {
     EXHIOS_PIT_TICKS.store(0, Ordering::Relaxed);
@@ -97,7 +115,10 @@ pub fn initialize() -> TimerStatus {
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(feature = "ring3-smoke-test")
+    )
 ))]
 pub fn ticks() -> u64 {
     EXHIOS_PIT_TICKS.load(Ordering::Relaxed)
@@ -118,7 +139,10 @@ pub fn elapsed_ticks(start: u64) -> u64 {
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(feature = "ring3-smoke-test")
+    )
 ))]
 pub fn mask_irq0() -> pic::PicStatus {
     pic::mask_irq0()
@@ -137,7 +161,10 @@ unsafe extern "sysv64" {
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(feature = "ring3-smoke-test")
+    )
 ))]
 unsafe fn outb(port: u16, value: u8) {
     unsafe {

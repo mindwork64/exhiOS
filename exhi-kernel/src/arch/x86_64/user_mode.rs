@@ -28,6 +28,7 @@ const USER_STACK_ADDRESS: u64 = USER_CODE_ADDRESS + (2 * PAGE_SIZE);
 const USER_STACK_TOP: u64 = USER_STACK_ADDRESS + PAGE_SIZE;
 const USER_STACK_POINTER: u64 = USER_STACK_TOP - 8;
 const USER_STACK_SENTINEL: u64 = 0x0000_0000_5A6B_7C8D;
+#[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
 const USER_CODE_LENGTH: u64 = 10;
 
 #[repr(u64)]
@@ -36,10 +37,13 @@ enum Ring3TestMode {
     Breakpoint = 1,
     SupervisorFault = 2,
     Syscall = 3,
+    #[cfg(feature = "user-pointer-range-smoke-test")]
     PointerValidation = 4,
+    #[cfg(feature = "user-copy-smoke-test")]
     UserCopy = 5,
 }
 
+#[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
 static RING3_SUPERVISOR_PROBE: u64 = 0x4558_4849_4F53_5046;
 static mut RING3_TEST_MODE: u64 = 0;
 static mut RING3_EXPECTED_VECTOR: u64 = 3;
@@ -218,6 +222,7 @@ pub fn ring3_supervisor_fault_smoke_test() -> ! {
     run_ring3_test(Ring3TestMode::SupervisorFault)
 }
 
+#[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
 fn run_ring3_test(mode: Ring3TestMode) -> ! {
     unsafe {
         asm!("cli", options(nomem, nostack, preserves_flags));
@@ -241,9 +246,11 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         Ring3TestMode::Breakpoint => b"P5.1: preparing isolated Ring 3 address space.\r\n",
         Ring3TestMode::SupervisorFault => b"P5.2: preparing Ring 3 supervisor-isolation test.\r\n",
         Ring3TestMode::Syscall => b"P5.3: preparing Ring 3 SYSCALL/SYSRET test.\r\n",
+        #[cfg(feature = "user-pointer-range-smoke-test")]
         Ring3TestMode::PointerValidation => {
             b"P5.4: preparing user-pointer range validation test.\r\n"
         }
+        #[cfg(feature = "user-copy-smoke-test")]
         Ring3TestMode::UserCopy => b"P5.5: preparing safe user-copy runtime test.\r\n",
     });
 
@@ -363,15 +370,18 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         Ring3TestMode::Syscall => {
             b"P5.3: user RX code and RW+NX stack mapped; syscall MSRs will be verified.\r\n"
         }
+        #[cfg(feature = "user-pointer-range-smoke-test")]
         Ring3TestMode::PointerValidation => {
             b"P5.4: user RX code, guard and RW+NX stack pages prepared.\r\n"
         }
+        #[cfg(feature = "user-copy-smoke-test")]
         Ring3TestMode::UserCopy => b"P5.5: user RW+NX buffer and guard mappings prepared.\r\n",
     });
     serial::COM1.write(
         b"Ring 3: IRETQ enters CPL3; the expected CPU exception returns through TSS.RSP0.\r\n",
     );
 
+    #[cfg(feature = "user-pointer-range-smoke-test")]
     if mode == Ring3TestMode::PointerValidation {
         let space_slot = unsafe { &*ptr::addr_of!(RING3_ADDRESS_SPACE) };
         let range_checks = space_slot
@@ -462,6 +472,7 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
     }
 }
 
+#[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
 fn build_user_code(mode: Ring3TestMode) -> ([u8; 64], usize, u64, u64, u64, u64, u64) {
     // Each scenario first writes a sentinel through the actual CPL3 user
     // stack. P5.1 executes INT3, P5.2 faults on a supervisor-only read,
@@ -482,7 +493,13 @@ fn build_user_code(mode: Ring3TestMode) -> ([u8; 64], usize, u64, u64, u64, u64,
             code[23] = 0xCC; // Should be unreachable if supervisor protection works.
             (code, 24, 14, 0x7, 0x5, 20, address)
         }
-        Ring3TestMode::PointerValidation | Ring3TestMode::UserCopy => {
+        #[cfg(feature = "user-pointer-range-smoke-test")]
+        Ring3TestMode::PointerValidation => {
+            code[9] = 0xCC;
+            (code, 10, 3, u64::MAX, 0, USER_CODE_LENGTH, 0)
+        }
+        #[cfg(feature = "user-copy-smoke-test")]
+        Ring3TestMode::UserCopy => {
             code[9] = 0xCC;
             (code, 10, 3, u64::MAX, 0, USER_CODE_LENGTH, 0)
         }
@@ -531,9 +548,12 @@ pub fn handle_user_exception(
         Ring3TestMode::Breakpoint => b"P5.1: exception returned from user mode; vector=",
         Ring3TestMode::SupervisorFault => b"P5.2: exception returned from user mode; vector=",
         Ring3TestMode::Syscall => b"P5.3: exception returned from user mode after SYSCALL; vector=",
+        #[cfg(feature = "user-pointer-range-smoke-test")]
+        #[cfg(feature = "user-pointer-range-smoke-test")]
         Ring3TestMode::PointerValidation => {
             b"P5.4: unexpected exception during pointer validation; vector="
         }
+        #[cfg(feature = "user-copy-smoke-test")]
         Ring3TestMode::UserCopy => b"P5.5: unexpected exception during user-copy test; vector=",
     });
     serial::COM1.write_hex(vector);
@@ -829,6 +849,10 @@ exhi_syscall_entry:
 "#
 );
 
+#[cfg(any(
+    feature = "user-pointer-range-smoke-test",
+    feature = "user-copy-smoke-test"
+))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UserAccess {
     Read,
@@ -836,6 +860,10 @@ pub enum UserAccess {
     Execute,
 }
 
+#[cfg(any(
+    feature = "user-pointer-range-smoke-test",
+    feature = "user-copy-smoke-test"
+))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UserRangeError {
     AddressOverflow,
@@ -843,14 +871,24 @@ pub enum UserRangeError {
     NotUserMemory,
     PermissionDenied,
     AddressSpace(address_space::AddressSpaceError),
+    #[cfg(feature = "user-copy-smoke-test")]
     AddressSpaceNotActive,
+    #[cfg(feature = "user-copy-smoke-test")]
     InterruptsEnabled,
 }
 
+#[cfg(any(
+    feature = "user-pointer-range-smoke-test",
+    feature = "user-copy-smoke-test"
+))]
 const MAX_USER_POINTER_RANGE: u64 = 16 * 1024 * 1024;
 
 /// Validates every page touched by a user buffer before a syscall accesses it.
 /// Zero-length buffers are accepted without dereferencing their pointer.
+#[cfg(any(
+    feature = "user-pointer-range-smoke-test",
+    feature = "user-copy-smoke-test"
+))]
 pub fn validate_user_range(
     space: &AddressSpace,
     address: u64,
@@ -965,6 +1003,7 @@ fn ensure_user_copy_context(space: &AddressSpace) -> Result<(), UserRangeError> 
     Ok(())
 }
 
+#[cfg(feature = "user-pointer-range-smoke-test")]
 fn validate_user_pointer_ranges(space: &AddressSpace) -> bool {
     // This validator is called before any raw user pointer is dereferenced.
     let code_read = validate_user_range(space, USER_CODE_ADDRESS, 10, UserAccess::Read).is_ok();
@@ -2067,6 +2106,7 @@ fn reclaim_user_address_space() -> bool {
     code_released && stack_released
 }
 
+#[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
 fn allocate_zeroed_frame() -> u64 {
     let frame = memory::allocate_frame()
         .unwrap_or_else(|_| setup_failed(b"P5.1: physical frame allocation failed.\r\n"));
@@ -2079,6 +2119,7 @@ fn allocate_zeroed_frame() -> u64 {
     frame
 }
 
+#[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
 fn setup_failed(message: &'static [u8]) -> ! {
     serial::COM1.write(message);
     finish(false)
