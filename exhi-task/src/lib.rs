@@ -1071,6 +1071,14 @@ mod tests {
             metadata.capabilities().authorize(Capability::ConsoleWrite),
             Err(AccessDenied)
         );
+        assert_eq!(
+            metadata.capabilities().authorize(Capability::TaskYield),
+            Err(AccessDenied)
+        );
+        assert_eq!(
+            metadata.capabilities().authorize(Capability::TaskExit),
+            Err(AccessDenied)
+        );
     }
 
     #[test]

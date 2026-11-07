@@ -14,7 +14,9 @@ use core::mem::size_of;
 use core::ptr;
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
-use exhi_task::{Scheduler, TaskContext, TaskId, UserTaskMetadata};
+use exhi_task::{
+    Capability, CapabilitySet, Scheduler, TaskContext, TaskId, UserTaskMetadata,
+};
 
 use super::address_space::{self, AddressSpace, UserPageFlags};
 use super::{gdt, serial, task, vmm};
@@ -100,6 +102,7 @@ struct UserTaskCounters {
     syscall_calls: u64,
     yields: u64,
     exits: u64,
+    denied: u64,
     switches: u64,
 }
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
@@ -107,6 +110,7 @@ static mut USER_TASK_COUNTERS: UserTaskCounters = UserTaskCounters {
     syscall_calls: 0,
     yields: 0,
     exits: 0,
+    denied: 0,
     switches: 0,
 };
 
@@ -1120,6 +1124,7 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
                 syscall_calls: 0,
                 yields: 0,
                 exits: 0,
+                denied: 0,
                 switches: 0,
             },
         );
@@ -1160,11 +1165,11 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
         ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_KERNEL_STACK_TOPS), kernel_tops);
     }
 
-    let Some((space_a, code_a, stack_a)) = create_user_task_address_space(0x211C_E001, 0x211C_E002)
+    let Some((space_a, code_a, stack_a)) = create_user_task_address_space(0x211C_E001, 0x211C_E002, false)
     else {
         user_task_setup_failed(b"P5.6: user task A address space setup failed.\r\n");
     };
-    let Some((space_b, code_b, stack_b)) = create_user_task_address_space(0x311C_E001, 0x311C_E002)
+    let Some((space_b, code_b, stack_b)) = create_user_task_address_space(0x311C_E001, 0x311C_E002, true)
     else {
         user_task_setup_failed(b"P5.6: user task B address space setup failed.\r\n");
     };
@@ -1201,11 +1206,14 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
             .spawn_user(
                 "ring3-A",
                 TaskContext::new(frame_a),
-                UserTaskMetadata::new(
+                UserTaskMetadata::new_with_capabilities(
                     root_a,
                     USER_STACK_POINTER,
                     kernel_tops[0],
                     ptr::addr_of!(USER_TASK_FX_STATES[0]) as usize,
+                    CapabilitySet::empty()
+                        .with(Capability::TaskYield)
+                        .with(Capability::TaskExit),
                 ),
             )
             .unwrap_or_else(|_| {
@@ -1217,11 +1225,12 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
             .spawn_user(
                 "ring3-B",
                 TaskContext::new(frame_b),
-                UserTaskMetadata::new(
+                UserTaskMetadata::new_with_capabilities(
                     root_b,
                     USER_STACK_POINTER,
                     kernel_tops[1],
                     ptr::addr_of!(USER_TASK_FX_STATES[1]) as usize,
+                    CapabilitySet::empty().with(Capability::TaskExit),
                 ),
             )
             .unwrap_or_else(|_| {
@@ -1299,6 +1308,7 @@ fn user_task_space_b_root() -> u64 {
 fn create_user_task_address_space(
     initial_marker: u32,
     resumed_marker: u32,
+    expect_yield_denied: bool,
 ) -> Option<(AddressSpace, u64, u64)> {
     let mut space = AddressSpace::create().ok()?;
     let code_frame = memory::allocate_frame().ok()?;
@@ -1324,7 +1334,8 @@ fn create_user_task_address_space(
         ptr::write_bytes(code_frame as *mut u8, 0, PAGE_SIZE as usize);
         ptr::write_bytes(stack_frame as *mut u8, 0, PAGE_SIZE as usize);
     }
-    let (code, length) = build_user_task_program(initial_marker, resumed_marker);
+    let (code, length) =
+        build_user_task_program(initial_marker, resumed_marker, expect_yield_denied);
     unsafe {
         ptr::copy_nonoverlapping(code.as_ptr(), code_frame as *mut u8, length);
     }
@@ -1378,7 +1389,11 @@ fn create_user_task_address_space(
 }
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
-fn build_user_task_program(initial_marker: u32, resumed_marker: u32) -> ([u8; 64], usize) {
+fn build_user_task_program(
+    initial_marker: u32,
+    resumed_marker: u32,
+    expect_yield_denied: bool,
+) -> ([u8; 64], usize) {
     let mut code = [0u8; 64];
     let mut position = 0;
     code[position..position + 9].copy_from_slice(&[
@@ -1397,6 +1412,15 @@ fn build_user_task_program(initial_marker: u32, resumed_marker: u32) -> ([u8; 64
     position += 5;
     code[position..position + 2].copy_from_slice(&[0x0F, 0x05]);
     position += 2;
+    if expect_yield_denied {
+        // Access denied is returned as -1. Trap if the kernel performs the
+        // forbidden yield or returns a different status.
+        code[position..position + 6]
+            .copy_from_slice(&[0x48, 0x83, 0xF8, 0xFF, 0x74, 0x01]); // cmp rax,-1; je +1
+        position += 6;
+        code[position] = 0xCC;
+        position += 1;
+    }
     code[position..position + 9].copy_from_slice(&[
         0x48,
         0xC7,
@@ -1409,10 +1433,6 @@ fn build_user_task_program(initial_marker: u32, resumed_marker: u32) -> ([u8; 64
         (resumed_marker >> 24) as u8,
     ]);
     position += 9;
-    code[position..position + 5].copy_from_slice(&[0xB8, 1, 0, 0, 0]); // SYS_YIELD
-    position += 5;
-    code[position..position + 2].copy_from_slice(&[0x0F, 0x05]);
-    position += 2;
     code[position..position + 5].copy_from_slice(&[0xB8, 2, 0, 0, 0]); // SYS_EXIT
     position += 5;
     code[position..position + 2].copy_from_slice(&[0x0F, 0x05]);
@@ -1636,6 +1656,29 @@ extern "sysv64" fn exhi_user_task_syscall_handler(frame: *mut UserTaskInterruptF
         ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
     }
 
+    let required_capability = match syscall_number {
+        1 => Capability::TaskYield,
+        2 => Capability::TaskExit,
+        _ => {
+            unsafe {
+                ptr::write_volatile(ptr::addr_of_mut!((*frame).rax), u64::MAX);
+                let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.denied);
+                ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
+            }
+            return frame_address;
+        }
+    };
+    if unsafe { (*scheduler).authorize_current(required_capability).is_err() } {
+        // Denied calls resume the same frame with -1 in RAX; no service or
+        // scheduler side effect is allowed to occur.
+        unsafe {
+            ptr::write_volatile(ptr::addr_of_mut!((*frame).rax), u64::MAX);
+            let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.denied);
+            ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
+        }
+        return frame_address;
+    }
+
     let next = match syscall_number {
         1 => unsafe {
             let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.yields);
@@ -1663,16 +1706,16 @@ extern "sysv64" fn exhi_user_task_syscall_handler(frame: *mut UserTaskInterruptF
                 let reaper = TaskId::from_raw(3);
                 unsafe {
                     if (*scheduler).wake(reaper).is_err() {
-                        user_task_runtime_failed(b"P5.6: could not wake the kernel reaper.\r\n");
+                        user_task_runtime_failed(b"P5.7: could not wake the kernel reaper.\r\n");
                     }
                     (*scheduler).schedule_from_idle().ok().flatten()
                 }
             }
         }
-        _ => None,
+        _ => unreachable!("syscall number was validated above"),
     }
     .unwrap_or_else(|| {
-        user_task_runtime_failed(b"P5.6: invalid syscall or scheduler did not select a peer.\r\n")
+        user_task_runtime_failed(b"P5.7: authorized syscall did not select a task.\r\n")
     });
     user_task_select_context(next)
 }
@@ -1700,10 +1743,25 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
             && (*scheduler).ready_count() == 0
             && (*scheduler).blocked_count() == 0
     };
+    let capability_grants_ok = unsafe {
+        (*scheduler)
+            .get(TaskId::from_raw(1))
+            .is_some_and(|task| {
+                task.capabilities().contains(Capability::TaskYield)
+                    && task.capabilities().contains(Capability::TaskExit)
+            })
+            && (*scheduler)
+                .get(TaskId::from_raw(2))
+                .is_some_and(|task| {
+                    !task.capabilities().contains(Capability::TaskYield)
+                        && task.capabilities().contains(Capability::TaskExit)
+                })
+    };
     let syscall_count =
         unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.syscall_calls)) };
     let yield_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.yields)) };
     let exit_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.exits)) };
+    let denied_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.denied)) };
     let switch_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_COUNTERS.switches)) };
     let a_code = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_CODE_FRAMES[0])) };
     let b_code = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_CODE_FRAMES[1])) };
@@ -1729,24 +1787,30 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     report_user_task_saved_context(TaskId::from_raw(1), b"A");
     report_user_task_saved_context(TaskId::from_raw(2), b"B");
     let passed = tasks_ok
-        && syscall_count == 6
-        && yield_count == 4
+        && syscall_count == 4
+        && yield_count == 1
         && exit_count == 2
-        && switch_count == 6
+        && denied_count == 1
+        && switch_count == 3
+        && capability_grants_ok
         && roots_private
         && a_markers_ok
         && b_markers_ok
         && saved_a_ok
         && saved_b_ok
         && tss_valid;
-    serial::COM1.write(b"P5.6: syscalls=");
+    serial::COM1.write(b"P5.7: syscalls=");
     serial::COM1.write_hex(syscall_count);
     serial::COM1.write(b" yields=");
     serial::COM1.write_hex(yield_count);
     serial::COM1.write(b" exits=");
     serial::COM1.write_hex(exit_count);
+    serial::COM1.write(b" denied=");
+    serial::COM1.write_hex(denied_count);
     serial::COM1.write(b" switches=");
     serial::COM1.write_hex(switch_count);
+    serial::COM1.write(b"\r\nP5.7: A has yield+exit; B has exit only; denied yield returned -1=");
+    serial::COM1.write(if denied_count == 1 && capability_grants_ok { b"yes" } else { b"no " });
     serial::COM1.write(b"\r\nP5.6: A markers=");
     serial::COM1.write(if a_markers_ok { b"both" } else { b"bad " });
     serial::COM1.write(b" B markers=");

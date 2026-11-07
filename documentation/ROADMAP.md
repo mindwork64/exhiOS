@@ -136,6 +136,7 @@ The implementation and dedicated headless QEMU smoke-test paths now exist for P5
 - [ ] **P5.7 — Capabilities and default-deny access rules:** define process capabilities and enforce access checks at kernel service boundaries.
 
   - Progress (2026-11-07): `exhi-task` now has a typed capability set, rejects unknown serialized bits, gives new user tasks an empty set, and exposes a scheduler authorization check for the current task. This is the policy foundation, not completion: production syscall dispatch and actual kernel service boundaries still need to consume the check.
+  - Runtime progress (2026-11-07): the P5.6 Ring 3 lifecycle smoke path now checks `TaskYield` and `TaskExit` before dispatch. Task A receives both grants; task B receives only `TaskExit`, attempts `SYS_YIELD`, verifies the `-1` denial result, and continues without a scheduler transition. This is test-only syscall dispatch coverage; production syscall services are still not implemented.
 
 ## P6 — Storage
 
