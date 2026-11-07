@@ -135,6 +135,8 @@ The implementation and dedicated headless QEMU smoke-test paths now exist for P5
 - [ ] **P5.6 — User-task lifecycle:** run two isolated Ring 3 tasks with private CR3 roots and stacks; exercise SYSCALL yield/exit, idle dispatch, kernel reaping, address-space/frame reclamation, and removal of Finished scheduler records. Host scheduler lifecycle tests cover the exit-to-idle-to-reaper transition and safe task-record reclamation.
 - [ ] **P5.7 — Capabilities and default-deny access rules:** define process capabilities and enforce access checks at kernel service boundaries.
 
+  - Progress (2026-11-07): `exhi-task` now has a typed capability set, rejects unknown serialized bits, gives new user tasks an empty set, and exposes a scheduler authorization check for the current task. This is the policy foundation, not completion: production syscall dispatch and actual kernel service boundaries still need to consume the check.
+
 ## P6 — Storage
 
 - [ ] VFS interfaces.

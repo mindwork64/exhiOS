@@ -15,6 +15,91 @@ impl TaskId {
     }
 }
 
+/// Operations that a user task may explicitly be allowed to perform.
+///
+/// Capability numbers are stable within the ExhiOS kernel ABI. Unknown
+/// numbers and unknown bits are rejected rather than silently granted.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum Capability {
+    ConsoleWrite = 0,
+    ConsoleRead = 1,
+    ClockRead = 2,
+    TaskYield = 3,
+    TaskExit = 4,
+    MemoryAllocate = 5,
+    MemoryMap = 6,
+    FileRead = 7,
+    FileWrite = 8,
+    DeviceAccess = 9,
+    NetworkAccess = 10,
+}
+
+impl Capability {
+    const fn bit(self) -> u64 {
+        1u64 << (self as u8)
+    }
+}
+
+const KNOWN_CAPABILITY_BITS: u64 = (1u64 << 11) - 1;
+
+/// Compact, allocation-free set of explicitly granted process capabilities.
+///
+/// The empty set is the default for every new user task. Callers at a kernel
+/// service boundary must call `authorize` before performing the operation.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[repr(transparent)]
+pub struct CapabilitySet(u64);
+
+impl CapabilitySet {
+    pub const EMPTY: Self = Self(0);
+
+    pub const fn empty() -> Self {
+        Self::EMPTY
+    }
+
+    pub const fn with(self, capability: Capability) -> Self {
+        Self(self.0 | capability.bit())
+    }
+
+    pub const fn without(self, capability: Capability) -> Self {
+        Self(self.0 & !capability.bit())
+    }
+
+    pub const fn contains(self, capability: Capability) -> bool {
+        self.0 & capability.bit() != 0
+    }
+
+    pub const fn bits(self) -> u64 {
+        self.0
+    }
+
+    /// Decodes a stored/ABI bitset. Unknown bits are an error (default deny).
+    pub const fn from_bits(bits: u64) -> Result<Self, CapabilitySetError> {
+        if bits & !KNOWN_CAPABILITY_BITS != 0 {
+            Err(CapabilitySetError::UnknownBits)
+        } else {
+            Ok(Self(bits))
+        }
+    }
+
+    pub const fn authorize(self, capability: Capability) -> Result<(), AccessDenied> {
+        if self.contains(capability) {
+            Ok(())
+        } else {
+            Err(AccessDenied)
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CapabilitySetError {
+    UnknownBits,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AccessDenied;
+
 /// Architecture-owned context. The scheduler policy treats RSP as opaque.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(C)]
@@ -55,6 +140,7 @@ pub struct UserTaskMetadata {
     user_stack_pointer: u64,
     kernel_stack_top: u64,
     fx_state_pointer: usize,
+    capabilities: CapabilitySet,
 }
 
 impl UserTaskMetadata {
@@ -69,7 +155,30 @@ impl UserTaskMetadata {
             user_stack_pointer,
             kernel_stack_top,
             fx_state_pointer,
+            capabilities: CapabilitySet::EMPTY,
         }
+    }
+
+    /// Constructs metadata with an explicit capability grant. Use an empty
+    /// set unless a process has a documented need for a kernel service.
+    pub const fn new_with_capabilities(
+        address_space_root: u64,
+        user_stack_pointer: u64,
+        kernel_stack_top: u64,
+        fx_state_pointer: usize,
+        capabilities: CapabilitySet,
+    ) -> Self {
+        Self {
+            address_space_root,
+            user_stack_pointer,
+            kernel_stack_top,
+            fx_state_pointer,
+            capabilities,
+        }
+    }
+
+    pub const fn capabilities(self) -> CapabilitySet {
+        self.capabilities
     }
 
     pub const fn address_space_root(self) -> u64 {
@@ -147,6 +256,16 @@ impl Task {
     pub const fn is_user_task(&self) -> bool {
         self.user_metadata.is_some()
     }
+    /// Kernel-created tasks are not implicitly granted user-service rights.
+    pub const fn capabilities(&self) -> CapabilitySet {
+        match self.user_metadata {
+            Some(metadata) => metadata.capabilities(),
+            None => CapabilitySet::EMPTY,
+        }
+    }
+    pub const fn authorize(&self, capability: Capability) -> Result<(), AccessDenied> {
+        self.capabilities().authorize(capability)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -154,6 +273,7 @@ pub enum SchedulerError {
     Full,
     InvalidContext,
     InvalidUserMetadata,
+    CapabilityDenied,
     AlreadyStarted,
     NotStarted,
     NoRunnableTask,
@@ -507,6 +627,17 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
     pub fn current(&self) -> Option<&Task> {
         self.current_index
             .and_then(|index| self.slots[index].as_ref())
+    }
+
+    /// Checks the currently running task before a kernel service is entered.
+    /// No current task, a kernel task, and an ungranted user task all deny.
+    pub fn authorize_current(
+        &self,
+        capability: Capability,
+    ) -> Result<(), SchedulerError> {
+        let task = self.current().ok_or(SchedulerError::NotStarted)?;
+        task.authorize(capability)
+            .map_err(|_| SchedulerError::CapabilityDenied)
     }
 
     pub fn get(&self, id: TaskId) -> Option<&Task> {
@@ -932,6 +1063,78 @@ mod tests {
         assert_eq!(
             scheduler.spawn("second", context(0x2000)),
             Err(SchedulerError::Full)
+        );
+    }
+
+    #[test]
+    fn user_tasks_start_with_no_capabilities() {
+        let metadata = UserTaskMetadata::new(0x1000, 0x8000, 0x9000, 0xA000);
+        assert_eq!(metadata.capabilities(), CapabilitySet::EMPTY);
+        assert_eq!(
+            metadata.capabilities().authorize(Capability::ConsoleWrite),
+            Err(AccessDenied)
+        );
+    }
+
+    #[test]
+    fn capabilities_are_explicit_and_independent() {
+        let grants = CapabilitySet::empty()
+            .with(Capability::ConsoleWrite)
+            .with(Capability::ClockRead);
+        assert!(grants.contains(Capability::ConsoleWrite));
+        assert!(grants.contains(Capability::ClockRead));
+        assert!(!grants.contains(Capability::ConsoleRead));
+        assert_eq!(grants.authorize(Capability::ConsoleWrite), Ok(()));
+        assert_eq!(grants.authorize(Capability::ConsoleRead), Err(AccessDenied));
+        assert!(!grants.without(Capability::ClockRead).contains(Capability::ClockRead));
+    }
+
+    #[test]
+    fn capability_decoder_rejects_unknown_bits() {
+        assert_eq!(CapabilitySet::from_bits(0), Ok(CapabilitySet::EMPTY));
+        assert!(CapabilitySet::from_bits(1u64 << (Capability::NetworkAccess as u8)).is_ok());
+        assert_eq!(
+            CapabilitySet::from_bits(1 << 63),
+            Err(CapabilitySetError::UnknownBits)
+        );
+    }
+
+    #[test]
+    fn scheduler_enforces_default_deny_for_current_user_task() {
+        let metadata = UserTaskMetadata::new(0x1000, 0x8000, 0x9000, 0xA000);
+        let mut scheduler = Scheduler::<1>::new();
+        scheduler.spawn_user("unprivileged", context(0x2000), metadata).unwrap();
+        scheduler.start().unwrap();
+        assert_eq!(
+            scheduler.authorize_current(Capability::ConsoleWrite),
+            Err(SchedulerError::CapabilityDenied)
+        );
+    }
+
+    #[test]
+    fn scheduler_checks_explicit_grants_at_service_boundary() {
+        let grants = CapabilitySet::empty().with(Capability::ConsoleWrite);
+        let metadata = UserTaskMetadata::new_with_capabilities(
+            0x1000, 0x8000, 0x9000, 0xA000, grants,
+        );
+        let mut scheduler = Scheduler::<1>::new();
+        scheduler.spawn_user("console-writer", context(0x2000), metadata).unwrap();
+        scheduler.start().unwrap();
+        assert_eq!(scheduler.authorize_current(Capability::ConsoleWrite), Ok(()));
+        assert_eq!(
+            scheduler.authorize_current(Capability::FileRead),
+            Err(SchedulerError::CapabilityDenied)
+        );
+    }
+
+    #[test]
+    fn kernel_tasks_do_not_receive_user_service_capabilities() {
+        let mut scheduler = Scheduler::<1>::new();
+        scheduler.spawn("kernel-task", context(0x1000)).unwrap();
+        scheduler.start().unwrap();
+        assert_eq!(
+            scheduler.authorize_current(Capability::ConsoleWrite),
+            Err(SchedulerError::CapabilityDenied)
         );
     }
 
