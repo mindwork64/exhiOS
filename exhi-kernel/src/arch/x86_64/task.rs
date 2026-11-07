@@ -609,7 +609,7 @@ extern "sysv64" fn preemptive_task_a() -> ! {
 }
 #[cfg(feature = "timer-preemption-smoke-test")]
 extern "sysv64" fn preemptive_task_b() -> ! {
-    unsafe { run_preemptive_task(1, 0xB2B2_B2B2_B2B2_B2B2_B2B2) }
+    unsafe { run_preemptive_task(1, 0xB2B2_B2B2_B2B2_B2B2) }
 }
 
 #[cfg(feature = "timer-preemption-smoke-test")]
