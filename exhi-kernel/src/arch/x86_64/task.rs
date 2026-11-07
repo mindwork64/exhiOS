@@ -462,11 +462,11 @@ fn initialize_fx_contexts() -> bool {
     cr4 |= (1 << 9) | (1 << 10); // OSFXSR | OSXMMEXCPT
     unsafe {
         asm!(
-            "mov cr4, {}",
-            in(reg) cr4,
+            "mov cr4, {value}",
             "fninit",
-            "ldmxcsr [{}]",
-            in(reg) ptr::addr_of!(DEFAULT_MXCSR),
+            "ldmxcsr [{mxcsr}]",
+            value = in(reg) cr4,
+            mxcsr = in(reg) ptr::addr_of!(DEFAULT_MXCSR),
             options(nostack)
         );
         asm!(
@@ -605,15 +605,16 @@ extern "sysv64" fn exhi_preemption_handler(frame: *mut InterruptContext) -> usiz
 
 #[cfg(feature = "timer-preemption-smoke-test")]
 extern "sysv64" fn preemptive_task_a() -> ! {
-    run_preemptive_task(0, 0xA1A1_A1A1_A1A1_A1A1)
+    unsafe { run_preemptive_task(0, 0xA1A1_A1A1_A1A1_A1A1) }
 }
 #[cfg(feature = "timer-preemption-smoke-test")]
 extern "sysv64" fn preemptive_task_b() -> ! {
-    run_preemptive_task(1, 0xB2B2_B2B2_B2B2_B2B2)
+    unsafe { run_preemptive_task(1, 0xB2B2_B2B2_B2B2_B2B2_B2B2) }
 }
 
 #[cfg(feature = "timer-preemption-smoke-test")]
-fn run_preemptive_task(index: usize, cookie: u64) -> ! {
+#[target_feature(enable = "sse2")]
+unsafe fn run_preemptive_task(index: usize, cookie: u64) -> ! {
     let mut local = [cookie; 8];
     let local_ptr = local.as_mut_ptr();
     unsafe { ptr::write_volatile(local_ptr.add(3), cookie ^ 0x55AA_55AA_55AA_55AA); }
