@@ -621,11 +621,11 @@ unsafe fn run_preemptive_task(index: usize, cookie: u64) -> ! {
     if index == 0 { TASK_A_LOCAL_ADDRESS.store(local_ptr as usize, Ordering::Relaxed); }
     else { TASK_B_LOCAL_ADDRESS.store(local_ptr as usize, Ordering::Relaxed); }
 
-    let xmm_pattern = ((u128::from(cookie) << 64) | u128::from(cookie.rotate_left(17))) as i128;
-    let xmm_value: i128;
+    let xmm_pattern = f64::from_bits(cookie ^ 0x5AA5_5AA5_5AA5_5AA5);
+    let xmm_value: f64;
     unsafe {
         asm!(
-            "movdqu {value}, [{pattern}]",
+            "movq {value}, [{pattern}]",
             value = out(xmm_reg) xmm_value,
             pattern = in(reg) &xmm_pattern,
             options(nostack, readonly)
@@ -647,16 +647,16 @@ unsafe fn run_preemptive_task(index: usize, cookie: u64) -> ! {
         let ticks = timer::ticks();
         let switches = PREEMPTION_SWITCHES.load(Ordering::Relaxed);
         if ticks >= 16 && switches >= 12 {
-            let mut observed = 0i128;
+            let mut observed = 0.0f64;
             unsafe {
                 asm!(
-                    "movdqu [{output}], {value}",
+                    "movq [{output}], {value}",
                     output = in(reg) &mut observed,
                     value = in(xmm_reg) xmm_value,
                     options(nostack)
                 );
             }
-            if observed == xmm_pattern {
+            if observed.to_bits() == xmm_pattern.to_bits() {
                 if index == 0 { TASK_A_XMM_OK.store(1, Ordering::Relaxed); }
                 else { TASK_B_XMM_OK.store(1, Ordering::Relaxed); }
             } else {
