@@ -2016,6 +2016,82 @@ exhi_task_bootstrap:
     ud2
 "#
 );
+#[cfg(feature = "idle-wakeup-smoke-test")]
+global_asm!(
+    r#"
+    .section .text
+    .global exhi_block_interrupt_stub
+    .type exhi_block_interrupt_stub, @function
+exhi_block_interrupt_stub:
+    push rax
+    push rcx
+    push rdx
+    push rbx
+    push rbp
+    push rsi
+    push rdi
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+
+    mov rax, qword ptr [rip + EXHIOS_ACTIVE_FX_STATE]
+    test rax, rax
+    jz .Lblock_irq_fatal
+    fxsave64 [rax]
+
+    mov rdi, rsp
+    cld
+    and rsp, -16
+    call exhi_block_handler
+    test rax, rax
+    jz .Lblock_irq_fatal
+
+    mov rcx, qword ptr [rip + EXHIOS_ACTIVE_FX_STATE]
+    fxrstor64 [rcx]
+    mov rsp, rax
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rdi
+    pop rsi
+    pop rbp
+    pop rbx
+    pop rdx
+    pop rcx
+    pop rax
+    iretq
+
+.Lblock_irq_fatal:
+    mov dx, 0xF4
+    mov eax, 0x11
+    out dx, eax
+    cli
+.Lblock_irq_halt:
+    hlt
+    jmp .Lblock_irq_halt
+
+    .global exhi_idle_loop
+    .type exhi_idle_loop, @function
+exhi_idle_loop:
+    sti
+.Lexhi_idle_halt:
+    hlt
+    jmp .Lexhi_idle_halt
+
+    "#
+);
+
 
 
 #[cfg(feature = "timer-preemption-smoke-test")]
@@ -2088,74 +2164,6 @@ exhi_irq0_preempt_stub:
     jmp .Lpreempt_irq_halt
 
 
-    .global exhi_block_interrupt_stub
-    .type exhi_block_interrupt_stub, @function
-exhi_block_interrupt_stub:
-    push rax
-    push rcx
-    push rdx
-    push rbx
-    push rbp
-    push rsi
-    push rdi
-    push r8
-    push r9
-    push r10
-    push r11
-    push r12
-    push r13
-    push r14
-    push r15
-
-    mov rax, qword ptr [rip + EXHIOS_ACTIVE_FX_STATE]
-    test rax, rax
-    jz .Lblock_irq_fatal
-    fxsave64 [rax]
-
-    mov rdi, rsp
-    cld
-    and rsp, -16
-    call exhi_block_handler
-    test rax, rax
-    jz .Lblock_irq_fatal
-
-    mov rcx, qword ptr [rip + EXHIOS_ACTIVE_FX_STATE]
-    fxrstor64 [rcx]
-    mov rsp, rax
-
-    pop r15
-    pop r14
-    pop r13
-    pop r12
-    pop r11
-    pop r10
-    pop r9
-    pop r8
-    pop rdi
-    pop rsi
-    pop rbp
-    pop rbx
-    pop rdx
-    pop rcx
-    pop rax
-    iretq
-
-.Lblock_irq_fatal:
-    mov dx, 0xF4
-    mov eax, 0x11
-    out dx, eax
-    cli
-.Lblock_irq_halt:
-    hlt
-    jmp .Lblock_irq_halt
-
-    .global exhi_idle_loop
-    .type exhi_idle_loop, @function
-exhi_idle_loop:
-    sti
-.Lexhi_idle_halt:
-    hlt
-    jmp .Lexhi_idle_halt
 
     .global exhi_interrupt_context_start
     .type exhi_interrupt_context_start, @function
