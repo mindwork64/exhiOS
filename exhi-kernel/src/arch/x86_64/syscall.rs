@@ -47,11 +47,11 @@ pub fn initialize(entry: u64) -> Result<SyscallMsrState, SyscallInitError> {
         return Err(SyscallInitError::InvalidSegmentSelectors);
     }
 
-    let max_extended = unsafe { __cpuid(0x8000_0000) };
+    let max_extended = __cpuid(0x8000_0000);
     if max_extended.eax < 0x8000_0001 {
         return Err(SyscallInitError::UnsupportedCpu);
     }
-    let features = unsafe { __cpuid(0x8000_0001) };
+    let features = __cpuid(0x8000_0001);
     if features.edx & (1 << 11) == 0 {
         return Err(SyscallInitError::UnsupportedCpu);
     }
@@ -103,7 +103,7 @@ const fn segment_selectors_are_valid() -> bool {
 }
 
 const fn is_canonical_address(address: u64) -> bool {
-    address >> 48 == 0 || address >> 48 == 0xFFFF
+    address >> 47 == 0 || address >> 47 == 0x1_FFFF
 }
 
 unsafe fn read_msr(msr: u32) -> u64 {
