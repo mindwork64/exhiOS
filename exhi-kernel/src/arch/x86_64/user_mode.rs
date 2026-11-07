@@ -4,7 +4,7 @@
 //! exception return to a TSS RSP0 stack. It does not implement syscalls,
 //! process scheduling, or a userspace ABI.
 
-use core::arch::{asm, global_asm};
+use core::arch::asm;
 use core::mem::size_of;
 use core::ptr;
 
@@ -285,7 +285,7 @@ fn build_user_code(
             code[12..20].copy_from_slice(&address.to_le_bytes());
             code[20..23].copy_from_slice(&[0x48, 0x8B, 0x00]); // mov rax, [rax]
             code[23] = 0xCC; // Should be unreachable if supervisor protection works.
-            (code, 24, 14, 0x7, 0x5, USER_CODE_ADDRESS + 20 - USER_CODE_ADDRESS, address)
+            (code, 24, 14, 0x7, 0x5, 20, address)
         }
     }
 }
@@ -301,7 +301,16 @@ pub fn handle_user_exception(
     flags: u64,
     exception_stack_pointer: u64,
 ) -> ! {
-    serial::COM1.write(b"P5.1: exception returned from user mode; vector=");
+    let mode = match unsafe {
+        ptr::read_volatile(ptr::addr_of!(RING3_TEST_MODE))
+    } {
+        2 => Ring3TestMode::SupervisorFault,
+        _ => Ring3TestMode::Breakpoint,
+    };
+    serial::COM1.write(match mode {
+        Ring3TestMode::Breakpoint => b"P5.1: exception returned from user mode; vector=",
+        Ring3TestMode::SupervisorFault => b"P5.2: exception returned from user mode; vector=",
+    });
     serial::COM1.write_hex(vector);
     serial::COM1.write(b" CPL=");
     serial::COM1.write_hex(code_selector & 3);
