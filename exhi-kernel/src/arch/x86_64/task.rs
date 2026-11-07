@@ -528,7 +528,7 @@ unsafe fn prepare_preemption_exit_stack(
     Some((rsp, top))
 }
 
-#[cfg(feature = "preemptive-task-exit-smoke-test")]
+#[cfg(feature = "timer-preemption-smoke-test")]
 #[no_mangle]
 extern "sysv64" fn exhi_preemptive_task_finished() -> ! {
     unsafe {
@@ -603,13 +603,13 @@ extern "sysv64" fn exhi_preemptive_task_finished() -> ! {
     }
 }
 
-#[cfg(feature = "preemptive-task-exit-smoke-test")]
+#[cfg(feature = "timer-preemption-smoke-test")]
 #[no_mangle]
 extern "sysv64" fn exhi_preemptive_task_exit_fail() -> ! {
     finish_preemptive_exit_test(false)
 }
 
-#[cfg(feature = "preemptive-task-exit-smoke-test")]
+#[cfg(feature = "timer-preemption-smoke-test")]
 fn finish_preemptive_exit_test(target_reached: bool) -> ! {
     unsafe {
         asm!("cli", options(nomem, nostack, preserves_flags));
