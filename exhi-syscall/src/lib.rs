@@ -137,11 +137,7 @@ mod tests {
             self.exit_target.ok_or(SyscallError::Io)
         }
 
-        fn console_write(
-            &mut self,
-            user_address: u64,
-            length: u64,
-        ) -> Result<u64, SyscallError> {
+        fn console_write(&mut self, user_address: u64, length: u64) -> Result<u64, SyscallError> {
             self.console_calls += 1;
             self.last_console_range = Some((user_address, length));
             self.console_result
@@ -151,10 +147,8 @@ mod tests {
     #[test]
     fn denied_console_write_never_enters_the_service() {
         let mut services = MockServices::new(exhi_task::CapabilitySet::empty());
-        let request = SyscallRequest::new(
-            SyscallNumber::ConsoleWrite as u64,
-            [0x2000, 12, 0, 0, 0, 0],
-        );
+        let request =
+            SyscallRequest::new(SyscallNumber::ConsoleWrite as u64, [0x2000, 12, 0, 0, 0, 0]);
 
         assert_eq!(
             dispatch(request, &mut services),
@@ -195,7 +189,10 @@ mod tests {
             [0x0000_0002_0000_0080, 12, 0x33, 0x44, 0x55, 0x66],
         );
 
-        assert_eq!(dispatch(request, &mut services), DispatchOutcome::Return(12));
+        assert_eq!(
+            dispatch(request, &mut services),
+            DispatchOutcome::Return(12)
+        );
         assert_eq!(services.console_calls, 1);
         assert_eq!(
             services.last_console_range,

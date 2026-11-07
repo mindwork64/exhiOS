@@ -1719,7 +1719,8 @@ impl SyscallServices for UserTaskSyscallServices {
             return Err(SyscallError::Io);
         }
         // SAFETY: This method runs on the dedicated kernel stack with IF clear.
-        let decision = unsafe { (*self.scheduler).yield_current() }.map_err(|_| SyscallError::Io)?;
+        let decision =
+            unsafe { (*self.scheduler).yield_current() }.map_err(|_| SyscallError::Io)?;
         unsafe {
             let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.yields);
             ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
@@ -1741,7 +1742,9 @@ impl SyscallServices for UserTaskSyscallServices {
         } else {
             let reaper = TaskId::from_raw(3);
             unsafe {
-                (*self.scheduler).wake(reaper).map_err(|_| SyscallError::Io)?;
+                (*self.scheduler)
+                    .wake(reaper)
+                    .map_err(|_| SyscallError::Io)?;
                 (*self.scheduler)
                     .schedule_from_idle()
                     .map_err(|_| SyscallError::Io)?
