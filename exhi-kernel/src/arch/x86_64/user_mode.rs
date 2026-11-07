@@ -390,6 +390,7 @@ pub fn handle_user_exception(
         Ring3TestMode::Breakpoint => b"P5.1: exception returned from user mode; vector=",
         Ring3TestMode::SupervisorFault => b"P5.2: exception returned from user mode; vector=",
         Ring3TestMode::Syscall => b"P5.3: exception returned from user mode after SYSCALL; vector=",
+        Ring3TestMode::PointerValidation => b"P5.4: unexpected exception during pointer validation; vector=",
     });
     serial::COM1.write_hex(vector);
     serial::COM1.write(b" CPL=");
@@ -505,6 +506,7 @@ pub fn handle_user_exception(
         Ring3TestMode::Breakpoint => b"P5.1: saved user state RIP/RSP/SS verified.\r\n",
         Ring3TestMode::SupervisorFault => b"P5.2: user supervisor-access fault RIP/RSP/SS verified.\r\n",
         Ring3TestMode::Syscall => b"P5.3: syscall returned to CPL3; return value and user frame verified.\r\n",
+        Ring3TestMode::PointerValidation => b"P5.4: pointer-range verification completed.\r\n",
     });
     serial::COM1.write(b"Ring 3: CR2=0x");
     serial::COM1.write_hex(fault_address);
