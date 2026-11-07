@@ -1721,6 +1721,14 @@ exhi_user_task_syscall_entry:
     mov qword ptr [rip + USER_TASK_SYSCALL_USER_RSP], rsp
     mov rsp, qword ptr [rip + USER_TASK_SYSCALL_KERNEL_STACK_TOP]
 
+    # First lay down the five-word privilege-return tail. The subsequent
+    # GPR pushes place r15..rax before this tail, matching InterruptContext.
+    push 0x2B
+    push qword ptr [rip + USER_TASK_SYSCALL_USER_RSP]
+    push r11
+    push 0x33
+    push rcx
+
     push rax
     push rcx
     push rdx
@@ -1736,13 +1744,6 @@ exhi_user_task_syscall_entry:
     push r13
     push r14
     push r15
-
-    # Normalize the SYSCALL state to the same 20-qword frame used by IRETQ.
-    push 0x2B
-    push qword ptr [rip + USER_TASK_SYSCALL_USER_RSP]
-    push r11
-    push 0x33
-    push rcx
 
     mov rax, qword ptr [rip + USER_TASK_SYSCALL_FX_STATE]
     test rax, rax
