@@ -1092,18 +1092,8 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
         );
     }
 
-    let frame_a = prepare_user_task_initial_frame(
-        0,
-        USER_TASK_KERNEL_STACK_TOPS[0],
-        USER_TASK_FX_STATES[0].0.as_ptr() as usize,
-        USER_TASK_SPACE_A_ROOT(),
-    );
-    let frame_b = prepare_user_task_initial_frame(
-        1,
-        kernel_tops[1],
-        ptr::addr_of!(USER_TASK_FX_STATES[1]) as usize,
-        root_b,
-    );
+    let frame_a = prepare_user_task_initial_frame(0, kernel_tops[0]);
+    let frame_b = prepare_user_task_initial_frame(1, kernel_tops[1]);
     let Some(frame_a) = frame_a else {
         user_task_setup_failed(b"P5.6: user task A initial context failed.\r\n");
     };
@@ -1151,6 +1141,7 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
     if id_a.get() != 1
         || id_b.get() != 2
         || id_kernel.get() != 3
+        || unsafe { (*scheduler).block_ready(id_kernel).is_err() }
         || unsafe { (*scheduler).start() } != Ok(id_a)
     {
         user_task_setup_failed(b"P5.6: scheduler did not select user task A first.\r\n");
@@ -1312,8 +1303,6 @@ fn build_user_task_program(
 fn prepare_user_task_initial_frame(
     index: usize,
     kernel_stack_top: u64,
-    _fx_state: usize,
-    _root: u64,
 ) -> Option<usize> {
     if index >= 2 {
         return None;
@@ -1513,10 +1502,24 @@ extern "sysv64" fn exhi_user_task_syscall_handler(
             }
         }
         2 => {
-            unsafe {
+            let next = unsafe {
                 let count = ptr::addr_of_mut!(USER_TASK_EXIT_COUNT);
                 ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
                 (*scheduler).finish_current().ok().flatten()
+            };
+            if let Some(next) = next {
+                Some(next)
+            } else {
+                // Both user tasks are now Finished. Wake the supervisor reaper
+                // from the scheduler's explicit idle state; it runs on its own
+                // kernel stack and CR3 before reclaiming either address space.
+                let reaper = TaskId::from_raw(3);
+                unsafe {
+                    if (*scheduler).wake(reaper).is_err() {
+                        user_task_runtime_failed(b"P5.6: could not wake the kernel reaper.\r\n");
+                    }
+                    (*scheduler).schedule_from_idle().ok().flatten()
+                }
             }
         }
         _ => None,
