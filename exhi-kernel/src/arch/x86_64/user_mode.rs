@@ -1695,6 +1695,7 @@ fn user_task_select_context(id: TaskId) -> usize {
     frame
 }
 
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
 struct UserTaskSyscallServices {
     scheduler: *mut Scheduler<3>,
     task_index: usize,
