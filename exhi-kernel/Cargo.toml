@@ -17,6 +17,7 @@ timer-preemption-smoke-test = ["qemu-debug-exit-smoke-test"]
 preemptive-task-exit-smoke-test = ["timer-preemption-smoke-test"]
 idle-wakeup-smoke-test = ["timer-preemption-smoke-test"]
 ring3-smoke-test = ["timer-preemption-smoke-test"]
+ring3-supervisor-fault-smoke-test = ["ring3-smoke-test"]
 
 [[bin]]
 name = "exhi-kernel"
