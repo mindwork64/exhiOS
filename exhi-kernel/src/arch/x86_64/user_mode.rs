@@ -8,6 +8,8 @@ use core::arch::{asm, global_asm};
 use core::mem::size_of;
 use core::ptr;
 
+use exhi_task::{Scheduler, TaskContext, TaskId, UserTaskMetadata};
+
 use super::address_space::{self, AddressSpace, UserPageFlags};
 use super::{gdt, serial, task, vmm};
 use crate::memory;
@@ -46,6 +48,51 @@ static mut RING3_FX_STATE: usize = 0;
 static mut RING3_SYSCALL_CALLS: u64 = 0;
 static mut RING3_SYSCALL_VALID: u64 = 0;
 
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+static mut USER_TASK_SCHEDULER: Scheduler<3> = Scheduler::new();
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+static mut USER_TASK_KERNEL_STACKS: [KernelStack; 3] = [
+    KernelStack([0; STACK_TOTAL_SIZE]),
+    KernelStack([0; STACK_TOTAL_SIZE]),
+    KernelStack([0; STACK_TOTAL_SIZE]),
+];
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+static mut USER_TASK_KERNEL_STACK_TOPS: [u64; 3] = [0; 3];
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+static mut USER_TASK_SPACE_A: Option<AddressSpace> = None;
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+static mut USER_TASK_SPACE_B: Option<AddressSpace> = None;
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+static mut USER_TASK_CODE_FRAMES: [u64; 2] = [0; 2];
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+static mut USER_TASK_STACK_FRAMES: [u64; 2] = [0; 2];
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+#[repr(C, align(16))]
+struct UserTaskFxState([u8; 512]);
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+static mut USER_TASK_FX_STATES: [UserTaskFxState; 3] = [
+    UserTaskFxState([0; 512]),
+    UserTaskFxState([0; 512]),
+    UserTaskFxState([0; 512]),
+];
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+#[no_mangle]
+static mut USER_TASK_SYSCALL_USER_RSP: u64 = 0;
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+#[no_mangle]
+static mut USER_TASK_SYSCALL_KERNEL_STACK_TOP: u64 = 0;
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+#[no_mangle]
+static mut USER_TASK_SYSCALL_FX_STATE: usize = 0;
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+static mut USER_TASK_SYSCALL_COUNT: u64 = 0;
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+static mut USER_TASK_YIELD_COUNT: u64 = 0;
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+static mut USER_TASK_EXIT_COUNT: u64 = 0;
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+static mut USER_TASK_SWITCH_COUNT: u64 = 0;
+
 #[repr(C, align(4096))]
 struct KernelStack([u8; STACK_TOTAL_SIZE]);
 
@@ -75,6 +122,18 @@ struct UserEntryFrame {
 
 const _: [(); 20 * size_of::<u64>()] = [(); size_of::<UserEntryFrame>()];
 
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+#[repr(C, align(16))]
+struct UserTaskInterruptFrame {
+    r15: u64, r14: u64, r13: u64, r12: u64,
+    r11: u64, r10: u64, r9: u64, r8: u64,
+    rdi: u64, rsi: u64, rbp: u64, rbx: u64,
+    rdx: u64, rcx: u64, rax: u64,
+    rip: u64, cs: u64, rflags: u64, rsp: u64, ss: u64,
+}
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+const _: [(); 20 * size_of::<u64>()] = [(); size_of::<UserTaskInterruptFrame>()];
+
 static mut RING3_KERNEL_STACK: KernelStack = KernelStack([0; STACK_TOTAL_SIZE]);
 #[no_mangle]
 static mut RING3_KERNEL_STACK_TOP: u64 = 0;
@@ -85,6 +144,12 @@ static mut RING3_STACK_FRAME: u64 = 0;
 unsafe extern "sysv64" {
     fn exhi_interrupt_context_start(initial_rsp: usize, fx_state: usize) -> !;
     fn exhi_syscall_entry();
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+unsafe extern "sysv64" {
+    fn exhi_user_task_syscall_entry();
+    fn exhi_user_task_kernel_entry() -> !;
 }
 
 pub fn ring3_smoke_test() -> ! {
