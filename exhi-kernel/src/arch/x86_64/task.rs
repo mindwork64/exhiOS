@@ -419,34 +419,34 @@ pub fn timer_preemption_smoke_test() -> ! {
 
     serial::COM1.write(b"P4.4: preparing hardware-interrupt task contexts.\r\n");
     if !initialize_fx_contexts() {
-        task_fatal(b"P4.4: CPU FXSR/SSE state initialization failed.\r\n");
+        preemption_setup_failed(b"P4.4: CPU FXSR/SSE state initialization failed.\r\n");
     }
     let Some((a_rsp, a_top)) = (unsafe { prepare_preemption_stack(0, exhi_preemptive_task_a) }) else {
-        task_fatal(b"P4.4: task A stack setup failed.\r\n");
+        preemption_setup_failed(b"P4.4: task A stack setup failed.\r\n");
     };
     let Some((b_rsp, _)) = (unsafe { prepare_preemption_stack(1, exhi_preemptive_task_b) }) else {
-        task_fatal(b"P4.4: task B stack setup failed.\r\n");
+        preemption_setup_failed(b"P4.4: task B stack setup failed.\r\n");
     };
 
     let scheduler = ptr::addr_of_mut!(SCHEDULER);
     let first = unsafe {
         (*scheduler).spawn("preempt-A", TaskContext::new(a_rsp))
-            .unwrap_or_else(|_| task_fatal(b"P4.4: task A registration failed.\r\n"))
+            .unwrap_or_else(|_| preemption_setup_failed(b"P4.4: task A registration failed.\r\n"))
     };
     let second = unsafe {
         (*scheduler).spawn("preempt-B", TaskContext::new(b_rsp))
-            .unwrap_or_else(|_| task_fatal(b"P4.4: task B registration failed.\r\n"))
+            .unwrap_or_else(|_| preemption_setup_failed(b"P4.4: task B registration failed.\r\n"))
     };
     if first.get() != 1 || second.get() != 2 || unsafe { (*scheduler).start() } != Ok(first)
         || !gdt::set_rsp0(a_top)
     {
-        task_fatal(b"P4.4: scheduler initialization failed.\r\n");
+        preemption_setup_failed(b"P4.4: scheduler initialization failed.\r\n");
     }
 
     let timer_status = timer::initialize();
     if !timer_status.irq0_unmasked {
         let _ = timer::mask_irq0();
-        task_fatal(b"P4.4: PIT IRQ0 could not be enabled.\r\n");
+        preemption_setup_failed(b"P4.4: PIT IRQ0 could not be enabled.\r\n");
     }
     unsafe {
         ptr::write_volatile(ptr::addr_of_mut!(PREEMPTION_TASK_A_ID), Some(first));
@@ -467,6 +467,23 @@ pub fn timer_preemption_smoke_test() -> ! {
 }
 
 #[cfg(feature = "timer-preemption-smoke-test")]
+fn preemption_setup_failed(message: &'static [u8]) -> ! {
+    serial::COM1.write(message);
+    serial::COM1.write(b"QEMU debug-exit: reporting preemption setup failure.\r\n");
+    unsafe {
+        asm!(
+            "out dx, eax",
+            in("dx") 0xF4u16,
+            in("eax") 0x11u32,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    loop {
+        unsafe { asm!("cli", "hlt", options(nomem, nostack)); }
+    }
+}
+
+#[cfg(feature = "timer-preemption-smoke-test")]
 fn initialize_fx_contexts() -> bool {
     let features = unsafe { core::arch::x86_64::__cpuid(1) };
     const REQUIRED: u32 = (1 << 24) | (1 << 25) | (1 << 26); // FXSR, SSE, SSE2
@@ -481,7 +498,24 @@ fn initialize_fx_contexts() -> bool {
     let mut cr4: u64;
     unsafe { asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags)); }
     if cr4 & (1 << 18) != 0 {
-        return false; // XSAVE/AVX state is outside this first preemption slice.
+        // OSXSAVE may already be enabled by firmware. FXSAVE is still a
+        // complete task-state format when XCR0 enables only x87 + SSE.
+        // Reject any extended state component that this slice cannot save.
+        let eax: u32;
+        let edx: u32;
+        unsafe {
+            asm!(
+                "xgetbv",
+                in("ecx") 0u32,
+                out("eax") eax,
+                out("edx") edx,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+        let xcr0 = (u64::from(edx) << 32) | u64::from(eax);
+        if xcr0 & 0x3 != 0x3 || xcr0 & !0x3 != 0 {
+            return false;
+        }
     }
     cr4 |= (1 << 9) | (1 << 10); // OSFXSR | OSXMMEXCPT
     unsafe {
