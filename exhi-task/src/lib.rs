@@ -483,10 +483,10 @@ mod tests {
         assert_eq!(scheduler.blocked_count(), 1);
         assert_eq!(scheduler.enter_idle(), Ok(()));
         assert!(scheduler.is_idle());
-        assert_eq!(scheduler.wake(first), Err(SchedulerError::InvalidStateTransition));
-        assert_eq!(scheduler.wake(second), Ok(()));
-        assert_eq!(scheduler.schedule_from_idle(), Ok(Some(second)));
-        assert_eq!(scheduler.current().map(Task::id), Some(second));
+        assert_eq!(scheduler.wake(second), Err(SchedulerError::InvalidStateTransition));
+        assert_eq!(scheduler.wake(first), Ok(()));
+        assert_eq!(scheduler.schedule_from_idle(), Ok(Some(first)));
+        assert_eq!(scheduler.current().map(Task::id), Some(first));
     }
 
     #[test]
