@@ -858,6 +858,8 @@ fn finish(passed: bool) -> ! {
         (2, false) => b"P5.2: supervisor-only mapping fault test failed.\r\n",
         (3, true) => b"P5.3: syscall entry/return smoke test passed.\r\n",
         (3, false) => b"P5.3: syscall entry/return smoke test failed.\r\n",
+        (4, true) => b"P5.4: user-pointer range validation smoke test passed.\r\n",
+        (4, false) => b"P5.4: user-pointer range validation smoke test failed.\r\n",
         (_, true) => b"Ring 3 runtime smoke test passed.\r\n",
         (_, false) => b"Ring 3 runtime smoke test failed.\r\n",
     };
