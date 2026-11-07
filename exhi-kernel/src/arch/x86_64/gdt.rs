@@ -6,20 +6,31 @@ use core::sync::atomic::{compiler_fence, Ordering};
 pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
 pub const KERNEL_DATA_SELECTOR: u16 = 0x10;
 pub const TSS_SELECTOR: u16 = 0x18;
+pub const USER_DATA_SELECTOR: u16 = 0x2B;
+pub const USER_CODE_SELECTOR: u16 = 0x33;
 
 const GDT_NULL: u64 = 0;
 const GDT_KERNEL_CODE: u64 = 0x00AF_9A00_0000_FFFF;
 const GDT_KERNEL_DATA: u64 = 0x00CF_9200_0000_FFFF;
+const GDT_USER_DATA: u64 = 0x00CF_F200_0000_FFFF;
+const GDT_USER_CODE: u64 = 0x00AF_FA00_0000_FFFF;
 const TSS_DESCRIPTOR_TYPE: u64 = 0x89;
 const DOUBLE_FAULT_IST_STACK_SIZE: usize = 16 * 1024;
 const PAGE_SIZE: u64 = 4096;
 const PHYSICAL_LIMIT: u64 = 0x1_0000_0000;
 
 #[repr(C, align(16))]
-struct GlobalDescriptorTable([u64; 5]);
+struct GlobalDescriptorTable([u64; 7]);
 
-static mut GDT: GlobalDescriptorTable =
-    GlobalDescriptorTable([GDT_NULL, GDT_KERNEL_CODE, GDT_KERNEL_DATA, 0, 0]);
+static mut GDT: GlobalDescriptorTable = GlobalDescriptorTable([
+    GDT_NULL,
+    GDT_KERNEL_CODE,
+    GDT_KERNEL_DATA,
+    0,
+    0,
+    GDT_USER_DATA,
+    GDT_USER_CODE,
+]);
 
 #[repr(C, packed)]
 struct TaskStateSegment {
