@@ -1528,8 +1528,7 @@ fn build_user_task_program(
     code[position] = 0xCC; // Must be unreachable after SYS_EXIT.
     position += 1;
 
-    code[CONSOLE_MESSAGE_OFFSET..CONSOLE_MESSAGE_OFFSET + message.len()]
-        .copy_from_slice(message);
+    code[CONSOLE_MESSAGE_OFFSET..CONSOLE_MESSAGE_OFFSET + message.len()].copy_from_slice(message);
     let code_length = core::cmp::max(position, CONSOLE_MESSAGE_OFFSET + message.len());
     (code, code_length)
 }
@@ -1960,7 +1959,9 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     } else {
         b"no "
     });
-    serial::COM1.write(b"\r\nP5.7: ConsoleWrite A=allowed B=denied user-copy=validated unauthorized-output=no\r\n");
+    serial::COM1.write(
+        b"\r\nP5.7: ConsoleWrite A=allowed B=denied user-copy=validated unauthorized-output=no\r\n",
+    );
     serial::COM1.write(b"P5.6: A markers=");
     serial::COM1.write(if a_markers_ok { b"both" } else { b"bad " });
     serial::COM1.write(b" B markers=");

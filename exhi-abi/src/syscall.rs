@@ -79,10 +79,7 @@ mod tests {
         assert_eq!(SyscallNumber::ConsoleWrite as u64, 3);
         assert_eq!(SyscallNumber::try_from(1), Ok(SyscallNumber::Yield));
         assert_eq!(SyscallNumber::try_from(2), Ok(SyscallNumber::Exit));
-        assert_eq!(
-            SyscallNumber::try_from(3),
-            Ok(SyscallNumber::ConsoleWrite)
-        );
+        assert_eq!(SyscallNumber::try_from(3), Ok(SyscallNumber::ConsoleWrite));
         assert_eq!(
             SyscallNumber::try_from(0xFFFF),
             Err(UnknownSyscallNumber(0xFFFF))
@@ -109,10 +106,7 @@ mod tests {
             SyscallError::InvalidArgument.as_return_value(),
             u64::MAX - 1
         );
-        assert_eq!(
-            SyscallError::NotImplemented.as_return_value(),
-            u64::MAX - 2
-        );
+        assert_eq!(SyscallError::NotImplemented.as_return_value(), u64::MAX - 2);
         assert_eq!(SyscallError::Io.as_return_value(), u64::MAX - 3);
     }
 }

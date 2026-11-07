@@ -110,6 +110,5 @@ mod tests {
     }
 }
 
-
 pub mod syscall;
 pub use syscall::{SyscallError, SyscallNumber, SyscallRequest, UnknownSyscallNumber};
