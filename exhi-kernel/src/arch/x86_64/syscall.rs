@@ -6,6 +6,10 @@
 //! ready to handle it.
 
 use core::arch::{asm, x86_64::__cpuid};
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+use core::arch::global_asm;
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+use core::mem::size_of;
 
 use super::gdt::{
     KERNEL_CODE_SELECTOR, KERNEL_DATA_SELECTOR, USER_CODE_SELECTOR, USER_DATA_SELECTOR,
@@ -132,3 +136,126 @@ unsafe fn write_msr(msr: u32, value: u64) {
         );
     }
 }
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+#[no_mangle]
+pub(crate) static mut USER_TASK_SYSCALL_USER_RSP: u64 = 0;
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+#[no_mangle]
+pub(crate) static mut USER_TASK_SYSCALL_KERNEL_STACK_TOP: u64 = 0;
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+#[no_mangle]
+pub(crate) static mut USER_TASK_SYSCALL_FX_STATE: usize = 0;
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+#[repr(C, align(16))]
+pub(crate) struct UserTaskSyscallFrame {
+    pub r15: u64,
+    pub r14: u64,
+    pub r13: u64,
+    pub r12: u64,
+    pub r11: u64,
+    pub r10: u64,
+    pub r9: u64,
+    pub r8: u64,
+    pub rdi: u64,
+    pub rsi: u64,
+    pub rbp: u64,
+    pub rbx: u64,
+    pub rdx: u64,
+    pub rcx: u64,
+    pub rax: u64,
+    pub rip: u64,
+    pub cs: u64,
+    pub rflags: u64,
+    pub rsp: u64,
+    pub ss: u64,
+}
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+const _: [(); 20 * core::mem::size_of::<u64>()] =
+    [(); core::mem::size_of::<UserTaskSyscallFrame>()];
+
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+global_asm!(
+    r#"
+    .section .text
+
+    .section .text
+    .global exhi_user_task_syscall_entry
+    .type exhi_user_task_syscall_entry, @function
+exhi_user_task_syscall_entry:
+    # SYSCALL leaves RSP on the untrusted user stack. Save it before moving
+    # to the active task's dedicated kernel stack.
+    mov qword ptr [rip + USER_TASK_SYSCALL_USER_RSP], rsp
+    mov rsp, qword ptr [rip + USER_TASK_SYSCALL_KERNEL_STACK_TOP]
+
+    # First lay down the five-word privilege-return tail. The subsequent
+    # GPR pushes place r15..rax before this tail, matching InterruptContext.
+    push 0x2B
+    push qword ptr [rip + USER_TASK_SYSCALL_USER_RSP]
+    push r11
+    push 0x33
+    push rcx
+
+    push rax
+    push rcx
+    push rdx
+    push rbx
+    push rbp
+    push rsi
+    push rdi
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+
+    mov rax, qword ptr [rip + USER_TASK_SYSCALL_FX_STATE]
+    test rax, rax
+    jz .Luser_task_syscall_fatal
+    fxsave64 [rax]
+
+    mov rdi, rsp
+    and rsp, -16
+    cld
+    call exhi_user_task_syscall_handler
+    test rax, rax
+    jz .Luser_task_syscall_fatal
+
+    # The scheduler handler selected the next task and updated CR3, TSS.RSP0,
+    # kernel-stack top and FX-state pointer before returning its saved frame.
+    mov rcx, qword ptr [rip + USER_TASK_SYSCALL_FX_STATE]
+    fxrstor64 [rcx]
+    mov rsp, rax
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rdi
+    pop rsi
+    pop rbp
+    pop rbx
+    pop rdx
+    pop rcx
+    pop rax
+    iretq
+
+.Luser_task_syscall_fatal:
+    mov dx, 0xF4
+    mov eax, 0x11
+    out dx, eax
+    cli
+.Luser_task_syscall_halt:
+    hlt
+    jmp .Luser_task_syscall_halt
+    "#
+);
