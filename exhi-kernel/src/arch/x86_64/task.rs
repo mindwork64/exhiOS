@@ -608,7 +608,7 @@ unsafe extern "sysv64" fn idle_wakeup_task_b() -> ! {
     }
     TASK_B_LOCAL_ADDRESS.store(pointer as usize, Ordering::Relaxed);
     TASK_B_PROGRESS.store(1, Ordering::Relaxed);
-    sleep_current_ticks(5);
+    sleep_current_ticks(12);
     let observed: u64;
     unsafe {
         asm!(
@@ -780,9 +780,9 @@ fn finish_idle_wakeup_test(target_reached: bool) -> ! {
             && ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_XMM_OK)) == 1
     };
     let passed = target_reached
-        && elapsed >= 10
+        && elapsed >= 12
         && idle_entries >= 2
-        && idle_ticks >= 2
+        && idle_ticks >= 8
         && wake_count >= 2
         && a_runtime >= 1
         && b_runtime >= 1
@@ -1040,6 +1040,10 @@ extern "sysv64" fn exhi_preemptive_task_finished() -> ! {
                 if unsafe { (*scheduler).is_idle() } {
                     switch_to_idle_context();
                 }
+                if !gdt::set_rsp0(0) {
+                    preemption_setup_failed(b"P4.6: failed to clear TSS.RSP0 after final task.\r\n");
+                }
+                unsafe { ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE), 0); }
                 finish_idle_wakeup_test(true);
             }
             #[cfg(not(feature = "idle-wakeup-smoke-test"))]
