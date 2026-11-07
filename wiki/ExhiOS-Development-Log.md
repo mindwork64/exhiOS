@@ -443,3 +443,20 @@ Implementation:
 - Scheduler state: current=none, Finished=2; TSS.RSP0 cleared=yes; IRQ0 masked=yes. The P4.5 pass marker appeared and QEMU debug-exit was confirmed with status 33.
 - P4.5 is now accepted both locally and in self-hosted CI [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555). Static task stacks are still intentionally unreclaimed.
 - Next stage: P4.6 idle-context dispatch and timer-driven wake-up of blocked tasks, with a separate interrupt-format idle frame and no mixing with cooperative P4.2 contexts.
+
+## 2026-11-07 — P4.6 idle context and blocked-task wake-up accepted
+
+- Added explicit idle state to the fixed-capacity scheduler and timed-block API with wrap-safe PIT deadline wake-up. Host tests cover idle transition, deadline handling, tick-counter wraparound and invalid state transitions.
+- Added a dedicated guarded idle stack and 20-qword IRETQ frame, separate from cooperative saved-RSP contexts. DPL0 `INT 0x30` saves and blocks the current task; idle executes `sti; hlt`.
+- IRQ0 now handles idle-frame save, due-task wake-up and dispatch through the selected task's saved interrupt frame, restoring task FXSAVE and TSS.RSP0. Returning tasks re-enter idle while blocked peers remain.
+- P4.6 QEMU runtime test runs two tasks with staggered wake deadlines and verifies idle entry/ticks, wake count, local stack data, XMM state, both Finished states, empty runnable/blocked sets, TSS cleanup, IRQ0 mask and QEMU debug-exit.
+- Self-hosted CI [run 42337327289](https://github.com/mindwork64/exhiOS/actions/runs/42337327289) passed the build job and the complete QEMU runtime job, including all prior scheduler regressions and the P4.6 runtime test. Per user instruction, this runner result is accepted as local-equivalent evidence.
+- P4.6 is closed. Static task stack reclamation remains out of scope.
+
+## 2026-11-07 — P5.1 Ring 3 entry implementation started
+
+- Added GDT DPL3 user descriptors while retaining kernel code/data and TSS selectors; user selectors are 0x33 (code) and 0x2B (data).
+- Added `ring3-smoke-test` with an address space containing one RX user code page and one RW+NX user stack page, separated by an unmapped guard page. A dedicated guarded kernel stack is installed in TSS.RSP0.
+- Constructed a 20-qword IRETQ frame to enter CPL3, where a one-byte INT3 instruction should raise #BP. The CPL3 exception verifier checks saved user CS/RIP/RFLAGS/RSP/SS and the effective user page permissions; cleanup restores kernel CR3 and reclaims the private address space and user frames.
+- Added `EXHIOS_RING3_TEST=1` build/QEMU selectors and dedicated build/runtime CI steps.
+- P5.1 remains implementation-in-progress until the current-HEAD self-hosted QEMU runtime job passes.

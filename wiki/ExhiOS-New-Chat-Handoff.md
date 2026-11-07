@@ -47,12 +47,14 @@
 - P4.2 implementation commits: [651d95a](https://github.com/mindwork64/exhiOS/commit/651d95a319abc2d545734e492c61e5751f93aa42) adds the x86-64 stack/context-switch smoke implementation; [8e479b4](https://github.com/mindwork64/exhiOS/commit/8e479b4329dc02be610482495d317c61386e899d) fixes task exit control flow; [498116f](https://github.com/mindwork64/exhiOS/commit/498116ffcfa2114d69a2f62927604635038ae3f5) restores executable mode on both shell scripts.
 - Self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) and the user's local Linux Mint/QEMU log (2026-11-06) confirm P4.2: A/B alternation, distinct stack-local addresses, progress=3 for both, Finished=2, TSS.RSP0 restored, boot stack resumed, pass marker and debug-exit 33. P4.2 is closed.
 
-## Следующие действия
-1. P4.1–P4.5 закрыты локально и в self-hosted CI. Последний пользовательский P4.5 Linux Mint/QEMU serial log (2026-11-07): elapsed=0x18, switches=0x10, runtime A/B=0x8/0x10, обе задачи Finished, XMM preserved, stacks distinct, current=none/Finished=2, TSS.RSP0 cleared, IRQ0 masked, pass marker и debug-exit 33.
-2. P4.5 code commits: [dd10f58](https://github.com/mindwork64/exhiOS/commit/dd10f5882ddb3085595b4d6eef45474b0649e56d) и [377e73c](https://github.com/mindwork64/exhiOS/commit/377e73c20e2928116d04cd3141ddbc36db9df89a); self-hosted CI [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555). P4.5 локально принят.
-3. Следующий этап P4.6 — idle context + wake-up blocked tasks. Сначала host-tested idle scheduler state, затем отдельный 20-qword idle interrupt frame/guarded stack, kernel scheduling interrupt для block, PIT-driven wake-up и dispatch из idle. Не смешивать cooperative RSP context с interrupt IRETQ frame.
-4. P4.6 runtime должен доказать: обе задачи блокируются, scheduler входит в idle, PIT IRQ0 будит каждую задачу, обе возобновляются с сохранённых контекстов и завершаются; P4.4/P4.5 остаются отдельными регрессиями.
-5. Пока не освобождать task stacks: reclamation требует отдельного доказательства, что стек уже не исполняется и не будет восстановлен. Ring 3/syscalls остаются в P5.
+## Последняя подтверждённая точка — P4.1–P4.6 закрыты по self-hosted CI/QEMU
+
+1. P4.1–P4.6 accepted. P4.6 self-hosted CI [run 42337327289](https://github.com/mindwork64/exhiOS/actions/runs/42337327289) passed both build and QEMU runtime jobs. The runtime job includes standard boot, PIT/registry, P4.2, P4.3, P4.4, P4.5 and the dedicated idle-context/timed-wakeup test.
+2. Пользователь явно разрешил считать, что self-hosted GitHub Actions runner исполняется на той же системе, что и его личный Linux Mint/QEMU. Успешный QEMU runtime на этом runner является local-equivalent acceptance; не ждать отдельного ручного serial log для таких этапов.
+3. P4.6 implementation: explicit scheduler idle state; guarded idle stack + 20-qword interrupt frame; DPL0 `INT 0x30` full-frame block path; `sti; hlt` idle loop; PIT deadline wake-up from idle; dispatch to selected task with restored FXSAVE and TSS.RSP0. Task stacks remain static and are not freed.
+4. P5.1 Ring 3 entry and exception-return implementation is in `exhi-kernel/src/arch/x86_64/user_mode.rs`; dedicated build and QEMU mode `EXHIOS_RING3_TEST=1` are wired into self-hosted CI. It creates a private address space with RX user code and RW+NX user stack, enters CPL3 via IRETQ, expects #BP/INT3 to arrive on TSS.RSP0, verifies saved user CS/RIP/RSP/SS and page permissions, then restores kernel CR3 and reclaims private page tables/user frames. Do not close P5.1 until current-HEAD CI build + QEMU runtime both pass.
+5. P5.2 next after P5.1: explicit CPL3 attempt to access a supervisor-only kernel mapping and verify #PF U/S error-code bits and CR2. Syscall entry/return and user-pointer validation follow as separate steps.
+6. Do not free static task stacks yet. Safe reclamation requires a dedicated proof that a stack is no longer executing and cannot be restored.
 ## Правила работы
 - Русский язык общения.
 - Конкретные порции готового кода, коммиты в main, CI, затем runtime-тест.

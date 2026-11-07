@@ -204,14 +204,22 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] Локальный Linux Mint/QEMU (2026-11-07): elapsed=0x18, switches=0x10, runtime A/B=0x8/0x10, A/B Finished, XMM preserved, stacks distinct, current=none/Finished=2, TSS.RSP0 cleared, IRQ0 masked, pass marker и debug-exit 33.
 
 ### P4.6 — Idle context and blocked-task wake-up
-**Следующий этап; реализация ещё не начата.**
-- [ ] Явное idle-состояние scheduler при отсутствии Ready tasks и наличии Blocked tasks; idle не является фиктивной пользовательской Task.
-- [ ] Отдельный guarded idle stack + 20-qword long-mode interrupt frame. Cooperative P4.2 RSP contexts не смешивать с IRETQ contexts.
-- [ ] Dedicated kernel scheduling interrupt для блокировки current task и переключения на Ready peer или idle context.
-- [ ] Idle loop `sti; hlt`; PIT IRQ0 сохраняет idle frame, будит Blocked task и dispatches её сохранённый interrupt context с обновлением TSS.RSP0 и FXSAVE.
-- [ ] Возврат задачи при наличии только Blocked peers переключает в idle, а не завершает runtime.
-- [ ] Host tests для idle entry/exit и QEMU runtime test: обе задачи блокируются, CPU входит в idle, timer будит каждую задачу, обе продолжают с сохранённого контекста и завершаются.
-- [ ] Сохранить P4.4 и P4.5 отдельными регрессионными режимами. Ring 0, single CPU, PIT/legacy PIC; освобождение стеков — отдельный этап.
+**Завершено; self-hosted CI build + QEMU runtime приняты 2026-11-07.** Пользователь отдельно разрешил считать этот self-hosted runner эквивалентом локальной Linux Mint/QEMU системы.
+- [x] Явное idle-состояние scheduler при отсутствии Ready tasks и наличии Blocked tasks; idle не является фиктивной пользовательской Task.
+- [x] Отдельный guarded idle stack + 20-qword long-mode interrupt frame. Cooperative P4.2 RSP contexts отделены от IRETQ contexts.
+- [x] Dedicated DPL0 scheduler interrupt `INT 0x30` блокирует Running task и сохраняет полный interrupt frame.
+- [x] Idle loop `sti; hlt`; PIT IRQ0 сохраняет idle frame, выполняет wrap-safe deadline wake-up и dispatches Ready task с её interrupt frame, FXSAVE и обновлённым TSS.RSP0.
+- [x] Завершение задачи при наличии только Blocked peers переключает в idle. Финальная задача очищает TSS.RSP0 и active FX-state pointer.
+- [x] Host tests для idle entry/exit, timed deadline, u64 tick wraparound и недопустимых переходов.
+- [x] Self-hosted CI [run 42337327289](https://github.com/mindwork64/exhiOS/actions/runs/42337327289): build и полный QEMU runtime suite прошли, включая отдельный `EXHIOS_IDLE_WAKEUP_TEST=1` runtime test и P4.4/P4.5 regressions.
+- [x] Runtime проверяет две задачи с разными wake deadlines, idle entries/ticks, обе Finished, сохранность stack-local/XMM state, current=none, Ready=0, Blocked=0, Finished=2, TSS.RSP0 cleared, IRQ0 masked и debug-exit 33.
+- [x] По инструкции пользователя успешный self-hosted QEMU runtime считается эквивалентным локальной системе. P4.6 принят без отдельного ручного прогона.
+- [x] Scope: Ring 0, single CPU, PIT/legacy PIC, static guarded stacks. Освобождение task stacks — отдельный этап.
+
+### P5.1 — Ring 3 entry and exception return (implementation in progress)
+- [ ] GDT DPL3 descriptors, private address space, RX code + RW/NX user stack and TSS.RSP0 kernel stack are implemented; the CPL3 INT3 exception verifier and cleanup path are wired.
+- [ ] Dedicated build and QEMU runtime must prove CS=0x33, SS=0x2B, saved user RIP/RSP and correct private mapping flags; current-HEAD self-hosted runtime acceptance is pending.
+- [ ] P5.2 supervisor/user hardware fault isolation, syscalls and user-pointer validation remain separate work.
 
 ## P5 — User-mode isolation
 - [ ] Ring 3, per-process address spaces, syscalls, user-pointer validation, capabilities.

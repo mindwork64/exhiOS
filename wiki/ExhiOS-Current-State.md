@@ -3,7 +3,7 @@
 Снимок: **2026-11-07**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: P3.5 и P4.1–P4.5 закрыты локально + self-hosted CI. P4.5 принят пользователем на Linux Mint/QEMU 2026-11-07: elapsed=0x18, switches=0x10, runtime A/B=0x8/0x10, обе задачи Finished, XMM сохранены, стеки различаются, scheduler current=none/Finished=2, TSS.RSP0 очищен, IRQ0 замаскирован, pass marker и debug-exit 33. Код P4.5: [dd10f58](https://github.com/mindwork64/exhiOS/commit/dd10f5882ddb3085595b4d6eef45474b0649e56d), [377e73c](https://github.com/mindwork64/exhiOS/commit/377e73c20e2928116d04cd3141ddbc36db9df89a). Следующий этап — P4.6: idle context и пробуждение заблокированных задач.
+Кодовый checkpoint: P3.5 и P4.1–P4.6 закрыты по self-hosted CI/build + QEMU runtime. P4.5 дополнительно принят по пользовательскому Linux Mint/QEMU serial log 2026-11-07. P4.6 прошёл полный self-hosted CI/QEMU в [run 42337327289](https://github.com/mindwork64/exhiOS/actions/runs/42337327289): host scheduler tests, все kernel build variants, предыдущие QEMU-регрессии и отдельный idle-context/timed-wakeup runtime test. По прямой инструкции пользователя успешный QEMU runtime на его self-hosted runner считается эквивалентом локальной системы. Следующий этап — P5.1: Ring 3 entry и CPL3 exception return; реализация добавлена, CI/QEMU-приёмка ожидается.
 
 ## Закрыто и проверено в QEMU
 
@@ -310,13 +310,27 @@ Implementation:
 - New feature alias: `preemptive-task-exit-smoke-test`; runtime command: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PREEMPTIVE_TASK_EXIT_TEST=1 ./scripts/run-qemu.sh`.
 - The dedicated assembly bootstrap calls `exhi_preemptive_task_finished` when a preemptive task entry returns. The Rust path disables interrupts, accounts the final PIT runtime interval, calls `Scheduler::finish_current()` and either dispatches the next task's saved interrupt frame through IRETQ or shuts down the last-task test.
 - On dispatch it validates the next task frame and stack bounds, updates TSS.RSP0, updates the active FXSAVE area and restores the next task with the common interrupt-context entry. When no Ready tasks remain, it clears TSS.RSP0 and active FX-state pointer, masks IRQ0 and requests controlled QEMU debug-exit.
-- Task stacks are static and are not yet reaped or freed. Idle-context dispatch and blocked-task wake-up remain future work.
+- Task stacks are static and are not yet reaped or freed. Idle-context dispatch and blocked-task wake-up are implemented and runtime-tested in P4.6.
 - Self-hosted CI [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555) passed build and all QEMU regressions. Serial: elapsed=0x18, switches=0x10, runtime A=0x8/B=0xA, both tasks Finished, XMM preserved, stacks distinct, current=none, Finished=2, TSS.RSP0 cleared, IRQ0 masked, P4.5 pass marker and debug-exit 33.
 - Local Linux Mint/QEMU (2026-11-07): user serial log confirms elapsed=0x18, switches=0x10, runtime A/B=0x8/0x10; both tasks Finished; XMM state preserved; stacks distinct; current=none/Finished=2; TSS.RSP0 cleared; IRQ0 masked; P4.5 pass marker and debug-exit 33. P4.5 is closed locally and in CI.
 
-## Следующий этап — P4.6: idle context and blocked-task wake-up
+## P4.6 — Idle context and blocked-task wake-up
 
-- Introduce an explicit idle execution context distinct from schedulable task records. When the last runnable task blocks, the scheduler must enter idle instead of returning `NoRunnableTask` or leaving a blocked task marked Running.
-- Use a dedicated interrupt-format context frame for idle, matching the existing 20-qword long-mode IRETQ frame; do not pass cooperative saved-RSP frames to the IRQ restore path.
-- While idle, `sti; hlt` waits for timer interrupts. IRQ0 can wake blocked tasks and dispatch their saved interrupt frames, restoring the selected task's TSS.RSP0 and FXSAVE state.
-- Preserve P4.4/P4.5 as separate regression modes. Keep Ring 0, one CPU, PIT/legacy PIC, static stacks; stack reclamation remains separate.
+**Завершено по self-hosted CI/build + QEMU runtime.** Пользователь явно разрешил считать успешный QEMU на его self-hosted runner эквивалентом локальной Linux Mint/QEMU системы.
+
+- Scheduler имеет явное idle-состояние, отличное от обычной Task; последняя runnable-задача может блокироваться, не оставляя фиктивную Running task.
+- Для idle создан отдельный guarded stack и собственный 20-qword IRETQ frame. Cooperative P4.2 saved-RSP contexts не смешиваются с полными interrupt frames.
+- `INT 0x30` сохраняет контекст блокируемой задачи; когда Ready peers нет, CPU переходит в idle loop `sti; hlt`.
+- PIT IRQ0 обслуживает idle frame, проверяет wrap-safe deadlines, переводит проснувшиеся задачи в Ready и восстанавливает выбранный interrupt frame, FXSAVE state и TSS.RSP0.
+- Runtime test проверяет две задачи с разнесёнными таймерами пробуждения, входы в idle, возврат к сохранённым stack-local и XMM данным, завершение обеих задач, очищенный TSS.RSP0, маску IRQ0 и controlled debug-exit.
+- Scheduler host tests включают idle enter/exit, таймерный deadline, переполнение `u64` tick counter и ошибочные переходы.
+- Self-hosted CI [run 42337327289](https://github.com/mindwork64/exhiOS/actions/runs/42337327289): build job и полный QEMU runtime job завершились success; runtime suite включал стандартную загрузку, PIT, registry и regressions P4.2–P4.5 вместе с отдельным P4.6 тестом.
+- По прямой инструкции пользователя этот успешный self-hosted QEMU runtime принят как локально-эквивалентное подтверждение. Отдельный ручной запуск не требуется.
+- Границы: Ring 0, single CPU, PIT/legacy PIC; task stacks пока статические. Освобождение стеков — отдельный этап.
+
+## Следующий этап — P5.1: Ring 3 entry and exception return
+
+- GDT дополнена DPL3 code/data descriptors (selectors `0x33` и `0x2B`).
+- Ветка P5.1 готовит private address space, RX user code page с `INT3` и RW+NX user stack, устанавливает TSS.RSP0 на отдельный kernel stack и входит в CPL3 через IRETQ.
+- Exception path проверяет privilege-transition frame, saved user RSP/SS и права mappings; затем должен восстановить kernel CR3 и освободить user pages/page tables.
+- Отдельные build + QEMU runtime selectors добавлены, CI-приёмка P5.1 ожидается. Syscalls и user-pointer ABI в P5.1 не входят.

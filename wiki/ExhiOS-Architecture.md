@@ -228,12 +228,22 @@ A separate opt-in path extends the P4.4 interrupt scheduler with an actual task-
 - User-local Linux Mint/QEMU (2026-11-07) confirms elapsed=0x18, switches=0x10, runtime A/B=0x8/0x10, both tasks Finished, XMM preserved, distinct stacks, current=none/Finished=2, TSS.RSP0 cleared, IRQ0 masked, pass marker and debug-exit 33. P4.5 is closed locally and in self-hosted CI. This path remains single-CPU Ring 0 with legacy PIT/PIC; blocked-task wake-up and idle-context dispatch are not yet implemented.
 
 
-## P4.6 — Idle context and blocked-task wake-up (planned)
+## P4.6 — Idle context and blocked-task wake-up (accepted)
 
-- Add an explicit scheduler idle state when no task is Running but one or more tasks are Blocked. Idle is an architecture-owned execution context, not a user task record and not a fake `Running` task.
-- Prepare a guarded idle stack with the same 20-qword interrupt frame used by the P4.4/P4.5 IRETQ path. Keep task contexts, idle context and cooperative P4.2 saved-RSP frames type-distinct at their call sites.
-- A task blocks through a dedicated kernel scheduling interrupt. The common interrupt save path records the task's full GPR/FXSAVE/IRETQ state before selecting another Ready task or the idle context.
-- Idle executes `sti; hlt`. PIT IRQ0 records the idle interrupt frame, wakes eligible Blocked tasks and dispatches a task through its saved interrupt context, updating TSS.RSP0 and the active FX state.
-- A returning task with only Blocked peers must enter idle rather than terminating the runtime or leaving no path to wake those peers.
-- Acceptance: host scheduler tests for idle entry/exit and invalid wake transitions; QEMU runtime proof that all runnable tasks can block, CPU reaches idle, timer wakes each task, each resumes its saved context and finishes; P4.4/P4.5 regression modes stay green.
-- Scope remains Ring 0, single CPU, PIT/legacy PIC and static guarded stacks. Safe stack reclamation is a separate later step.
+- The scheduler has an explicit architecture-owned idle state. It is not represented as a fake task and does not enter ordinary Ready/Running counts.
+- Each timed-block operation stores a wrap-safe PIT deadline, saves the task's 20-qword interrupt frame and transitions the task to Blocked. A dedicated DPL0 software scheduling vector (`INT 0x30`) routes this operation through a full-frame interrupt stub.
+- If no Ready task remains, the scheduler selects a dedicated guarded idle stack and its own 20-qword IRETQ frame. The idle loop is `sti; hlt`.
+- IRQ0 saves the interrupted idle frame and its FXSAVE state, wakes due tasks, selects a Ready task, updates TSS.RSP0 and the active FX-state pointer, then returns through the task's saved interrupt frame.
+- Returning tasks also hand off to idle when only Blocked peers remain. The final task exit clears TSS.RSP0 and the active FX pointer before controlled QEMU exit.
+- `EXHIOS_IDLE_WAKEUP_TEST=1` checks two tasks with staggered deadlines, repeated idle entry, PIT wakeups, preservation of task-local stack data and XMM state, both Finished states, no current/Ready/Blocked tasks at the end, TSS cleanup and IRQ0 masking.
+- Self-hosted CI [run 42337327289](https://github.com/mindwork64/exhiOS/actions/runs/42337327289) passed build and QEMU runtime jobs. The QEMU job ran the full regression suite, including the P4.6 runtime mode. Per the user's explicit instruction, successful runtime on this self-hosted runner is accepted as equivalent to their Linux Mint/QEMU system.
+- Scope remains Ring 0, single CPU, PIT/legacy PIC and static guarded stacks. Task stack reclamation is not included.
+
+## P5.1 — Ring 3 entry and exception return (implementation in progress)
+
+- GDT now includes DPL3 user data/code descriptors: selectors 0x2B and 0x33; kernel selectors and TSS selector are unchanged.
+- The opt-in `ring3-smoke-test` builds a private address space using the existing address-space manager. It maps one user code page RX and one user stack page RW+NX, with an unmapped guard page between them.
+- A synthetic 20-qword IRETQ frame enters CPL3 with user CS/SS, RFLAGS.IF set and a user RSP. The user instruction is `INT3`.
+- The exception handler routes CPL3 exceptions to a verifier. For expected #BP it checks saved RIP, CS, RFLAGS, user RSP/SS and effective page permissions, then restores kernel CR3, unmaps both pages, destroys private page tables and releases user data frames.
+- Dedicated build and QEMU runtime selectors are in the workflow. Do not mark P5.1 accepted until the current-HEAD self-hosted QEMU runtime job passes.
+- This is only the CPL3 transition/#BP proof. Hardware enforcement of supervisor isolation, syscalls, user-pointer validation and process lifecycle remain separate P5 stages.

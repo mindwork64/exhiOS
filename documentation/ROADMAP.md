@@ -124,11 +124,11 @@
 - [x] Cooperative round-robin scheduler.
 - [x] Timer-driven preemption for Ring 0 tasks (local Linux Mint/QEMU + self-hosted CI accepted).
 - [x] Preemptive task termination and Finished-state handoff (local Linux Mint/QEMU + self-hosted CI accepted 2026-11-07).
-- [ ] Idle-context dispatch and wake-up of blocked tasks: dedicated idle interrupt frame/stack, block syscall path, PIT wake-up and dispatch from idle; keep cooperative and interrupt contexts separate.
+- [x] Idle-context dispatch and wake-up of blocked tasks: dedicated idle interrupt frame/stack, `INT 0x30` block path, `sti; hlt` idle, PIT deadline wake-up and IRETQ dispatch. Self-hosted build + QEMU runtime accepted in [run 42337327289](https://github.com/mindwork64/exhiOS/actions/runs/42337327289).
 
 ## P5 — User-mode isolation
 
-- [ ] Ring 3 transition.
+- [ ] Ring 3 transition and CPL3 exception return (P5.1 implementation in progress; awaiting self-hosted QEMU runtime acceptance).
 - [ ] Per-process address spaces.
 - [ ] System-call entry and return.
 - [ ] User pointer and argument validation.
