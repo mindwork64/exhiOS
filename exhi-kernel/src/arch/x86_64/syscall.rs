@@ -8,8 +8,6 @@
 use core::arch::{asm, x86_64::__cpuid};
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 use core::arch::global_asm;
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
-use core::mem::size_of;
 
 use super::gdt::{
     KERNEL_CODE_SELECTOR, KERNEL_DATA_SELECTOR, USER_CODE_SELECTOR, USER_DATA_SELECTOR,
@@ -179,8 +177,6 @@ const _: [(); 20 * core::mem::size_of::<u64>()] =
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 global_asm!(
     r#"
-    .section .text
-
     .section .text
     .global exhi_user_task_syscall_entry
     .type exhi_user_task_syscall_entry, @function
