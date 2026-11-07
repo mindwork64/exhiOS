@@ -166,6 +166,10 @@ static mut RING3_STACK_FRAME: u64 = 0;
 
 unsafe extern "sysv64" {
     fn exhi_interrupt_context_start(initial_rsp: usize, fx_state: usize) -> !;
+}
+
+#[cfg(feature = "ring3-syscall-smoke-test")]
+unsafe extern "sysv64" {
     fn exhi_syscall_entry();
 }
 
@@ -175,6 +179,16 @@ unsafe extern "sysv64" {
     fn exhi_user_task_kernel_entry() -> !;
 }
 
+#[cfg(all(
+    feature = "ring3-smoke-test",
+    not(any(
+        feature = "ring3-supervisor-fault-smoke-test",
+        feature = "ring3-syscall-smoke-test",
+        feature = "user-pointer-range-smoke-test",
+        feature = "user-copy-smoke-test",
+        feature = "user-task-lifecycle-smoke-test"
+    ))
+))]
 pub fn ring3_smoke_test() -> ! {
     run_ring3_test(Ring3TestMode::Breakpoint)
 }
@@ -631,10 +645,15 @@ pub fn handle_user_exception(
     finish(passed && cleanup_ok && rsp0_cleared)
 }
 
+#[cfg(feature = "ring3-syscall-smoke-test")]
 fn initialize_syscall_msrs() -> bool {
     initialize_syscall_msrs_for_entry(exhi_syscall_entry as *const () as u64)
 }
 
+#[cfg(any(
+    feature = "ring3-syscall-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
+))]
 pub(crate) fn initialize_syscall_msrs_for_entry(entry: u64) -> bool {
     const EFER: u32 = 0xC000_0080;
     const STAR: u32 = 0xC000_0081;
@@ -677,6 +696,10 @@ pub(crate) fn initialize_syscall_msrs_for_entry(entry: u64) -> bool {
     }
 }
 
+#[cfg(any(
+    feature = "ring3-syscall-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
+))]
 unsafe fn read_msr(msr: u32) -> u64 {
     let low: u32;
     let high: u32;
@@ -692,6 +715,10 @@ unsafe fn read_msr(msr: u32) -> u64 {
     (u64::from(high) << 32) | u64::from(low)
 }
 
+#[cfg(any(
+    feature = "ring3-syscall-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
+))]
 unsafe fn write_msr(msr: u32, value: u64) {
     unsafe {
         asm!(
@@ -704,6 +731,7 @@ unsafe fn write_msr(msr: u32, value: u64) {
     }
 }
 
+#[cfg(feature = "ring3-syscall-smoke-test")]
 #[no_mangle]
 extern "sysv64" fn exhi_syscall_handler(
     number: u64,
@@ -727,6 +755,7 @@ extern "sysv64" fn exhi_syscall_handler(
     }
 }
 
+#[cfg(feature = "ring3-syscall-smoke-test")]
 global_asm!(
     r#"
     .section .text

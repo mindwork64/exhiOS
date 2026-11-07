@@ -805,7 +805,13 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
 
     #[cfg(all(
         feature = "ring3-smoke-test",
-        not(feature = "ring3-supervisor-fault-smoke-test")
+        not(any(
+            feature = "ring3-supervisor-fault-smoke-test",
+            feature = "ring3-syscall-smoke-test",
+            feature = "user-pointer-range-smoke-test",
+            feature = "user-copy-smoke-test",
+            feature = "user-task-lifecycle-smoke-test"
+        ))
     ))]
     {
         kernel_console
