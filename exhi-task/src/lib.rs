@@ -55,6 +55,7 @@ pub struct Task {
     state: TaskState,
     context: TaskContext,
     runtime_ticks: u64,
+    wake_deadline: Option<u64>,
 }
 
 impl Task {
@@ -132,6 +133,7 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
             state: TaskState::Ready,
             context,
             runtime_ticks: 0,
+            wake_deadline: None,
         });
         self.task_count += 1;
         Ok(id)
@@ -187,7 +189,9 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
         }
 
         let next = self.find_next_ready(current);
-        self.slots[current].as_mut().expect("running slot exists").state = TaskState::Finished;
+        let finished = self.slots[current].as_mut().expect("running slot exists");
+        finished.state = TaskState::Finished;
+        finished.wake_deadline = None;
 
         if let Some(index) = next {
             let task = self.slots[index].as_mut().expect("ready slot exists");
@@ -197,6 +201,7 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
             Ok(Some(id))
         } else {
             self.current_index = None;
+            self.idle_active = self.blocked_count() != 0;
             Ok(None)
         }
     }
@@ -222,6 +227,16 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
     /// when no Ready peer exists. A None result means the caller must switch
     /// to its separate idle CPU context rather than restore a task.
     pub fn block_current_or_idle(&mut self) -> Result<Option<TaskId>, SchedulerError> {
+        self.block_current_with_deadline(None)
+    }
+
+    /// Blocks the current task until the wrapping monotonic tick deadline.
+    /// The architecture layer must save the interrupt frame before calling it.
+    pub fn block_current_until(&mut self, deadline: u64) -> Result<Option<TaskId>, SchedulerError> {
+        self.block_current_with_deadline(Some(deadline))
+    }
+
+    fn block_current_with_deadline(&mut self, deadline: Option<u64>) -> Result<Option<TaskId>, SchedulerError> {
         let current = self.current_index.ok_or(SchedulerError::NotStarted)?;
         let running = self.slots[current].as_ref().ok_or(SchedulerError::NotFound)?;
         if running.state != TaskState::Running {
@@ -229,7 +244,9 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
         }
 
         let next = self.find_next_ready(current);
-        self.slots[current].as_mut().expect("running slot exists").state = TaskState::Blocked;
+        let blocked = self.slots[current].as_mut().expect("running slot exists");
+        blocked.state = TaskState::Blocked;
+        blocked.wake_deadline = deadline;
         if let Some(index) = next {
             let task = self.slots[index].as_mut().expect("ready slot exists");
             task.state = TaskState::Running;
@@ -288,7 +305,24 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
             return Err(SchedulerError::InvalidStateTransition);
         }
         task.state = TaskState::Ready;
+        task.wake_deadline = None;
         Ok(())
+    }
+
+    /// Wakes timed Blocked tasks whose deadline has passed. Tick comparisons
+    /// use the half-range rule so deadlines remain correct across u64 wrap.
+    pub fn wake_due(&mut self, now: u64) -> usize {
+        let mut woken = 0;
+        for slot in &mut self.slots {
+            let Some(task) = slot.as_mut() else { continue; };
+            let Some(deadline) = task.wake_deadline else { continue; };
+            if task.state == TaskState::Blocked && now.wrapping_sub(deadline) < (1u64 << 63) {
+                task.state = TaskState::Ready;
+                task.wake_deadline = None;
+                woken += 1;
+            }
+        }
+        woken
     }
 
     /// Reclaims a Finished task slot. Its stack must be released by the
@@ -469,6 +503,31 @@ mod tests {
         assert!(!scheduler.is_idle());
         assert_eq!(scheduler.current().map(Task::id), Some(only));
         assert_eq!(scheduler.get(only).map(Task::state), Some(TaskState::Running));
+    }
+
+    #[test]
+    fn timed_block_enters_idle_and_wakes_only_after_deadline() {
+        let mut scheduler = Scheduler::<1>::new();
+        let only = scheduler.spawn("only", context(0x1000)).unwrap();
+        assert_eq!(scheduler.start(), Ok(only));
+        assert_eq!(scheduler.block_current_until(12), Ok(None));
+        assert!(scheduler.is_idle());
+        assert_eq!(scheduler.wake_due(11), 0);
+        assert_eq!(scheduler.schedule_from_idle(), Ok(None));
+        assert_eq!(scheduler.wake_due(12), 1);
+        assert_eq!(scheduler.schedule_from_idle(), Ok(Some(only)));
+        assert_eq!(scheduler.current().map(Task::id), Some(only));
+    }
+
+    #[test]
+    fn timed_block_deadline_comparison_handles_tick_wraparound() {
+        let mut scheduler = Scheduler::<1>::new();
+        let only = scheduler.spawn("only", context(0x1000)).unwrap();
+        scheduler.start().unwrap();
+        assert_eq!(scheduler.block_current_until(u64::MAX - 1), Ok(None));
+        assert_eq!(scheduler.wake_due(u64::MAX - 2), 0);
+        assert_eq!(scheduler.wake_due(0), 1);
+        assert_eq!(scheduler.schedule_from_idle(), Ok(Some(only)));
     }
 
     #[test]
