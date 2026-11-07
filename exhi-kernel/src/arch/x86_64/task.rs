@@ -1350,6 +1350,12 @@ fn initialize_fx_contexts() -> bool {
                 1,
             );
         }
+        #[cfg(feature = "idle-wakeup-smoke-test")]
+        ptr::copy_nonoverlapping(
+            ptr::addr_of!(FX_SAVE_TEMPLATE),
+            ptr::addr_of_mut!(IDLE_FX_STATE),
+            1,
+        );
     }
     true
 }
