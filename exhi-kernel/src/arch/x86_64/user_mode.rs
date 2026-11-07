@@ -19,6 +19,8 @@ const USER_CODE_ADDRESS: u64 = 0x0000_0002_0000_0000;
 const USER_STACK_ADDRESS: u64 = USER_CODE_ADDRESS + (2 * PAGE_SIZE);
 const USER_STACK_TOP: u64 = USER_STACK_ADDRESS + PAGE_SIZE;
 const USER_STACK_POINTER: u64 = USER_STACK_TOP - 8;
+const USER_STACK_SENTINEL: u64 = 0x0000_0000_5A6B_7C8D;
+const USER_CODE_LENGTH: u64 = 10;
 
 #[repr(C, align(4096))]
 struct KernelStack([u8; STACK_TOTAL_SIZE]);
@@ -100,8 +102,12 @@ pub fn ring3_smoke_test() -> ! {
 
     let code_frame = allocate_zeroed_frame();
     let stack_frame = allocate_zeroed_frame();
+    const USER_CODE: [u8; USER_CODE_LENGTH as usize] = [
+        // mov qword ptr [rsp - 8], 0x5A6B7C8D; int3
+        0x48, 0xC7, 0x44, 0x24, 0xF8, 0x8D, 0x7C, 0x6B, 0x5A, 0xCC,
+    ];
     unsafe {
-        ptr::write_volatile(code_frame as *mut u8, 0xCC);
+        ptr::copy_nonoverlapping(USER_CODE.as_ptr(), code_frame as *mut u8, USER_CODE.len());
         ptr::write_volatile(
             ptr::addr_of_mut!(RING3_CODE_FRAME),
             code_frame,
@@ -146,12 +152,14 @@ pub fn ring3_smoke_test() -> ! {
     }
 
     let code_mapping = space.translate(USER_CODE_ADDRESS);
+    let guard_mapping = space.translate(USER_CODE_ADDRESS + PAGE_SIZE);
     let stack_mapping = space.translate(USER_STACK_ADDRESS);
     let permissions_valid = code_mapping.is_ok_and(|mapping| {
         mapping.user && mapping.executable && !mapping.writable
-    }) && stack_mapping.is_ok_and(|mapping| {
-        mapping.user && !mapping.executable && mapping.writable
-    });
+    }) && guard_mapping.is_err()
+        && stack_mapping.is_ok_and(|mapping| {
+            mapping.user && !mapping.executable && mapping.writable
+        });
     if !permissions_valid {
         setup_failed(b"P5.1: user W^X or user/supervisor permissions are incorrect.\r\n");
     }
@@ -247,10 +255,11 @@ pub fn handle_user_exception(
     let space = unsafe { &*ptr::addr_of!(RING3_ADDRESS_SPACE) };
     let mapping_checks = space.as_ref().is_some_and(|space| {
         let code = space.translate(USER_CODE_ADDRESS);
+        let guard = space.translate(USER_CODE_ADDRESS + PAGE_SIZE);
         let stack = space.translate(USER_STACK_ADDRESS);
         code.is_ok_and(|mapping| {
             mapping.user && mapping.executable && !mapping.writable
-        }) && stack.is_ok_and(|mapping| {
+        }) && guard.is_err() && stack.is_ok_and(|mapping| {
             mapping.user && !mapping.executable && mapping.writable
         })
     });
@@ -259,13 +268,19 @@ pub fn handle_user_exception(
         && error_code == 0
         && code_selector == u64::from(gdt::USER_CODE_SELECTOR)
         && code_selector & 3 == 3
-        && instruction_pointer == USER_CODE_ADDRESS + 1
+        && instruction_pointer == USER_CODE_ADDRESS + USER_CODE_LENGTH
         && flags & (1 << 9) != 0
         && frame_in_bounds
         && stack_shape_valid
         && saved_user_rsp == USER_STACK_POINTER
         && saved_user_ss == u64::from(gdt::USER_DATA_SELECTOR)
-        && mapping_checks;
+        && mapping_checks
+        && unsafe {
+            ptr::read_volatile(
+                (ptr::read_volatile(ptr::addr_of!(RING3_STACK_FRAME)) + PAGE_SIZE - 16)
+                    as *const u64,
+            ) == USER_STACK_SENTINEL
+        };
 
     serial::COM1.write(b"P5.1: saved user RIP=0x");
     serial::COM1.write_hex(instruction_pointer);
@@ -273,7 +288,7 @@ pub fn handle_user_exception(
     serial::COM1.write_hex(saved_user_rsp);
     serial::COM1.write(b" SS=0x");
     serial::COM1.write_hex(saved_user_ss);
-    serial::COM1.write(b"\r\nP5.1: user code RX and stack RW+NX verified.\r\n");
+    serial::COM1.write(b"\r\nP5.1: user code RX, guard unmapped, stack RW+NX and CPL3 stack write verified.\r\n");
 
     let cleanup_ok = reclaim_user_address_space();
     let rsp0_cleared = gdt::set_rsp0(0) && gdt::read_rsp0() == 0;
