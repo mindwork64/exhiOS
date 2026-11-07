@@ -160,6 +160,9 @@ pub fn mask_irq1() -> pic::PicStatus {
 }
 
 pub fn irq1_stub_address() -> u64 {
+    // The always-installed IRQ1 assembly stub has a direct relocation to this
+    // queue even when keyboard input is disabled for the current build.
+    let _ = exhi_input::EXHIOS_KEYBOARD_SCANCODE_QUEUE.dropped_count();
     exhi_irq1_stub as *const () as usize as u64
 }
 

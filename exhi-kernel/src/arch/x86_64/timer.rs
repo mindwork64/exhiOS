@@ -125,10 +125,12 @@ pub fn mask_irq0() -> pic::PicStatus {
     pic::mask_irq0()
 }
 
+#[cfg(not(feature = "timer-preemption-smoke-test"))]
 pub fn irq0_stub_address() -> u64 {
     exhi_irq0_stub as *const () as usize as u64
 }
 
+#[cfg(not(feature = "timer-preemption-smoke-test"))]
 unsafe extern "sysv64" {
     fn exhi_irq0_stub();
 }
