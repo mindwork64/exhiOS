@@ -141,19 +141,76 @@ static mut FINISHED_STACK_POINTER: usize = 0;
 
 #[cfg(any(
     feature = "context-switch-smoke-test",
-    feature = "task-accounting-smoke-test"
+    feature = "task-accounting-smoke-test",
+    feature = "idle-wakeup-smoke-test",
+    feature = "preemptive-task-exit-smoke-test",
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(any(
+            feature = "preemptive-task-exit-smoke-test",
+            feature = "idle-wakeup-smoke-test",
+            feature = "ring3-smoke-test"
+        ))
+    )
 ))]
 static TASK_A_PROGRESS: AtomicUsize = AtomicUsize::new(0);
 #[cfg(any(
     feature = "context-switch-smoke-test",
-    feature = "task-accounting-smoke-test"
+    feature = "task-accounting-smoke-test",
+    feature = "idle-wakeup-smoke-test",
+    feature = "preemptive-task-exit-smoke-test",
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(any(
+            feature = "preemptive-task-exit-smoke-test",
+            feature = "idle-wakeup-smoke-test",
+            feature = "ring3-smoke-test"
+        ))
+    )
 ))]
 static TASK_B_PROGRESS: AtomicUsize = AtomicUsize::new(0);
-#[cfg(feature = "context-switch-smoke-test")]
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "idle-wakeup-smoke-test",
+    feature = "preemptive-task-exit-smoke-test",
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(any(
+            feature = "preemptive-task-exit-smoke-test",
+            feature = "idle-wakeup-smoke-test",
+            feature = "ring3-smoke-test"
+        ))
+    )
+))]
 static TASK_FAILURES: AtomicUsize = AtomicUsize::new(0);
-#[cfg(feature = "context-switch-smoke-test")]
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "idle-wakeup-smoke-test",
+    feature = "preemptive-task-exit-smoke-test",
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(any(
+            feature = "preemptive-task-exit-smoke-test",
+            feature = "idle-wakeup-smoke-test",
+            feature = "ring3-smoke-test"
+        ))
+    )
+))]
 static TASK_A_LOCAL_ADDRESS: AtomicUsize = AtomicUsize::new(0);
-#[cfg(feature = "context-switch-smoke-test")]
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "idle-wakeup-smoke-test",
+    feature = "preemptive-task-exit-smoke-test",
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(any(
+            feature = "preemptive-task-exit-smoke-test",
+            feature = "idle-wakeup-smoke-test",
+            feature = "ring3-smoke-test"
+        ))
+    )
+))]
 static TASK_B_LOCAL_ADDRESS: AtomicUsize = AtomicUsize::new(0);
 
 #[cfg(any(
@@ -169,8 +226,32 @@ unsafe extern "sysv64" {
 unsafe extern "sysv64" {
     fn exhi_irq0_preempt_stub();
     fn exhi_interrupt_context_start(initial_rsp: usize, fx_state: usize) -> !;
+    #[cfg(all(
+        feature = "timer-preemption-smoke-test",
+        not(any(
+            feature = "preemptive-task-exit-smoke-test",
+            feature = "idle-wakeup-smoke-test",
+            feature = "ring3-smoke-test"
+        ))
+    ))]
     fn exhi_preemptive_task_bootstrap() -> !;
+    #[cfg(all(
+        feature = "timer-preemption-smoke-test",
+        not(any(
+            feature = "preemptive-task-exit-smoke-test",
+            feature = "idle-wakeup-smoke-test",
+            feature = "ring3-smoke-test"
+        ))
+    ))]
     fn exhi_preemptive_task_a() -> !;
+    #[cfg(all(
+        feature = "timer-preemption-smoke-test",
+        not(any(
+            feature = "preemptive-task-exit-smoke-test",
+            feature = "idle-wakeup-smoke-test",
+            feature = "ring3-smoke-test"
+        ))
+    ))]
     fn exhi_preemptive_task_b() -> !;
     #[cfg(feature = "preemptive-task-exit-smoke-test")]
     fn exhi_preemptive_task_exit_bootstrap() -> !;
@@ -206,7 +287,7 @@ pub fn context_switch_smoke_test() -> bool {
         serial::COM1.write(b"P4.2: task A stack setup failed.\r\n");
         return false;
     };
-    let Some((b_initial_rsp, _b_top)) = (unsafe { prepare_stack(1, task_b) }) else {
+    let Some((b_initial_rsp, b_top)) = (unsafe { prepare_stack(1, task_b) }) else {
         serial::COM1.write(b"P4.2: task B stack setup failed.\r\n");
         return false;
     };
@@ -360,7 +441,7 @@ pub fn timer_accounting_smoke_test() -> bool {
         serial::COM1.write(b"P4.3: task A stack setup failed.\r\n");
         return false;
     };
-    let Some((b_initial_rsp, b_top)) = (unsafe { prepare_stack(1, task_b_accounting) }) else {
+    let Some((b_initial_rsp, _b_top)) = (unsafe { prepare_stack(1, task_b_accounting) }) else {
         let _ = timer::mask_irq0();
         serial::COM1.write(b"P4.3: task B stack setup failed.\r\n");
         return false;
@@ -1341,7 +1422,14 @@ pub fn preemption_irq0_stub_address() -> u64 {
 }
 
 /// Runs two tasks that never yield. IRQ0 alone must alternate their contexts.
-#[cfg(feature = "timer-preemption-smoke-test")]
+#[cfg(all(
+    feature = "timer-preemption-smoke-test",
+    not(any(
+        feature = "preemptive-task-exit-smoke-test",
+        feature = "idle-wakeup-smoke-test",
+        feature = "ring3-smoke-test"
+    ))
+))]
 pub fn timer_preemption_smoke_test() -> ! {
     unsafe {
         asm!("cli", options(nomem, nostack, preserves_flags));
@@ -1528,7 +1616,17 @@ fn initialize_fx_contexts() -> bool {
     true
 }
 
-#[cfg(feature = "timer-preemption-smoke-test")]
+#[cfg(any(
+    feature = "idle-wakeup-smoke-test",
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(any(
+            feature = "preemptive-task-exit-smoke-test",
+            feature = "idle-wakeup-smoke-test",
+            feature = "ring3-smoke-test"
+        ))
+    )
+))]
 unsafe fn prepare_preemption_stack(
     index: usize,
     entry: unsafe extern "sysv64" fn() -> !,

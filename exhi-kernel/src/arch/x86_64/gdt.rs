@@ -277,7 +277,11 @@ pub fn set_rsp0(stack_top: u64) -> bool {
 }
 
 /// Reads the current TSS RSP0 value for boot-time diagnostics and tests.
-#[cfg(feature = "timer-preemption-smoke-test")]
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub fn read_rsp0() -> u64 {
     let rsp0_pointer = unsafe {
         ptr::addr_of!(TSS.0)
