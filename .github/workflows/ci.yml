@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Add Cargo bin directory to PATH
         run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
@@ -132,7 +132,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Add Cargo bin directory to PATH
         run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
