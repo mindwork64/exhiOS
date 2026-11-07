@@ -1631,14 +1631,43 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     serial::COM1.write(b"\r\n");
 
     let cleanup_ok = reclaim_user_task_resources();
-    let rsp0_cleared = gdt::set_rsp0(0) && gdt::read_rsp0() == 0;
-    serial::COM1.write(if passed && cleanup_ok && rsp0_cleared {
-        b"P5.6: two-user-task yield/exit lifecycle smoke test passed.\r\n"
+    // The reaper is now the running task on its own kernel stack and the
+    // kernel address space is active, so the Finished user-task records can
+    // finally be removed without invalidating a live execution context.
+    let reaped_ok = if cleanup_ok {
+        unsafe {
+            (*scheduler).reap(TaskId::from_raw(1)).is_ok()
+                && (*scheduler).reap(TaskId::from_raw(2)).is_ok()
+        }
     } else {
-        b"P5.6: two-user-task yield/exit lifecycle smoke test failed.\r\n"
+        false
+    };
+    let scheduler_clean = unsafe {
+        (*scheduler).current().map(|task| task.id()) == Some(TaskId::from_raw(3))
+            && (*scheduler).len() == 1
+            && (*scheduler).finished_count() == 0
+            && (*scheduler).get(TaskId::from_raw(1)).is_none()
+            && (*scheduler).get(TaskId::from_raw(2)).is_none()
+    };
+    let rsp0_cleared = gdt::set_rsp0(0) && gdt::read_rsp0() == 0;
+    serial::COM1.write(b"P5.6: user address spaces and frames reclaimed=");
+    serial::COM1.write(if cleanup_ok { b"yes" } else { b"no " });
+    serial::COM1.write(b" task records reaped=");
+    serial::COM1.write(if reaped_ok && scheduler_clean { b"yes" } else { b"no " });
+    serial::COM1.write(b" TSS.RSP0 cleared=");
+    serial::COM1.write(if rsp0_cleared { b"yes" } else { b"no " });
+    serial::COM1.write(b"\\r\\n");
+    serial::COM1.write(if passed && cleanup_ok && reaped_ok && scheduler_clean && rsp0_cleared {
+        b"P5.6: two-user-task yield/exit/reap lifecycle smoke test passed.\\r\\n"
+    } else {
+        b"P5.6: two-user-task yield/exit/reap lifecycle smoke test failed.\\r\\n"
     });
-    serial::COM1.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
-    let exit = if passed && cleanup_ok && rsp0_cleared { 0x10u32 } else { 0x11u32 };
+    serial::COM1.write(b"QEMU debug-exit: requesting controlled shutdown.\\r\\n");
+    let exit = if passed && cleanup_ok && reaped_ok && scheduler_clean && rsp0_cleared {
+        0x10u32
+    } else {
+        0x11u32
+    };
     unsafe { asm!("out dx, eax", in("dx") 0xF4u16, in("eax") exit, options(nomem, nostack, preserves_flags)); }
     loop { unsafe { asm!("cli", "hlt", options(nomem, nostack)); } }
 }
