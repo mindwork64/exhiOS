@@ -54,13 +54,29 @@ static DEFAULT_MXCSR: u32 = 0x1F80;
 #[no_mangle]
 static mut EXHIOS_ACTIVE_FX_STATE: usize = 0;
 #[cfg(feature = "timer-preemption-smoke-test")]
-static PREEMPTION_SWITCHES: AtomicUsize = AtomicUsize::new(0);
+#[no_mangle]
+static mut EXHIOS_P4_4_SWITCHES: u64 = 0;
 #[cfg(feature = "timer-preemption-smoke-test")]
-static PREEMPTION_FAILURES: AtomicUsize = AtomicUsize::new(0);
+#[no_mangle]
+static mut EXHIOS_P4_4_FAILURES: u64 = 0;
 #[cfg(feature = "timer-preemption-smoke-test")]
-static TASK_A_XMM_OK: AtomicUsize = AtomicUsize::new(0);
+#[no_mangle]
+static mut EXHIOS_P4_4_A_PROGRESS: u64 = 0;
 #[cfg(feature = "timer-preemption-smoke-test")]
-static TASK_B_XMM_OK: AtomicUsize = AtomicUsize::new(0);
+#[no_mangle]
+static mut EXHIOS_P4_4_B_PROGRESS: u64 = 0;
+#[cfg(feature = "timer-preemption-smoke-test")]
+#[no_mangle]
+static mut EXHIOS_P4_4_A_XMM_OK: u64 = 0;
+#[cfg(feature = "timer-preemption-smoke-test")]
+#[no_mangle]
+static mut EXHIOS_P4_4_B_XMM_OK: u64 = 0;
+#[cfg(feature = "timer-preemption-smoke-test")]
+#[no_mangle]
+static mut EXHIOS_P4_4_A_LOCAL: usize = 0;
+#[cfg(feature = "timer-preemption-smoke-test")]
+#[no_mangle]
+static mut EXHIOS_P4_4_B_LOCAL: usize = 0;
 
 #[cfg(feature = "timer-preemption-smoke-test")]
 #[repr(C)]
@@ -94,6 +110,8 @@ unsafe extern "sysv64" {
     fn exhi_irq0_preempt_stub();
     fn exhi_interrupt_context_start(initial_rsp: usize, fx_state: usize) -> !;
     fn exhi_preemptive_task_bootstrap() -> !;
+    fn exhi_preemptive_task_a() -> !;
+    fn exhi_preemptive_task_b() -> !;
 }
 
 /// Runs two tasks that repeatedly yield to each other, then returns to the
@@ -184,8 +202,8 @@ pub fn context_switch_smoke_test() -> bool {
             && (*scheduler).finished_count() == TASK_COUNT
     };
 
-    let a_local = TASK_A_LOCAL_ADDRESS.load(Ordering::Relaxed) as u64;
-    let b_local = TASK_B_LOCAL_ADDRESS.load(Ordering::Relaxed) as u64;
+    let a_local = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_LOCAL)) as u64 };
+    let b_local = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_LOCAL)) as u64 };
     let a_stack_base = unsafe { ptr::addr_of!(TASK_STACKS[0]) as u64 };
     let b_stack_base = unsafe { ptr::addr_of!(TASK_STACKS[1]) as u64 };
     let a_local_valid = a_local >= a_stack_base + PAGE_SIZE as u64 && a_local < a_top;
@@ -388,19 +406,25 @@ pub fn timer_preemption_smoke_test() -> ! {
     TASK_FAILURES.store(0, Ordering::Relaxed);
     TASK_A_LOCAL_ADDRESS.store(0, Ordering::Relaxed);
     TASK_B_LOCAL_ADDRESS.store(0, Ordering::Relaxed);
-    PREEMPTION_SWITCHES.store(0, Ordering::Relaxed);
-    PREEMPTION_FAILURES.store(0, Ordering::Relaxed);
-    TASK_A_XMM_OK.store(0, Ordering::Relaxed);
-    TASK_B_XMM_OK.store(0, Ordering::Relaxed);
+    unsafe {
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_SWITCHES), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_A_PROGRESS), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_B_PROGRESS), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_A_XMM_OK), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_B_XMM_OK), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_A_LOCAL), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_B_LOCAL), 0);
+    }
 
     serial::COM1.write(b"P4.4: preparing hardware-interrupt task contexts.\r\n");
     if !initialize_fx_contexts() {
         task_fatal(b"P4.4: CPU FXSR/SSE state initialization failed.\r\n");
     }
-    let Some((a_rsp, a_top)) = (unsafe { prepare_preemption_stack(0, preemptive_task_a) }) else {
+    let Some((a_rsp, a_top)) = (unsafe { prepare_preemption_stack(0, exhi_preemptive_task_a) }) else {
         task_fatal(b"P4.4: task A stack setup failed.\r\n");
     };
-    let Some((b_rsp, _)) = (unsafe { prepare_preemption_stack(1, preemptive_task_b) }) else {
+    let Some((b_rsp, _)) = (unsafe { prepare_preemption_stack(1, exhi_preemptive_task_b) }) else {
         task_fatal(b"P4.4: task B stack setup failed.\r\n");
     };
 
@@ -524,33 +548,51 @@ unsafe fn prepare_preemption_stack(
 extern "sysv64" fn exhi_preemption_handler(frame: *mut InterruptContext) -> usize {
     let frame_address = frame as usize;
     if frame_address == 0 {
-        PREEMPTION_FAILURES.fetch_add(1, Ordering::Relaxed);
+        unsafe {
+            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+        }
         return 0;
     }
     let scheduler = ptr::addr_of_mut!(SCHEDULER);
     let Some(id) = (unsafe { (*scheduler).current().map(|task| task.id()) }) else {
-        PREEMPTION_FAILURES.fetch_add(1, Ordering::Relaxed);
+        unsafe {
+            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+        }
         return frame_address;
     };
     let Some(index) = task_stack_index(id) else {
-        PREEMPTION_FAILURES.fetch_add(1, Ordering::Relaxed);
+        unsafe {
+            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+        }
         return frame_address;
     };
     let base = unsafe { ptr::addr_of!(TASK_STACKS[index]) as u64 };
     let top = unsafe { ptr::read_volatile(ptr::addr_of!(TASK_STACK_TOPS[index])) };
     let end = (frame_address as u64).checked_add(size_of::<InterruptContext>() as u64);
     if (frame_address as u64) < base + PAGE_SIZE as u64 || end.map_or(true, |v| v > top) {
-        PREEMPTION_FAILURES.fetch_add(1, Ordering::Relaxed);
+        unsafe {
+            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+        }
         return frame_address;
     }
 
     let start = unsafe { ptr::read_volatile(ptr::addr_of!(TASK_PREEMPTION_START_TICKS[index])) };
     if unsafe { (*scheduler).account_current_ticks(timer::ticks().wrapping_sub(start)) }.is_err() {
-        PREEMPTION_FAILURES.fetch_add(1, Ordering::Relaxed);
+        unsafe {
+            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+        }
         return frame_address;
     }
     let Some(current) = (unsafe { (*scheduler).get_mut(id) }) else {
-        PREEMPTION_FAILURES.fetch_add(1, Ordering::Relaxed);
+        unsafe {
+            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+        }
         return frame_address;
     };
     current.context_mut().set_saved_stack_pointer(frame_address);
@@ -569,11 +611,17 @@ extern "sysv64" fn exhi_preemption_handler(frame: *mut InterruptContext) -> usiz
         }
         Ok(ScheduleDecision::Switch { to, .. }) => {
             let Some(i) = task_stack_index(to) else {
-                PREEMPTION_FAILURES.fetch_add(1, Ordering::Relaxed);
+                unsafe {
+            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+        }
                 return 0;
             };
             let Some(next_task) = (unsafe { (*scheduler).get(to) }) else {
-                PREEMPTION_FAILURES.fetch_add(1, Ordering::Relaxed);
+                unsafe {
+            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+        }
                 return 0;
             };
             let next_rsp = next_task.context().saved_stack_pointer();
@@ -583,7 +631,10 @@ extern "sysv64" fn exhi_preemption_handler(frame: *mut InterruptContext) -> usiz
             if next_rsp == 0 || (next_rsp as u64) < next_base + PAGE_SIZE as u64
                 || next_end.map_or(true, |v| v > next_top) || !gdt::set_rsp0(next_top)
             {
-                PREEMPTION_FAILURES.fetch_add(1, Ordering::Relaxed);
+                unsafe {
+            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+        }
                 return 0;
             }
             unsafe {
@@ -593,84 +644,32 @@ extern "sysv64" fn exhi_preemption_handler(frame: *mut InterruptContext) -> usiz
                     ptr::addr_of_mut!(TASK_FX_STATES[i]) as usize,
                 );
             }
-            PREEMPTION_SWITCHES.fetch_add(1, Ordering::Relaxed);
+            unsafe {
+                let p = ptr::addr_of_mut!(EXHIOS_P4_4_SWITCHES);
+                ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+            }
             next_rsp
         }
         Err(_) => {
-            PREEMPTION_FAILURES.fetch_add(1, Ordering::Relaxed);
+            unsafe {
+            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+        }
             frame_address
         }
     }
 }
 
 #[cfg(feature = "timer-preemption-smoke-test")]
-extern "sysv64" fn preemptive_task_a() -> ! {
-    unsafe { run_preemptive_task(0, 0xA1A1_A1A1_A1A1_A1A1) }
-}
-#[cfg(feature = "timer-preemption-smoke-test")]
-extern "sysv64" fn preemptive_task_b() -> ! {
-    unsafe { run_preemptive_task(1, 0xB2B2_B2B2_B2B2_B2B2) }
+#[no_mangle]
+extern "sysv64" fn exhi_preemption_test_pass() -> ! {
+    finish_preemption_test(true)
 }
 
 #[cfg(feature = "timer-preemption-smoke-test")]
-#[target_feature(enable = "sse2")]
-unsafe fn run_preemptive_task(index: usize, cookie: u64) -> ! {
-    let mut local = [cookie; 8];
-    let local_ptr = local.as_mut_ptr();
-    unsafe { ptr::write_volatile(local_ptr.add(3), cookie ^ 0x55AA_55AA_55AA_55AA); }
-    if index == 0 { TASK_A_LOCAL_ADDRESS.store(local_ptr as usize, Ordering::Relaxed); }
-    else { TASK_B_LOCAL_ADDRESS.store(local_ptr as usize, Ordering::Relaxed); }
-
-    let xmm_pattern = f64::from_bits(cookie ^ 0x5AA5_5AA5_5AA5_5AA5);
-    let xmm_value: f64;
-    unsafe {
-        asm!(
-            "movq {value}, [{pattern}]",
-            value = out(xmm_reg) xmm_value,
-            pattern = in(reg) &xmm_pattern,
-            options(nostack, readonly)
-        );
-    }
-    let mut sequence = 0u64;
-    loop {
-        sequence = sequence.wrapping_add(1);
-        let expected = cookie ^ sequence;
-        unsafe {
-            ptr::write_volatile(local_ptr.add(3), expected);
-            if ptr::read_volatile(local_ptr.add(3)) != expected {
-                PREEMPTION_FAILURES.fetch_add(1, Ordering::Relaxed);
-            }
-        }
-        if index == 0 { TASK_A_PROGRESS.fetch_add(1, Ordering::Relaxed); }
-        else { TASK_B_PROGRESS.fetch_add(1, Ordering::Relaxed); }
-
-        let ticks = timer::ticks();
-        let switches = PREEMPTION_SWITCHES.load(Ordering::Relaxed);
-        if ticks >= 16 && switches >= 12 {
-            let mut observed = 0.0f64;
-            unsafe {
-                asm!(
-                    "movq [{output}], {value}",
-                    output = in(reg) &mut observed,
-                    value = in(xmm_reg) xmm_value,
-                    options(nostack)
-                );
-            }
-            if observed.to_bits() == xmm_pattern.to_bits() {
-                if index == 0 { TASK_A_XMM_OK.store(1, Ordering::Relaxed); }
-                else { TASK_B_XMM_OK.store(1, Ordering::Relaxed); }
-            } else {
-                PREEMPTION_FAILURES.fetch_add(1, Ordering::Relaxed);
-            }
-        }
-        if index == 0 && ticks >= 16 && switches >= 12
-            && TASK_A_XMM_OK.load(Ordering::Relaxed) == 1
-            && TASK_B_XMM_OK.load(Ordering::Relaxed) == 1
-        {
-            finish_preemption_test(true);
-        }
-        if index == 0 && ticks >= 80 { finish_preemption_test(false); }
-    }
+#[no_mangle]
+extern "sysv64" fn exhi_preemption_test_fail() -> ! {
+    finish_preemption_test(false)
 }
 
 #[cfg(feature = "timer-preemption-smoke-test")]
@@ -678,10 +677,10 @@ fn finish_preemption_test(target_reached: bool) -> ! {
     unsafe { asm!("cli", options(nomem, nostack, preserves_flags)); }
     let pic_status = timer::mask_irq0();
     let elapsed = timer::ticks();
-    let switches = PREEMPTION_SWITCHES.load(Ordering::Relaxed);
-    let failures = PREEMPTION_FAILURES.load(Ordering::Relaxed);
-    let a_progress = TASK_A_PROGRESS.load(Ordering::Relaxed);
-    let b_progress = TASK_B_PROGRESS.load(Ordering::Relaxed);
+    let switches = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_SWITCHES)) };
+    let failures = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_FAILURES)) };
+    let a_progress = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_PROGRESS)) };
+    let b_progress = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_PROGRESS)) };
     let a_local = TASK_A_LOCAL_ADDRESS.load(Ordering::Relaxed) as u64;
     let b_local = TASK_B_LOCAL_ADDRESS.load(Ordering::Relaxed) as u64;
     let a_base = unsafe { ptr::addr_of!(TASK_STACKS[0]) as u64 };
@@ -719,8 +718,8 @@ fn finish_preemption_test(target_reached: bool) -> ! {
         && a_runtime >= 6 && b_runtime >= 6
         && a_progress > 0 && b_progress > 0 && failures == 0
         && a_local_ok && b_local_ok && a_local != b_local && b_frame_ok
-        && TASK_A_XMM_OK.load(Ordering::Relaxed) == 1
-        && TASK_B_XMM_OK.load(Ordering::Relaxed) == 1
+        && unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_XMM_OK)) == 1 }
+        && unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_XMM_OK)) == 1 }
         && fx_a_active && current_a
         && unsafe { (*scheduler).ready_count() == 1 && (*scheduler).finished_count() == 0 }
         && tss_a && irq0_masked;
@@ -738,9 +737,9 @@ fn finish_preemption_test(target_reached: bool) -> ! {
     serial::COM1.write(b" task B progress=");
     serial::COM1.write_hex(b_progress as u64);
     serial::COM1.write(b"\r\nP4.4: XMM state A=");
-    serial::COM1.write(if TASK_A_XMM_OK.load(Ordering::Relaxed) == 1 { b"preserved" } else { b"failed   " });
+    serial::COM1.write(if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_XMM_OK)) == 1 } { b"preserved" } else { b"failed   " });
     serial::COM1.write(b" B=");
-    serial::COM1.write(if TASK_B_XMM_OK.load(Ordering::Relaxed) == 1 { b"preserved" } else { b"failed   " });
+    serial::COM1.write(if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_XMM_OK)) == 1 } { b"preserved" } else { b"failed   " });
     serial::COM1.write(b" stacks distinct=");
     serial::COM1.write(if a_local_ok && b_local_ok && a_local != b_local { b"yes" } else { b"no " });
     serial::COM1.write(b"\r\nP4.4: scheduler current=A ready=1 TSS.RSP0 active=");
@@ -1179,5 +1178,71 @@ exhi_interrupt_context_start:
 exhi_preemptive_task_bootstrap:
     call r12
     ud2
+
+    .global exhi_preemptive_task_a
+    .type exhi_preemptive_task_a, @function
+exhi_preemptive_task_a:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
+    movabs rax, 0xA1A1A1A1A1A1A1A1
+    mov qword ptr [rbp - 8], rax
+    lea rcx, [rbp - 8]
+    mov qword ptr [rip + EXHIOS_P4_4_A_LOCAL], rcx
+    movq xmm15, rax
+.Lpreempt_a_loop:
+    inc qword ptr [rip + EXHIOS_P4_4_A_PROGRESS]
+    mov rdx, qword ptr [rip + EXHIOS_PIT_TICKS]
+    cmp rdx, 16
+    jb .Lpreempt_a_loop
+    mov rdx, qword ptr [rbp - 8]
+    movabs rax, 0xA1A1A1A1A1A1A1A1
+    cmp rdx, rax
+    jne .Lpreempt_a_fail
+    movq rdx, xmm15
+    cmp rdx, rax
+    jne .Lpreempt_a_fail
+    mov qword ptr [rip + EXHIOS_P4_4_A_XMM_OK], 1
+    cmp qword ptr [rip + EXHIOS_P4_4_SWITCHES], 12
+    jb .Lpreempt_a_loop
+    cmp qword ptr [rip + EXHIOS_P4_4_B_XMM_OK], 1
+    jne .Lpreempt_a_loop
+    cmp qword ptr [rip + EXHIOS_P4_4_FAILURES], 0
+    jne .Lpreempt_a_fail
+    call exhi_preemption_test_pass
+    ud2
+.Lpreempt_a_fail:
+    mov qword ptr [rip + EXHIOS_P4_4_FAILURES], 1
+    call exhi_preemption_test_fail
+    ud2
+
+    .global exhi_preemptive_task_b
+    .type exhi_preemptive_task_b, @function
+exhi_preemptive_task_b:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
+    movabs rax, 0xB2B2B2B2B2B2B2B2
+    mov qword ptr [rbp - 8], rax
+    lea rcx, [rbp - 8]
+    mov qword ptr [rip + EXHIOS_P4_4_B_LOCAL], rcx
+    movq xmm15, rax
+.Lpreempt_b_loop:
+    inc qword ptr [rip + EXHIOS_P4_4_B_PROGRESS]
+    mov rdx, qword ptr [rip + EXHIOS_PIT_TICKS]
+    cmp rdx, 16
+    jb .Lpreempt_b_loop
+    mov rdx, qword ptr [rbp - 8]
+    movabs rax, 0xB2B2B2B2B2B2B2B2
+    cmp rdx, rax
+    jne .Lpreempt_b_fail
+    movq rdx, xmm15
+    cmp rdx, rax
+    jne .Lpreempt_b_fail
+    mov qword ptr [rip + EXHIOS_P4_4_B_XMM_OK], 1
+    jmp .Lpreempt_b_loop
+.Lpreempt_b_fail:
+    mov qword ptr [rip + EXHIOS_P4_4_FAILURES], 1
+    jmp .Lpreempt_b_loop
 "#
 );
