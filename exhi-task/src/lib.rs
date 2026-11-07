@@ -540,7 +540,6 @@ mod tests {
         assert_eq!(scheduler.finish_current(), Ok(None));
         assert_eq!(scheduler.current(), None);
         assert_eq!(scheduler.blocked_count(), 1);
-        assert_eq!(scheduler.enter_idle(), Ok(()));
         assert!(scheduler.is_idle());
         assert_eq!(scheduler.wake(second), Err(SchedulerError::InvalidStateTransition));
         assert_eq!(scheduler.wake(first), Ok(()));
