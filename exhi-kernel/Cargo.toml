@@ -20,6 +20,7 @@ ring3-smoke-test = ["timer-preemption-smoke-test"]
 ring3-supervisor-fault-smoke-test = ["ring3-smoke-test"]
 ring3-syscall-smoke-test = ["ring3-smoke-test"]
 user-pointer-range-smoke-test = ["ring3-smoke-test"]
+user-copy-smoke-test = ["ring3-smoke-test"]
 
 [[bin]]
 name = "exhi-kernel"
