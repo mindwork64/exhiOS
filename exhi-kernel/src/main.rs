@@ -733,7 +733,13 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         halt_forever();
     }
 
-    #[cfg(feature = "ring3-smoke-test")]
+    #[cfg(feature = "ring3-supervisor-fault-smoke-test")]
+    {
+        kernel_console.write(b"P5.2: starting the Ring 3 supervisor-only access fault test.\r\n");
+        arch::x86_64::user_mode::ring3_supervisor_fault_smoke_test();
+    }
+
+    #[cfg(all(feature = "ring3-smoke-test", not(feature = "ring3-supervisor-fault-smoke-test")))]
     {
         kernel_console.write(b"P5.1: starting the Ring 3 entry and exception-return smoke test.\r\n");
         arch::x86_64::user_mode::ring3_smoke_test();
