@@ -6,9 +6,9 @@
 //! state. Do not expose production Ring 3 tasks until a safe runtime provides
 //! per-CPU entry state, kernel stacks, and a production dispatch path.
 
-use core::arch::{asm, x86_64::__cpuid};
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 use core::arch::global_asm;
+use core::arch::{asm, x86_64::__cpuid};
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 use core::mem::{offset_of, size_of};
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
@@ -68,8 +68,8 @@ pub fn initialize(entry: u64) -> Result<SyscallMsrState, SyscallInitError> {
     }
 
     let previous_efer = unsafe { read_msr(IA32_EFER) };
-    let star = ((u64::from(USER_CODE_SELECTOR) - 16) << 48)
-        | (u64::from(KERNEL_CODE_SELECTOR) << 32);
+    let star =
+        ((u64::from(USER_CODE_SELECTOR) - 16) << 48) | (u64::from(KERNEL_CODE_SELECTOR) << 32);
 
     // Program the inert descriptor/entry state first. SCE remains unchanged
     // until all three values are present and have been checked.
@@ -193,10 +193,7 @@ pub(crate) fn initialize_smoke_test_cpu_local(kernel_stack_top: u64, fx_state: u
             ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top),
             kernel_stack_top,
         );
-        ptr::write_volatile(
-            ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.fx_state),
-            fx_state,
-        );
+        ptr::write_volatile(ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.fx_state), fx_state);
     }
 
     let previous_gs = unsafe { read_msr(IA32_GS_BASE) };
@@ -207,9 +204,7 @@ pub(crate) fn initialize_smoke_test_cpu_local(kernel_stack_top: u64, fx_state: u
     }
     core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
 
-    let valid = unsafe {
-        read_msr(IA32_GS_BASE) == 0 && read_msr(IA32_KERNEL_GS_BASE) == local
-    };
+    let valid = unsafe { read_msr(IA32_GS_BASE) == 0 && read_msr(IA32_KERNEL_GS_BASE) == local };
     if !valid {
         unsafe {
             write_msr(IA32_GS_BASE, previous_gs);
@@ -277,7 +272,6 @@ pub(crate) struct UserTaskSyscallFrame {
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 const _: [(); 20 * core::mem::size_of::<u64>()] =
     [(); core::mem::size_of::<UserTaskSyscallFrame>()];
-
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 global_asm!(
