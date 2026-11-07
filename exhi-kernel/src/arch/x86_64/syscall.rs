@@ -1,9 +1,10 @@
 //! x86-64 SYSCALL/SYSRET MSR configuration.
 //!
-//! This module only installs the processor's syscall MSR contract. It does
-//! not install an entry stack or enable user tasks; callers must provide a
-//! valid kernel entry point and must not expose Ring 3 until the runtime is
-//! ready to handle it.
+//! This module owns x86-64 syscall MSR setup and the feature-gated Ring 3
+//! lifecycle entry stub. The current assembly entry is a smoke-test adapter:
+//! its stack and FX-state slots are global test state, not production per-CPU
+//! state. Do not expose production Ring 3 tasks until a safe runtime provides
+//! per-CPU entry state, kernel stacks, and a production dispatch path.
 
 use core::arch::{asm, x86_64::__cpuid};
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
