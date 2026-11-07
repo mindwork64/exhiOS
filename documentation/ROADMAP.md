@@ -8,7 +8,6 @@
 - The kernel is a freestanding ELF64 image built for `x86_64-unknown-none`.
 - Every milestone must have reproducible build or runtime evidence before it is marked complete.
 - A successful compile is not proof that a subsystem works at runtime.
-- ОБНОВИ ROADMAP, ДУРЕНЬ!
 
 ## P0 — UEFI boot chain
 
@@ -103,11 +102,9 @@
 - [ ] Build a 0–4 GiB identity map using 2 MiB pages.
 - [ ] Switch CR3 and verify kernel, stack and page-table translations in QEMU.
 - [ ] Add controlled failure/rollback checks.
-
-- [ ] Virtual memory manager.
-- [ ] Virtual memory manager.
-- [ ] Kernel heap allocator.
-- [ ] Tests for allocation, release, reuse, and invalid ranges.
+- [ ] Integrate the virtual memory manager.
+- [ ] Integrate the kernel heap allocator.
+- [ ] Add tests for allocation, release, reuse, and invalid ranges.
 
 ## P3 — Basic devices
 
@@ -128,11 +125,15 @@
 
 ## P5 — User-mode isolation
 
-- [ ] Ring 3 transition and CPL3 exception return (P5.1 implementation in progress; awaiting self-hosted QEMU runtime acceptance).
-- [ ] Per-process address spaces.
-- [ ] System-call entry and return.
-- [ ] User pointer and argument validation.
-- [ ] Capabilities and default-deny access rules.
+The implementation and dedicated headless QEMU smoke-test paths now exist for P5.1–P5.6. Keep these milestones open until the self-hosted QEMU runtime results have been reviewed and accepted.
+
+- [ ] **P5.1 — Ring 3 entry and CPL3 exception return:** user selectors, TSS.RSP0, isolated address space, and processor-originated exception return.
+- [ ] **P5.2 — Supervisor isolation:** verify that CPL3 cannot read supervisor-only kernel mappings.
+- [ ] **P5.3 — System-call entry/return:** configure SYSCALL MSRs, switch to a dedicated kernel stack, validate the return frame, and return to CPL3.
+- [ ] **P5.4 — User-pointer validation:** validate canonical ranges, mapped pages, and read/write/execute permissions before dereferencing.
+- [ ] **P5.5 — Safe user copies:** validate the complete range before copying and reject cross-boundary copies without partial writes.
+- [ ] **P5.6 — User-task lifecycle:** run two isolated Ring 3 tasks with private CR3 roots and stacks; exercise SYSCALL yield/exit, idle dispatch, kernel reaping, address-space/frame reclamation, and removal of Finished scheduler records. Host scheduler lifecycle tests cover the exit-to-idle-to-reaper transition and safe task-record reclamation.
+- [ ] **P5.7 — Capabilities and default-deny access rules:** define process capabilities and enforce access checks at kernel service boundaries.
 
 ## P6 — Storage
 
