@@ -1188,6 +1188,16 @@ fn user_task_space_a_root() -> u64 {
 }
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn user_task_space_b_root() -> u64 {
+    unsafe {
+        (&*ptr::addr_of!(USER_TASK_SPACE_B))
+            .as_ref()
+            .map(AddressSpace::root_address)
+            .unwrap_or(0)
+    }
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
 fn create_user_task_address_space(
     initial_marker: u32,
     resumed_marker: u32,
