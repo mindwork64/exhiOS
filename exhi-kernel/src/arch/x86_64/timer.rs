@@ -12,10 +12,7 @@ use core::sync::atomic::AtomicU64;
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    all(
-        feature = "timer-preemption-smoke-test",
-        not(feature = "ring3-smoke-test")
-    )
+    feature = "timer-preemption-smoke-test"
 ))]
 use core::sync::atomic::Ordering;
 
@@ -115,10 +112,7 @@ pub fn initialize() -> TimerStatus {
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    all(
-        feature = "timer-preemption-smoke-test",
-        not(feature = "ring3-smoke-test")
-    )
+    feature = "timer-preemption-smoke-test"
 ))]
 pub fn ticks() -> u64 {
     EXHIOS_PIT_TICKS.load(Ordering::Relaxed)
@@ -139,10 +133,7 @@ pub fn elapsed_ticks(start: u64) -> u64 {
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    all(
-        feature = "timer-preemption-smoke-test",
-        not(feature = "ring3-smoke-test")
-    )
+    feature = "timer-preemption-smoke-test"
 ))]
 pub fn mask_irq0() -> pic::PicStatus {
     pic::mask_irq0()

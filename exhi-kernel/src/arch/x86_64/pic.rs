@@ -54,10 +54,7 @@ pub fn unmask_irq0() -> PicStatus {
 #[cfg(any(
     feature = "timer-smoke-test",
     feature = "task-accounting-smoke-test",
-    all(
-        feature = "timer-preemption-smoke-test",
-        not(feature = "ring3-smoke-test")
-    )
+    feature = "timer-preemption-smoke-test"
 ))]
 pub fn mask_irq0() -> PicStatus {
     // SAFETY: Called with IF clear while changing timer interrupt policy.

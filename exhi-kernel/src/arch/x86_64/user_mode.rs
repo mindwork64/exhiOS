@@ -549,7 +549,6 @@ pub fn handle_user_exception(
         Ring3TestMode::SupervisorFault => b"P5.2: exception returned from user mode; vector=",
         Ring3TestMode::Syscall => b"P5.3: exception returned from user mode after SYSCALL; vector=",
         #[cfg(feature = "user-pointer-range-smoke-test")]
-        #[cfg(feature = "user-pointer-range-smoke-test")]
         Ring3TestMode::PointerValidation => {
             b"P5.4: unexpected exception during pointer validation; vector="
         }
@@ -657,7 +656,9 @@ pub fn handle_user_exception(
         Ring3TestMode::Syscall => {
             b"P5.3: syscall returned to CPL3; return value and user frame verified.\r\n"
         }
+        #[cfg(feature = "user-pointer-range-smoke-test")]
         Ring3TestMode::PointerValidation => b"P5.4: pointer-range verification completed.\r\n",
+        #[cfg(feature = "user-copy-smoke-test")]
         Ring3TestMode::UserCopy => b"P5.5: user-copy round-trip verified.\r\n",
     });
     serial::COM1.write(b"Ring 3: CR2=0x");
