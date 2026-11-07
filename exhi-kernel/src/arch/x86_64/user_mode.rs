@@ -22,6 +22,21 @@ const USER_STACK_POINTER: u64 = USER_STACK_TOP - 8;
 const USER_STACK_SENTINEL: u64 = 0x0000_0000_5A6B_7C8D;
 const USER_CODE_LENGTH: u64 = 10;
 
+#[repr(u64)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Ring3TestMode {
+    Breakpoint = 1,
+    SupervisorFault = 2,
+}
+
+static RING3_SUPERVISOR_PROBE: u64 = 0x4558_4849_4F53_5046;
+static mut RING3_TEST_MODE: u64 = 0;
+static mut RING3_EXPECTED_VECTOR: u64 = 3;
+static mut RING3_EXPECTED_ERROR_MASK: u64 = u64::MAX;
+static mut RING3_EXPECTED_ERROR_VALUE: u64 = 0;
+static mut RING3_EXPECTED_RIP: u64 = 0;
+static mut RING3_EXPECTED_FAULT_ADDRESS: u64 = 0;
+
 #[repr(C, align(4096))]
 struct KernelStack([u8; STACK_TOTAL_SIZE]);
 
@@ -62,15 +77,33 @@ unsafe extern "sysv64" {
 }
 
 pub fn ring3_smoke_test() -> ! {
+    run_ring3_test(Ring3TestMode::Breakpoint)
+}
+
+#[cfg(feature = "ring3-supervisor-fault-smoke-test")]
+pub fn ring3_supervisor_fault_smoke_test() -> ! {
+    run_ring3_test(Ring3TestMode::SupervisorFault)
+}
+
+fn run_ring3_test(mode: Ring3TestMode) -> ! {
     unsafe {
         asm!("cli", options(nomem, nostack, preserves_flags));
         ptr::write(ptr::addr_of_mut!(RING3_ADDRESS_SPACE), None);
         ptr::write_volatile(ptr::addr_of_mut!(RING3_CODE_FRAME), 0);
         ptr::write_volatile(ptr::addr_of_mut!(RING3_STACK_FRAME), 0);
         ptr::write_volatile(ptr::addr_of_mut!(RING3_KERNEL_STACK_TOP), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_TEST_MODE), mode as u64);
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_VECTOR), 3);
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_ERROR_MASK), u64::MAX);
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_ERROR_VALUE), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_RIP), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_FAULT_ADDRESS), 0);
     }
 
-    serial::COM1.write(b"P5.1: preparing isolated Ring 3 address space.\r\n");
+    serial::COM1.write(match mode {
+        Ring3TestMode::Breakpoint => b"P5.1: preparing isolated Ring 3 address space.\r\n",
+        Ring3TestMode::SupervisorFault => b"P5.2: preparing Ring 3 supervisor-isolation test.\r\n",
+    });
 
     let Some(fx_state) = task::initialize_fx_state_for_user_mode() else {
         setup_failed(b"P5.1: FXSR/SSE context initialization failed.\r\n");
@@ -102,12 +135,34 @@ pub fn ring3_smoke_test() -> ! {
 
     let code_frame = allocate_zeroed_frame();
     let stack_frame = allocate_zeroed_frame();
-    const USER_CODE: [u8; USER_CODE_LENGTH as usize] = [
-        // mov qword ptr [rsp - 8], 0x5A6B7C8D; int3
-        0x48, 0xC7, 0x44, 0x24, 0xF8, 0x8D, 0x7C, 0x6B, 0x5A, 0xCC,
-    ];
+    let (user_code, user_code_length, expected_vector, expected_error_mask, expected_error_value, expected_rip, expected_fault_address) =
+        build_user_code(mode);
     unsafe {
-        ptr::copy_nonoverlapping(USER_CODE.as_ptr(), code_frame as *mut u8, USER_CODE.len());
+        ptr::copy_nonoverlapping(
+            user_code.as_ptr(),
+            code_frame as *mut u8,
+            user_code_length,
+        );
+        ptr::write_volatile(
+            ptr::addr_of_mut!(RING3_EXPECTED_VECTOR),
+            expected_vector,
+        );
+        ptr::write_volatile(
+            ptr::addr_of_mut!(RING3_EXPECTED_ERROR_MASK),
+            expected_error_mask,
+        );
+        ptr::write_volatile(
+            ptr::addr_of_mut!(RING3_EXPECTED_ERROR_VALUE),
+            expected_error_value,
+        );
+        ptr::write_volatile(
+            ptr::addr_of_mut!(RING3_EXPECTED_RIP),
+            USER_CODE_ADDRESS + expected_rip,
+        );
+        ptr::write_volatile(
+            ptr::addr_of_mut!(RING3_EXPECTED_FAULT_ADDRESS),
+            expected_fault_address,
+        );
         ptr::write_volatile(
             ptr::addr_of_mut!(RING3_CODE_FRAME),
             code_frame,
@@ -168,8 +223,11 @@ pub fn ring3_smoke_test() -> ! {
         ptr::write(ptr::addr_of_mut!(RING3_ADDRESS_SPACE), Some(space));
     }
 
-    serial::COM1.write(b"P5.1: user code mapped RX; user stack mapped RW+NX.\r\n");
-    serial::COM1.write(b"P5.1: IRETQ will enter CPL3; INT3 must return through TSS.RSP0.\r\n");
+    serial::COM1.write(match mode {
+        Ring3TestMode::Breakpoint => b"P5.1: user code mapped RX; user stack mapped RW+NX.\r\n",
+        Ring3TestMode::SupervisorFault => b"P5.2: user RX code and RW+NX stack mapped; kernel probe is supervisor-only.\r\n",
+    });
+    serial::COM1.write(b"Ring 3: IRETQ enters CPL3; the expected CPU exception returns through TSS.RSP0.\r\n");
 
     let mut frame = UserEntryFrame {
         r15: 0,
@@ -202,6 +260,33 @@ pub fn ring3_smoke_test() -> ! {
 
     unsafe {
         exhi_interrupt_context_start(frame_rsp, fx_state);
+    }
+}
+
+
+fn build_user_code(
+    mode: Ring3TestMode,
+) -> ([u8; 24], usize, u64, u64, u64, u64, u64) {
+    // Both scenarios first write a sentinel through the actual CPL3 user
+    // stack. P5.1 then executes INT3; P5.2 attempts a supervisor-only read.
+    let mut code = [0u8; 24];
+    code[..10].copy_from_slice(&[
+        0x48, 0xC7, 0x44, 0x24, 0xF8, 0x8D, 0x7C, 0x6B, 0x5A, 0x90,
+    ]);
+    match mode {
+        Ring3TestMode::Breakpoint => {
+            code[9] = 0xCC;
+            (code, 10, 3, u64::MAX, 0, USER_CODE_LENGTH, 0)
+        }
+        Ring3TestMode::SupervisorFault => {
+            let address = ptr::addr_of!(RING3_SUPERVISOR_PROBE) as u64;
+            code[10] = 0x48;
+            code[11] = 0xB8; // movabs rax, imm64
+            code[12..20].copy_from_slice(&address.to_le_bytes());
+            code[20..23].copy_from_slice(&[0x48, 0x8B, 0x00]); // mov rax, [rax]
+            code[23] = 0xCC; // Should be unreachable if supervisor protection works.
+            (code, 24, 14, 0x7, 0x5, USER_CODE_ADDRESS + 20 - USER_CODE_ADDRESS, address)
+        }
     }
 }
 
@@ -264,31 +349,65 @@ pub fn handle_user_exception(
         })
     });
 
-    let passed = vector == 3
-        && error_code == 0
+    let expected_vector = unsafe {
+        ptr::read_volatile(ptr::addr_of!(RING3_EXPECTED_VECTOR))
+    };
+    let expected_error_mask = unsafe {
+        ptr::read_volatile(ptr::addr_of!(RING3_EXPECTED_ERROR_MASK))
+    };
+    let expected_error_value = unsafe {
+        ptr::read_volatile(ptr::addr_of!(RING3_EXPECTED_ERROR_VALUE))
+    };
+    let expected_rip = unsafe {
+        ptr::read_volatile(ptr::addr_of!(RING3_EXPECTED_RIP))
+    };
+    let expected_fault_address = unsafe {
+        ptr::read_volatile(ptr::addr_of!(RING3_EXPECTED_FAULT_ADDRESS))
+    };
+    let fault_address = if vector == 14 {
+        let address: u64;
+        unsafe {
+            asm!("mov {}, cr2", out(reg) address, options(nomem, nostack, preserves_flags));
+        }
+        address
+    } else {
+        0
+    };
+    let fault_address_valid = if expected_vector == 14 {
+        fault_address == expected_fault_address
+    } else {
+        expected_fault_address == 0 && vector == 3
+    };
+    let user_stack_write_valid = unsafe {
+        ptr::read_volatile(
+            (ptr::read_volatile(ptr::addr_of!(RING3_STACK_FRAME)) + PAGE_SIZE - 16)
+                as *const u64,
+        ) == USER_STACK_SENTINEL
+    };
+
+    let passed = vector == expected_vector
+        && error_code & expected_error_mask == expected_error_value
         && code_selector == u64::from(gdt::USER_CODE_SELECTOR)
         && code_selector & 3 == 3
-        && instruction_pointer == USER_CODE_ADDRESS + USER_CODE_LENGTH
+        && instruction_pointer == expected_rip
         && flags & (1 << 9) != 0
         && frame_in_bounds
         && stack_shape_valid
         && saved_user_rsp == USER_STACK_POINTER
         && saved_user_ss == u64::from(gdt::USER_DATA_SELECTOR)
         && mapping_checks
-        && unsafe {
-            ptr::read_volatile(
-                (ptr::read_volatile(ptr::addr_of!(RING3_STACK_FRAME)) + PAGE_SIZE - 16)
-                    as *const u64,
-            ) == USER_STACK_SENTINEL
-        };
+        && user_stack_write_valid
+        && fault_address_valid;
 
-    serial::COM1.write(b"P5.1: saved user RIP=0x");
-    serial::COM1.write_hex(instruction_pointer);
-    serial::COM1.write(b" RSP=0x");
-    serial::COM1.write_hex(saved_user_rsp);
-    serial::COM1.write(b" SS=0x");
-    serial::COM1.write_hex(saved_user_ss);
-    serial::COM1.write(b"\r\nP5.1: user code RX, guard unmapped, stack RW+NX and CPL3 stack write verified.\r\n");
+    serial::COM1.write(match mode {
+        Ring3TestMode::Breakpoint => b"P5.1: saved user state RIP/RSP/SS verified.\r\n",
+        Ring3TestMode::SupervisorFault => b"P5.2: user supervisor-access fault RIP/RSP/SS verified.\r\n",
+    });
+    serial::COM1.write(b"Ring 3: CR2=0x");
+    serial::COM1.write_hex(fault_address);
+    serial::COM1.write(b" error=0x");
+    serial::COM1.write_hex(error_code);
+    serial::COM1.write(b" user stack write=yes guard unmapped=yes.\r\n");
 
     let cleanup_ok = reclaim_user_address_space();
     let rsp0_cleared = gdt::set_rsp0(0) && gdt::read_rsp0() == 0;
@@ -350,11 +469,18 @@ fn setup_failed(message: &'static [u8]) -> ! {
 }
 
 fn finish(passed: bool) -> ! {
-    serial::COM1.write(if passed {
-        b"P5.1: ring3 entry and exception-return smoke test passed.\r\n"
-    } else {
-        b"P5.1: ring3 entry and exception-return smoke test failed.\r\n"
-    });
+    let mode = unsafe {
+        ptr::read_volatile(ptr::addr_of!(RING3_TEST_MODE))
+    };
+    let marker = match (mode, passed) {
+        (1, true) => b"P5.1: ring3 entry and exception-return smoke test passed.\r\n" as &'static [u8],
+        (1, false) => b"P5.1: ring3 entry and exception-return smoke test failed.\r\n",
+        (2, true) => b"P5.2: supervisor-only mapping fault test passed.\r\n",
+        (2, false) => b"P5.2: supervisor-only mapping fault test failed.\r\n",
+        (_, true) => b"Ring 3 runtime smoke test passed.\r\n",
+        (_, false) => b"Ring 3 runtime smoke test failed.\r\n",
+    };
+    serial::COM1.write(marker);
     serial::COM1.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
     let exit = if passed { 0x10u32 } else { 0x11u32 };
     unsafe {
