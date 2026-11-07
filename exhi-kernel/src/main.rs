@@ -733,7 +733,13 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         halt_forever();
     }
 
-    #[cfg(feature = "timer-preemption-smoke-test")]
+    #[cfg(feature = "preemptive-task-exit-smoke-test")]
+    {
+        kernel_console.write(b"P4.5: starting preemptive task-exit lifecycle smoke test.\r\n");
+        arch::x86_64::task::preemptive_task_exit_smoke_test();
+    }
+
+    #[cfg(all(feature = "timer-preemption-smoke-test", not(feature = "preemptive-task-exit-smoke-test")))]
     {
         kernel_console.write(b"P4.4: starting timer-driven task preemption smoke test.\r\n");
         arch::x86_64::task::timer_preemption_smoke_test();

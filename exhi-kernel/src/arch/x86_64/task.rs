@@ -116,6 +116,9 @@ unsafe extern "sysv64" {
     fn exhi_preemptive_task_bootstrap() -> !;
     fn exhi_preemptive_task_a() -> !;
     fn exhi_preemptive_task_b() -> !;
+    fn exhi_preemptive_task_exit_bootstrap() -> !;
+    fn exhi_preemptive_task_exit_a();
+    fn exhi_preemptive_task_exit_b();
 }
 
 /// Runs two tasks that repeatedly yield to each other, then returns to the
@@ -386,6 +389,355 @@ pub fn timer_accounting_smoke_test() -> bool {
     passed
 }
 
+
+
+/// Runs the preemptive task-exit lifecycle test. Task A returns first and must
+/// become Finished; task B then runs alone and exits the scheduler cleanly.
+#[cfg(feature = "preemptive-task-exit-smoke-test")]
+pub fn preemptive_task_exit_smoke_test() -> ! {
+    unsafe {
+        asm!("cli", options(nomem, nostack, preserves_flags));
+        ptr::write(ptr::addr_of_mut!(SCHEDULER), Scheduler::new());
+        ptr::write(ptr::addr_of_mut!(TASK_STACK_TOPS), [0; TASK_COUNT]);
+        ptr::write(ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS), [0; TASK_COUNT]);
+        ptr::write(ptr::addr_of_mut!(PREEMPTION_TASK_A_ID), None);
+        ptr::write(ptr::addr_of_mut!(PREEMPTION_TASK_B_ID), None);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE), 0);
+    }
+    TASK_A_PROGRESS.store(0, Ordering::Relaxed);
+    TASK_B_PROGRESS.store(0, Ordering::Relaxed);
+    TASK_FAILURES.store(0, Ordering::Relaxed);
+    TASK_A_LOCAL_ADDRESS.store(0, Ordering::Relaxed);
+    TASK_B_LOCAL_ADDRESS.store(0, Ordering::Relaxed);
+    unsafe {
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_SWITCHES), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_A_PROGRESS), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_B_PROGRESS), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_A_XMM_OK), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_B_XMM_OK), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_A_LOCAL), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_P4_4_B_LOCAL), 0);
+    }
+
+    serial::COM1.write(b"P4.5: preparing preemptive task-exit contexts.\r\n");
+    if !initialize_fx_contexts() {
+        preemption_setup_failed(b"P4.5: CPU FXSR/SSE state initialization failed.\r\n");
+    }
+    let Some((a_rsp, a_top)) =
+        (unsafe { prepare_preemption_exit_stack(0, exhi_preemptive_task_exit_a) })
+    else {
+        preemption_setup_failed(b"P4.5: task A stack setup failed.\r\n");
+    };
+    let Some((b_rsp, _b_top)) =
+        (unsafe { prepare_preemption_exit_stack(1, exhi_preemptive_task_exit_b) })
+    else {
+        preemption_setup_failed(b"P4.5: task B stack setup failed.\r\n");
+    };
+
+    let scheduler = ptr::addr_of_mut!(SCHEDULER);
+    let first = unsafe {
+        (*scheduler)
+            .spawn("preempt-exit-A", TaskContext::new(a_rsp))
+            .unwrap_or_else(|_| preemption_setup_failed(b"P4.5: task A registration failed.\r\n"))
+    };
+    let second = unsafe {
+        (*scheduler)
+            .spawn("preempt-exit-B", TaskContext::new(b_rsp))
+            .unwrap_or_else(|_| preemption_setup_failed(b"P4.5: task B registration failed.\r\n"))
+    };
+    if first.get() != 1
+        || second.get() != 2
+        || unsafe { (*scheduler).start() } != Ok(first)
+        || !gdt::set_rsp0(a_top)
+    {
+        preemption_setup_failed(b"P4.5: scheduler initialization failed.\r\n");
+    }
+
+    let timer_status = timer::initialize();
+    if !timer_status.irq0_unmasked {
+        let _ = timer::mask_irq0();
+        preemption_setup_failed(b"P4.5: PIT IRQ0 could not be enabled.\r\n");
+    }
+    unsafe {
+        ptr::write_volatile(ptr::addr_of_mut!(PREEMPTION_TASK_A_ID), Some(first));
+        ptr::write_volatile(ptr::addr_of_mut!(PREEMPTION_TASK_B_ID), Some(second));
+        ptr::write_volatile(ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS[0]), timer::ticks());
+        ptr::write_volatile(
+            ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE),
+            ptr::addr_of_mut!(TASK_FX_STATES[0]) as usize,
+        );
+    }
+    serial::COM1.write(b"P4.5: PIT 100 Hz ready; tasks run without cooperative yields.\r\n");
+    serial::COM1.write(b"P4.5: task A will return first; task B will finish the test.\r\n");
+    // SAFETY: IRQ0 has the full-frame ISR, both guarded stacks and FX states
+    // are initialized, and only IRQ0 is unmasked.
+    unsafe {
+        exhi_interrupt_context_start(a_rsp, ptr::addr_of!(TASK_FX_STATES[0]) as usize);
+    }
+}
+
+#[cfg(feature = "preemptive-task-exit-smoke-test")]
+unsafe fn prepare_preemption_exit_stack(
+    index: usize,
+    entry: unsafe extern "sysv64" fn(),
+) -> Option<(usize, u64)> {
+    if index >= TASK_COUNT {
+        return None;
+    }
+    let base = unsafe { ptr::addr_of_mut!(TASK_STACKS[index]) as u64 };
+    let top = base.checked_add(STACK_TOTAL_SIZE as u64)?;
+    if base % PAGE_SIZE as u64 != 0 || top % 16 != 0 || top >= 0x1_0000_0000 {
+        return None;
+    }
+    if vmm::unmap_page(base).ok()? != base
+        || paging::translate_current(base) != Err(paging::PagingError::NotMapped)
+    {
+        return None;
+    }
+    let rsp = (top as usize).checked_sub(size_of::<InterruptContext>())?;
+    if rsp % 16 != 0 {
+        return None;
+    }
+    let frame = InterruptContext {
+        r15: 0,
+        r14: 0,
+        r13: 0,
+        r12: entry as usize as u64,
+        r11: 0,
+        r10: 0,
+        r9: 0,
+        r8: 0,
+        rdi: 0,
+        rsi: 0,
+        rbp: 0,
+        rbx: 0,
+        rdx: 0,
+        rcx: 0,
+        rax: 0,
+        rip: exhi_preemptive_task_exit_bootstrap as *const () as usize as u64,
+        cs: u64::from(gdt::KERNEL_CODE_SELECTOR),
+        rflags: 0x202,
+        rsp: top,
+        ss: u64::from(gdt::KERNEL_DATA_SELECTOR),
+    };
+    unsafe {
+        ptr::write(rsp as *mut InterruptContext, frame);
+        ptr::write(ptr::addr_of_mut!(TASK_STACK_TOPS[index]), top);
+    }
+    Some((rsp, top))
+}
+
+#[cfg(feature = "preemptive-task-exit-smoke-test")]
+#[no_mangle]
+extern "sysv64" fn exhi_preemptive_task_finished() -> ! {
+    unsafe {
+        asm!("cli", options(nomem, nostack, preserves_flags));
+    }
+    let scheduler = ptr::addr_of_mut!(SCHEDULER);
+    let current_id = unsafe {
+        (*scheduler)
+            .current()
+            .map(|task| task.id())
+            .unwrap_or_else(|| preemption_setup_failed(b"P4.5: task returned without a Running scheduler entry.\r\n"))
+    };
+    let Some(current_index) = task_stack_index(current_id) else {
+        preemption_setup_failed(b"P4.5: exiting task has no kernel stack.\r\n");
+    };
+    let start = unsafe {
+        ptr::read_volatile(ptr::addr_of!(TASK_PREEMPTION_START_TICKS[current_index]))
+    };
+    if unsafe {
+        (*scheduler).account_current_ticks(timer::ticks().wrapping_sub(start))
+    }
+    .is_err()
+    {
+        preemption_setup_failed(b"P4.5: could not account final task runtime.\r\n");
+    }
+
+    let next = unsafe { (*scheduler).finish_current() }
+        .unwrap_or_else(|_| preemption_setup_failed(b"P4.5: scheduler could not finish the task.\r\n"));
+    match next {
+        Some(next_id) => {
+            let Some(index) = task_stack_index(next_id) else {
+                preemption_setup_failed(b"P4.5: next task has no stack slot.\r\n");
+            };
+            let Some(next_task) = (unsafe { (*scheduler).get(next_id) }) else {
+                preemption_setup_failed(b"P4.5: next task is missing from scheduler.\r\n");
+            };
+            let next_rsp = next_task.context().saved_stack_pointer();
+            let next_top = unsafe { ptr::read_volatile(ptr::addr_of!(TASK_STACK_TOPS[index])) };
+            let next_base = unsafe { ptr::addr_of!(TASK_STACKS[index]) as u64 };
+            let next_end = (next_rsp as u64).checked_add(size_of::<InterruptContext>() as u64);
+            if next_rsp == 0
+                || (next_rsp as u64) < next_base + PAGE_SIZE as u64
+                || next_end.map_or(true, |end| end > next_top)
+                || !gdt::set_rsp0(next_top)
+            {
+                preemption_setup_failed(b"P4.5: next task interrupt frame or TSS.RSP0 is invalid.\r\n");
+            }
+            unsafe {
+                ptr::write_volatile(
+                    ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS[index]),
+                    timer::ticks(),
+                );
+                ptr::write_volatile(
+                    ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE),
+                    ptr::addr_of_mut!(TASK_FX_STATES[index]) as usize,
+                );
+                exhi_interrupt_context_start(
+                    next_rsp,
+                    ptr::addr_of!(TASK_FX_STATES[index]) as usize,
+                );
+            }
+        }
+        None => {
+            if !gdt::set_rsp0(0) {
+                preemption_setup_failed(b"P4.5: failed to clear TSS.RSP0 after final task.\r\n");
+            }
+            unsafe {
+                ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE), 0);
+            }
+            finish_preemptive_exit_test(true);
+        }
+    }
+}
+
+#[cfg(feature = "preemptive-task-exit-smoke-test")]
+#[no_mangle]
+extern "sysv64" fn exhi_preemptive_task_exit_fail() -> ! {
+    finish_preemptive_exit_test(false)
+}
+
+#[cfg(feature = "preemptive-task-exit-smoke-test")]
+fn finish_preemptive_exit_test(target_reached: bool) -> ! {
+    unsafe {
+        asm!("cli", options(nomem, nostack, preserves_flags));
+    }
+    let pic_status = timer::mask_irq0();
+    let elapsed = timer::ticks();
+    let switches = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_SWITCHES)) };
+    let failures = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_FAILURES)) };
+    let a_progress = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_PROGRESS)) };
+    let b_progress = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_PROGRESS)) };
+    let a_local = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_LOCAL)) as u64 };
+    let b_local = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_LOCAL)) as u64 };
+    let a_base = unsafe { ptr::addr_of!(TASK_STACKS[0]) as u64 };
+    let b_base = unsafe { ptr::addr_of!(TASK_STACKS[1]) as u64 };
+    let a_top = unsafe { ptr::read_volatile(ptr::addr_of!(TASK_STACK_TOPS[0])) };
+    let b_top = unsafe { ptr::read_volatile(ptr::addr_of!(TASK_STACK_TOPS[1])) };
+    let scheduler = ptr::addr_of_mut!(SCHEDULER);
+    let a_id = unsafe { ptr::read_volatile(ptr::addr_of!(PREEMPTION_TASK_A_ID)) };
+    let b_id = unsafe { ptr::read_volatile(ptr::addr_of!(PREEMPTION_TASK_B_ID)) };
+    let a_finished = unsafe {
+        a_id.is_some_and(|id| {
+            (*scheduler)
+                .get(id)
+                .is_some_and(|task| task.state() == exhi_task::TaskState::Finished)
+        })
+    };
+    let b_finished = unsafe {
+        b_id.is_some_and(|id| {
+            (*scheduler)
+                .get(id)
+                .is_some_and(|task| task.state() == exhi_task::TaskState::Finished)
+        })
+    };
+    let a_runtime = unsafe {
+        a_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks())).unwrap_or(0)
+    };
+    let b_runtime = unsafe {
+        b_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks())).unwrap_or(0)
+    };
+    let b_rsp = unsafe {
+        b_id.and_then(|id| (*scheduler).get(id).map(|task| task.context().saved_stack_pointer())).unwrap_or(0)
+    };
+    let a_local_ok = a_local >= a_base + PAGE_SIZE as u64 && a_local < a_top;
+    let b_local_ok = b_local >= b_base + PAGE_SIZE as u64 && b_local < b_top;
+    let b_frame_ok = b_rsp as u64 >= b_base + PAGE_SIZE as u64
+        && (b_rsp as u64).checked_add(size_of::<InterruptContext>() as u64)
+            .is_some_and(|end| end <= b_top);
+    let all_finished = unsafe {
+        (*scheduler).current().is_none()
+            && (*scheduler).ready_count() == 0
+            && (*scheduler).blocked_count() == 0
+            && (*scheduler).finished_count() == TASK_COUNT
+    };
+    let tss_cleared = gdt::read_rsp0() == 0;
+    let fx_state_cleared = unsafe {
+        ptr::read_volatile(ptr::addr_of!(EXHIOS_ACTIVE_FX_STATE)) == 0
+    };
+    let irq0_masked = pic_status.master_mask & 1 != 0 && pic_status.slave_mask == 0xFF;
+
+    let passed = target_reached
+        && elapsed >= 24
+        && switches >= 12
+        && a_runtime >= 6
+        && b_runtime >= 6
+        && a_progress > 0
+        && b_progress > 0
+        && failures == 0
+        && a_finished
+        && b_finished
+        && a_local_ok
+        && b_local_ok
+        && a_local != b_local
+        && b_frame_ok
+        && unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_XMM_OK)) == 1 }
+        && unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_XMM_OK)) == 1 }
+        && all_finished
+        && tss_cleared
+        && fx_state_cleared
+        && irq0_masked;
+
+    serial::COM1.write(b"P4.5: elapsed PIT ticks=");
+    serial::COM1.write_hex(elapsed);
+    serial::COM1.write(b" preemption switches=");
+    serial::COM1.write_hex(switches as u64);
+    serial::COM1.write(b" task A runtime=");
+    serial::COM1.write_hex(a_runtime);
+    serial::COM1.write(b" task B runtime=");
+    serial::COM1.write_hex(b_runtime);
+    serial::COM1.write(b"\r\nP4.5: task A progress=");
+    serial::COM1.write_hex(a_progress as u64);
+    serial::COM1.write(b" task B progress=");
+    serial::COM1.write_hex(b_progress as u64);
+    serial::COM1.write(b"\r\nP4.5: task A finished=");
+    serial::COM1.write(if a_finished { b"yes" } else { b"no " });
+    serial::COM1.write(b" task B finished=");
+    serial::COM1.write(if b_finished { b"yes" } else { b"no " });
+    serial::COM1.write(b"\r\nP4.5: XMM state A=");
+    serial::COM1.write(if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_XMM_OK)) == 1 } { b"preserved" } else { b"failed   " });
+    serial::COM1.write(b" B=");
+    serial::COM1.write(if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_XMM_OK)) == 1 } { b"preserved" } else { b"failed   " });
+    serial::COM1.write(b" stacks distinct=");
+    serial::COM1.write(if a_local_ok && b_local_ok && a_local != b_local { b"yes" } else { b"no " });
+    serial::COM1.write(b"\r\nP4.5: scheduler current=none Finished=");
+    serial::COM1.write_hex(unsafe { (*scheduler).finished_count() as u64 });
+    serial::COM1.write(b" TSS.RSP0 cleared=");
+    serial::COM1.write(if tss_cleared { b"yes" } else { b"no " });
+    serial::COM1.write(b" IRQ0 masked=");
+    serial::COM1.write(if irq0_masked { b"yes" } else { b"no " });
+    serial::COM1.write(b"\r\n");
+    serial::COM1.write(if passed {
+        b"P4.5: preemptive task-exit runtime smoke test passed.\r\n"
+    } else {
+        b"P4.5: preemptive task-exit runtime smoke test failed.\r\n"
+    });
+    serial::COM1.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
+    let exit = if passed { 0x10u32 } else { 0x11u32 };
+    unsafe {
+        asm!(
+            "out dx, eax",
+            in("dx") 0xF4u16,
+            in("eax") exit,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    loop {
+        unsafe { asm!("cli", "hlt", options(nomem, nostack)); }
+    }
+}
 
 /// Dedicated IRQ0 entry for the full interrupt-frame preemption path.
 #[cfg(feature = "timer-preemption-smoke-test")]
@@ -1288,5 +1640,84 @@ exhi_preemptive_task_b:
 .Lpreempt_b_fail:
     mov qword ptr [rip + EXHIOS_P4_4_FAILURES], 1
     jmp .Lpreempt_b_loop
+
+    .global exhi_preemptive_task_exit_bootstrap
+    .type exhi_preemptive_task_exit_bootstrap, @function
+exhi_preemptive_task_exit_bootstrap:
+    call r12
+    call exhi_preemptive_task_finished
+    ud2
+
+    .global exhi_preemptive_task_exit_a
+    .type exhi_preemptive_task_exit_a, @function
+exhi_preemptive_task_exit_a:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
+    movabs rax, 0xA1A1A1A1A1A1A1A1
+    mov qword ptr [rbp - 8], rax
+    lea rcx, [rbp - 8]
+    mov qword ptr [rip + EXHIOS_P4_4_A_LOCAL], rcx
+    movq xmm15, rax
+.Lpreempt_exit_a_loop:
+    inc qword ptr [rip + EXHIOS_P4_4_A_PROGRESS]
+    mov rdx, qword ptr [rip + EXHIOS_PIT_TICKS]
+    cmp qword ptr [rip + EXHIOS_P4_4_FAILURES], 0
+    jne .Lpreempt_exit_a_fail
+    cmp rdx, 80
+    jae .Lpreempt_exit_a_fail
+    cmp rdx, 16
+    jb .Lpreempt_exit_a_loop
+    mov rdx, qword ptr [rbp - 8]
+    movabs rax, 0xA1A1A1A1A1A1A1A1
+    cmp rdx, rax
+    jne .Lpreempt_exit_a_fail
+    movq rdx, xmm15
+    cmp rdx, rax
+    jne .Lpreempt_exit_a_fail
+    mov qword ptr [rip + EXHIOS_P4_4_A_XMM_OK], 1
+    cmp qword ptr [rip + EXHIOS_P4_4_SWITCHES], 12
+    jb .Lpreempt_exit_a_loop
+    leave
+    ret
+.Lpreempt_exit_a_fail:
+    mov qword ptr [rip + EXHIOS_P4_4_FAILURES], 1
+    call exhi_preemptive_task_exit_fail
+    ud2
+
+    .global exhi_preemptive_task_exit_b
+    .type exhi_preemptive_task_exit_b, @function
+exhi_preemptive_task_exit_b:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
+    movabs rax, 0xB2B2B2B2B2B2B2B2
+    mov qword ptr [rbp - 8], rax
+    lea rcx, [rbp - 8]
+    mov qword ptr [rip + EXHIOS_P4_4_B_LOCAL], rcx
+    movq xmm15, rax
+.Lpreempt_exit_b_loop:
+    inc qword ptr [rip + EXHIOS_P4_4_B_PROGRESS]
+    mov rdx, qword ptr [rip + EXHIOS_PIT_TICKS]
+    cmp qword ptr [rip + EXHIOS_P4_4_FAILURES], 0
+    jne .Lpreempt_exit_b_fail
+    cmp rdx, 80
+    jae .Lpreempt_exit_b_fail
+    cmp rdx, 24
+    jb .Lpreempt_exit_b_loop
+    mov rdx, qword ptr [rbp - 8]
+    movabs rax, 0xB2B2B2B2B2B2B2B2
+    cmp rdx, rax
+    jne .Lpreempt_exit_b_fail
+    movq rdx, xmm15
+    cmp rdx, rax
+    jne .Lpreempt_exit_b_fail
+    mov qword ptr [rip + EXHIOS_P4_4_B_XMM_OK], 1
+    leave
+    ret
+.Lpreempt_exit_b_fail:
+    mov qword ptr [rip + EXHIOS_P4_4_FAILURES], 1
+    call exhi_preemptive_task_exit_fail
+    ud2
 "#
 );

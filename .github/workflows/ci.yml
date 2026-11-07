@@ -93,6 +93,9 @@ jobs:
       - name: Build kernel timer-driven preemption smoke-test variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features timer-preemption-smoke-test
 
+      - name: Build kernel preemptive task-exit smoke-test variant
+        run: cargo build -p exhi-kernel --target x86_64-unknown-none --features preemptive-task-exit-smoke-test
+
       - name: Verify fixed-address kernel image
         run: |
           LC_ALL=C readelf -h target/x86_64-unknown-none/debug/exhi-kernel
@@ -137,3 +140,6 @@ jobs:
 
       - name: Run headless PIT timer-driven task preemption smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_PREEMPTION_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run headless preemptive task-exit lifecycle smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PREEMPTIVE_TASK_EXIT_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
