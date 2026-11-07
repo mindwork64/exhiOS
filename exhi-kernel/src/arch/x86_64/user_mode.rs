@@ -2127,7 +2127,7 @@ exhi_user_task_kernel_entry:
     jmp .Luser_task_finish_halt
 
     "#
-);;
+);
 
 fn reclaim_user_address_space() -> bool {
     if address_space::restore_kernel().is_err() {
