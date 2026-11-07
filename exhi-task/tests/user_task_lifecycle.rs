@@ -74,11 +74,12 @@ fn scheduler_never_reaps_a_running_task_or_a_non_finished_task() {
         scheduler.yield_current(),
         Ok(ScheduleDecision::Switch { from: first, to: second })
     );
+    assert!(scheduler.reap(first).is_err());
     assert_eq!(scheduler.finish_current(), Ok(Some(first)));
 
     // The finished task can be reclaimed, but the newly running task cannot.
-    assert!(scheduler.reap(first).is_ok());
-    assert!(scheduler.reap(second).is_err());
-    assert_eq!(scheduler.get(first), None);
-    assert_eq!(scheduler.get(second).map(|task| task.state()), Some(TaskState::Running));
+    assert!(scheduler.reap(first).is_err());
+    scheduler.reap(second).unwrap();
+    assert_eq!(scheduler.get(first).map(|task| task.state()), Some(TaskState::Running));
+    assert_eq!(scheduler.get(second), None);
 }
