@@ -1294,6 +1294,14 @@ fn preemption_setup_failed(message: &'static [u8]) -> ! {
     }
 }
 
+#[cfg(feature = "ring3-smoke-test")]
+pub fn initialize_fx_state_for_user_mode() -> Option<usize> {
+    if !initialize_fx_contexts() {
+        return None;
+    }
+    Some(ptr::addr_of!(TASK_FX_STATES[0]) as usize)
+}
+
 #[cfg(feature = "timer-preemption-smoke-test")]
 fn initialize_fx_contexts() -> bool {
     let features = unsafe { core::arch::x86_64::__cpuid(1) };
