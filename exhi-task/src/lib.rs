@@ -631,10 +631,7 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
 
     /// Checks the currently running task before a kernel service is entered.
     /// No current task, a kernel task, and an ungranted user task all deny.
-    pub fn authorize_current(
-        &self,
-        capability: Capability,
-    ) -> Result<(), SchedulerError> {
+    pub fn authorize_current(&self, capability: Capability) -> Result<(), SchedulerError> {
         let task = self.current().ok_or(SchedulerError::NotStarted)?;
         task.authorize(capability)
             .map_err(|_| SchedulerError::CapabilityDenied)
@@ -1086,7 +1083,9 @@ mod tests {
         assert!(!grants.contains(Capability::ConsoleRead));
         assert_eq!(grants.authorize(Capability::ConsoleWrite), Ok(()));
         assert_eq!(grants.authorize(Capability::ConsoleRead), Err(AccessDenied));
-        assert!(!grants.without(Capability::ClockRead).contains(Capability::ClockRead));
+        assert!(!grants
+            .without(Capability::ClockRead)
+            .contains(Capability::ClockRead));
     }
 
     #[test]
@@ -1103,7 +1102,9 @@ mod tests {
     fn scheduler_enforces_default_deny_for_current_user_task() {
         let metadata = UserTaskMetadata::new(0x1000, 0x8000, 0x9000, 0xA000);
         let mut scheduler = Scheduler::<1>::new();
-        scheduler.spawn_user("unprivileged", context(0x2000), metadata).unwrap();
+        scheduler
+            .spawn_user("unprivileged", context(0x2000), metadata)
+            .unwrap();
         scheduler.start().unwrap();
         assert_eq!(
             scheduler.authorize_current(Capability::ConsoleWrite),
@@ -1114,13 +1115,17 @@ mod tests {
     #[test]
     fn scheduler_checks_explicit_grants_at_service_boundary() {
         let grants = CapabilitySet::empty().with(Capability::ConsoleWrite);
-        let metadata = UserTaskMetadata::new_with_capabilities(
-            0x1000, 0x8000, 0x9000, 0xA000, grants,
-        );
+        let metadata =
+            UserTaskMetadata::new_with_capabilities(0x1000, 0x8000, 0x9000, 0xA000, grants);
         let mut scheduler = Scheduler::<1>::new();
-        scheduler.spawn_user("console-writer", context(0x2000), metadata).unwrap();
+        scheduler
+            .spawn_user("console-writer", context(0x2000), metadata)
+            .unwrap();
         scheduler.start().unwrap();
-        assert_eq!(scheduler.authorize_current(Capability::ConsoleWrite), Ok(()));
+        assert_eq!(
+            scheduler.authorize_current(Capability::ConsoleWrite),
+            Ok(())
+        );
         assert_eq!(
             scheduler.authorize_current(Capability::FileRead),
             Err(SchedulerError::CapabilityDenied)
