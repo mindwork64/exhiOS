@@ -143,3 +143,6 @@ jobs:
 
       - name: Run headless preemptive task-exit lifecycle smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PREEMPTIVE_TASK_EXIT_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run headless idle-context and timed task wake-up smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_IDLE_WAKEUP_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
