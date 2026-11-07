@@ -109,6 +109,9 @@ jobs:
       - name: Build kernel Ring 3 syscall smoke-test variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features ring3-syscall-smoke-test
 
+      - name: Build kernel user-pointer validation smoke-test variant
+        run: cargo build -p exhi-kernel --target x86_64-unknown-none --features user-pointer-range-smoke-test
+
       - name: Verify fixed-address kernel image
         run: |
           LC_ALL=C readelf -h target/x86_64-unknown-none/debug/exhi-kernel
@@ -168,3 +171,6 @@ jobs:
 
       - name: Run headless Ring 3 syscall entry and return smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_RING3_SYSCALL_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run headless user-pointer range validation smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_USER_POINTER_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
