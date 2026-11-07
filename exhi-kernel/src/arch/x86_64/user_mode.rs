@@ -4,7 +4,12 @@
 //! exception return to a TSS RSP0 stack. It does not implement syscalls,
 //! process scheduling, or a userspace ABI.
 
-use core::arch::{asm, global_asm};
+use core::arch::asm;
+#[cfg(any(
+    feature = "ring3-syscall-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
+))]
+use core::arch::global_asm;
 use core::mem::size_of;
 use core::ptr;
 
@@ -382,6 +387,7 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         finish(range_checks && cleanup_ok && rsp0_cleared);
     }
 
+    #[cfg(feature = "user-copy-smoke-test")]
     if mode == Ring3TestMode::UserCopy {
         let space_slot = unsafe { &*ptr::addr_of!(RING3_ADDRESS_SPACE) };
         let inactive_rejected = space_slot.as_ref().is_some_and(|space| {
