@@ -117,7 +117,8 @@ for package in \
     exhi-console \
     exhi-input \
     exhi-driver \
-    exhi-task
+    exhi-task \
+    exhi-syscall
 do
     run "Тесты $package" cargo test -p "$package"
 done

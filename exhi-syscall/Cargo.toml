@@ -1,0 +1,8 @@
+[package]
+name = "exhi-syscall"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+exhi-abi.workspace = true
+exhi-task.workspace = true

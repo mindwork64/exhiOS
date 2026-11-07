@@ -45,6 +45,22 @@ impl SyscallRequest {
     pub const fn new(number: u64, arguments: [u64; SYSCALL_ARGUMENT_COUNT]) -> Self {
         Self { number, arguments }
     }
+
+    /// Captures the stable x86-64 syscall argument register order.
+    pub const fn from_registers(
+        number: u64,
+        rdi: u64,
+        rsi: u64,
+        rdx: u64,
+        r10: u64,
+        r8: u64,
+        r9: u64,
+    ) -> Self {
+        Self {
+            number,
+            arguments: [rdi, rsi, rdx, r10, r8, r9],
+        }
+    }
 }
 
 /// Error values are returned in RAX using sign-extended negative integers.
@@ -88,7 +104,7 @@ mod tests {
     fn syscall_request_has_a_fixed_register_snapshot_layout() {
         assert_eq!(core::mem::size_of::<SyscallRequest>(), 7 * 8);
         assert_eq!(core::mem::align_of::<SyscallRequest>(), 8);
-        let request = SyscallRequest::new(3, [1, 2, 3, 4, 5, 6]);
+        let request = SyscallRequest::from_registers(3, 1, 2, 3, 4, 5, 6);
         assert_eq!(request.number, SyscallNumber::ConsoleWrite as u64);
         assert_eq!(request.arguments, [1, 2, 3, 4, 5, 6]);
         assert_eq!(

@@ -37,3 +37,4 @@ exhi-console.workspace = true
 exhi-input.workspace = true
 exhi-driver.workspace = true
 exhi-task.workspace = true
+exhi-syscall.workspace = true

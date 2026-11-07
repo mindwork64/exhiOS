@@ -13,7 +13,9 @@ use core::mem::size_of;
 use core::ptr;
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
-use exhi_abi::{SyscallError, SyscallNumber};
+use exhi_abi::{SyscallError, SyscallNumber, SyscallRequest};
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+use exhi_syscall::{dispatch as dispatch_syscall, DispatchOutcome, SyscallServices};
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 use exhi_task::{Capability, CapabilitySet, Scheduler, TaskContext, TaskId, UserTaskMetadata};
 
@@ -1693,6 +1695,70 @@ fn user_task_select_context(id: TaskId) -> usize {
     frame
 }
 
+struct UserTaskSyscallServices {
+    scheduler: *mut Scheduler<3>,
+    task_index: usize,
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+impl SyscallServices for UserTaskSyscallServices {
+    type SwitchTarget = TaskId;
+
+    fn authorize(&self, capability: Capability) -> bool {
+        if self.scheduler.is_null() {
+            return false;
+        }
+        // SAFETY: The adapter is constructed only inside the syscall entry
+        // with a pointer to the static scheduler; interrupts remain disabled.
+        unsafe { (*self.scheduler).authorize_current(capability).is_ok() }
+    }
+
+    fn yield_current(&mut self) -> Result<Option<Self::SwitchTarget>, SyscallError> {
+        if self.scheduler.is_null() {
+            return Err(SyscallError::Io);
+        }
+        // SAFETY: This method runs on the dedicated kernel stack with IF clear.
+        let decision = unsafe { (*self.scheduler).yield_current() }.map_err(|_| SyscallError::Io)?;
+        unsafe {
+            let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.yields);
+            ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
+        }
+        Ok(match decision {
+            exhi_task::ScheduleDecision::Switch { to, .. } => Some(to),
+            exhi_task::ScheduleDecision::Continue { .. } => None,
+        })
+    }
+
+    fn exit_current(&mut self) -> Result<Self::SwitchTarget, SyscallError> {
+        if self.scheduler.is_null() {
+            return Err(SyscallError::Io);
+        }
+        // SAFETY: The caller has validated the active task and IF is clear.
+        let next = unsafe { (*self.scheduler).finish_current() }.map_err(|_| SyscallError::Io)?;
+        let target = if let Some(next) = next {
+            next
+        } else {
+            let reaper = TaskId::from_raw(3);
+            unsafe {
+                (*self.scheduler).wake(reaper).map_err(|_| SyscallError::Io)?;
+                (*self.scheduler)
+                    .schedule_from_idle()
+                    .map_err(|_| SyscallError::Io)?
+                    .ok_or(SyscallError::Io)?
+            }
+        };
+        unsafe {
+            let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.exits);
+            ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
+        }
+        Ok(target)
+    }
+
+    fn console_write(&mut self, user_address: u64, length: u64) -> Result<u64, SyscallError> {
+        user_task_console_write(self.task_index, user_address, length)
+    }
+}
+
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 #[no_mangle]
 extern "sysv64" fn exhi_user_task_syscall_handler(frame: *mut UserTaskInterruptFrame) -> usize {
@@ -1729,7 +1795,17 @@ extern "sysv64" fn exhi_user_task_syscall_handler(frame: *mut UserTaskInterruptF
         user_task_runtime_failed(b"P5.6: syscall frame escaped the active task kernel stack.\r\n");
     }
 
-    let syscall_number = unsafe { ptr::read_volatile(ptr::addr_of!((*frame).rax)) };
+    let request = unsafe {
+        SyscallRequest::from_registers(
+            ptr::read_volatile(ptr::addr_of!((*frame).rax)),
+            ptr::read_volatile(ptr::addr_of!((*frame).rdi)),
+            ptr::read_volatile(ptr::addr_of!((*frame).rsi)),
+            ptr::read_volatile(ptr::addr_of!((*frame).rdx)),
+            ptr::read_volatile(ptr::addr_of!((*frame).r10)),
+            ptr::read_volatile(ptr::addr_of!((*frame).r8)),
+            ptr::read_volatile(ptr::addr_of!((*frame).r9)),
+        )
+    };
     unsafe {
         (*scheduler)
             .get_mut(current_id)
@@ -1747,93 +1823,37 @@ extern "sysv64" fn exhi_user_task_syscall_handler(frame: *mut UserTaskInterruptF
         ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
     }
 
-    let syscall = match SyscallNumber::try_from(syscall_number) {
-        Ok(syscall) => syscall,
-        Err(_) => {
-            unsafe {
-                ptr::write_volatile(
-                    ptr::addr_of_mut!((*frame).rax),
-                    SyscallError::NotImplemented.as_return_value(),
-                );
-            }
-            return frame_address;
-        }
+    let mut services = UserTaskSyscallServices {
+        scheduler,
+        task_index: index,
     };
-    let required_capability = match syscall {
-        SyscallNumber::Yield => Capability::TaskYield,
-        SyscallNumber::Exit => Capability::TaskExit,
-        SyscallNumber::ConsoleWrite => Capability::ConsoleWrite,
-    };
-    if unsafe { (*scheduler).authorize_current(required_capability).is_err() } {
-        // Denied calls resume the same frame with -1 in RAX. The service is
-        // never entered, so it cannot read user memory or produce side effects.
-        unsafe {
-            ptr::write_volatile(
-                ptr::addr_of_mut!((*frame).rax),
-                SyscallError::AccessDenied.as_return_value(),
-            );
-            let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.denied);
-            ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
-        }
-        return frame_address;
-    }
-
-    if syscall == SyscallNumber::ConsoleWrite {
-        let result = user_task_console_write(index, frame);
-        unsafe {
-            ptr::write_volatile(ptr::addr_of_mut!((*frame).rax), result);
-        }
-        return frame_address;
-    }
-
-    let next = match syscall {
-        SyscallNumber::Yield => unsafe {
-            let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.yields);
-            ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
-            (*scheduler)
-                .yield_current()
-                .ok()
-                .and_then(|decision| match decision {
-                    exhi_task::ScheduleDecision::Switch { to, .. } => Some(to),
-                    exhi_task::ScheduleDecision::Continue { .. } => None,
-                })
-        },
-        SyscallNumber::Exit => {
-            let next = unsafe {
-                let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.exits);
-                ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
-                (*scheduler).finish_current().ok().flatten()
-            };
-            if let Some(next) = next {
-                Some(next)
-            } else {
-                let reaper = TaskId::from_raw(3);
+    match dispatch_syscall(request, &mut services) {
+        DispatchOutcome::Return(value) => {
+            if value == SyscallError::AccessDenied.as_return_value() {
                 unsafe {
-                    if (*scheduler).wake(reaper).is_err() {
-                        user_task_runtime_failed(b"P5.7: could not wake the kernel reaper.\r\n");
-                    }
-                    (*scheduler).schedule_from_idle().ok().flatten()
+                    let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.denied);
+                    ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
                 }
             }
+            unsafe {
+                ptr::write_volatile(ptr::addr_of_mut!((*frame).rax), value);
+            }
+            frame_address
         }
-        SyscallNumber::ConsoleWrite => unreachable!("handled before scheduler dispatch"),
+        DispatchOutcome::Switch(next) => user_task_select_context(next),
     }
-    .unwrap_or_else(|| {
-        user_task_runtime_failed(b"P5.7: authorized syscall did not select a task.\r\n")
-    });
-    user_task_select_context(next)
 }
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
-fn user_task_console_write(index: usize, frame: *mut UserTaskInterruptFrame) -> u64 {
+fn user_task_console_write(
+    index: usize,
+    user_address: u64,
+    requested_length: u64,
+) -> Result<u64, SyscallError> {
     const MAX_CONSOLE_WRITE: usize = 256;
-    let user_address = unsafe { ptr::read_volatile(ptr::addr_of!((*frame).rdi)) };
-    let requested_length = unsafe { ptr::read_volatile(ptr::addr_of!((*frame).rsi)) };
-    let Ok(length) = usize::try_from(requested_length) else {
-        return SyscallError::InvalidArgument.as_return_value();
-    };
+    let length = usize::try_from(requested_length).map_err(|_| SyscallError::InvalidArgument)?;
     if length > MAX_CONSOLE_WRITE {
-        return SyscallError::InvalidArgument.as_return_value();
+        return Err(SyscallError::InvalidArgument);
     }
 
     let space = match index {
@@ -1842,23 +1862,22 @@ fn user_task_console_write(index: usize, frame: *mut UserTaskInterruptFrame) -> 
         _ => None,
     };
     let Some(space) = space else {
-        return SyscallError::InvalidArgument.as_return_value();
+        return Err(SyscallError::InvalidArgument);
     };
 
     let mut buffer = [0u8; MAX_CONSOLE_WRITE];
-    if copy_from_user(space, user_address, &mut buffer[..length]).is_err() {
-        return SyscallError::InvalidArgument.as_return_value();
-    }
+    copy_from_user(space, user_address, &mut buffer[..length])
+        .map_err(|_| SyscallError::InvalidArgument)?;
     let written = serial::COM1.write_count(&buffer[..length]);
     if written != length {
-        return SyscallError::Io.as_return_value();
+        return Err(SyscallError::Io);
     }
 
     unsafe {
         let count = ptr::addr_of_mut!(USER_TASK_COUNTERS.console_writes);
         ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
     }
-    written as u64
+    Ok(written as u64)
 }
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
