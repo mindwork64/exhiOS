@@ -326,9 +326,9 @@ fn build_user_code(
             position += 5;
             code[position..position + 5].copy_from_slice(&[0xBA, 0x33, 0, 0, 0]); // mov edx, 0x33
             position += 5;
-            code[position..position + 6].copy_from_slice(&[0x49, 0xC7, 0xC2, 0x44, 0, 0]); // mov r10, 0x44
+            code[position..position + 6].copy_from_slice(&[0x41, 0xBA, 0x44, 0, 0, 0]); // mov r10d, 0x44
             position += 6;
-            code[position..position + 6].copy_from_slice(&[0x49, 0xC7, 0xC0, 0x55, 0, 0]); // mov r8, 0x55
+            code[position..position + 6].copy_from_slice(&[0x41, 0xB8, 0x55, 0, 0, 0]); // mov r8d, 0x55
             position += 6;
             code[position..position + 2].copy_from_slice(&[0x0F, 0x05]); // syscall
             position += 2;
