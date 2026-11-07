@@ -37,15 +37,11 @@ static mut RING3_EXPECTED_ERROR_MASK: u64 = u64::MAX;
 static mut RING3_EXPECTED_ERROR_VALUE: u64 = 0;
 static mut RING3_EXPECTED_RIP: u64 = 0;
 static mut RING3_EXPECTED_FAULT_ADDRESS: u64 = 0;
-#[cfg(feature = "ring3-syscall-smoke-test")]
 #[no_mangle]
 static mut RING3_USER_RSP: u64 = 0;
-#[cfg(feature = "ring3-syscall-smoke-test")]
 #[no_mangle]
 static mut RING3_FX_STATE: usize = 0;
-#[cfg(feature = "ring3-syscall-smoke-test")]
 static mut RING3_SYSCALL_CALLS: u64 = 0;
-#[cfg(feature = "ring3-syscall-smoke-test")]
 static mut RING3_SYSCALL_VALID: u64 = 0;
 
 #[repr(C, align(4096))]
@@ -116,13 +112,10 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_ERROR_VALUE), 0);
         ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_RIP), 0);
         ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_FAULT_ADDRESS), 0);
-        #[cfg(feature = "ring3-syscall-smoke-test")]
-        {
-            ptr::write_volatile(ptr::addr_of_mut!(RING3_USER_RSP), 0);
-            ptr::write_volatile(ptr::addr_of_mut!(RING3_FX_STATE), 0);
-            ptr::write_volatile(ptr::addr_of_mut!(RING3_SYSCALL_CALLS), 0);
-            ptr::write_volatile(ptr::addr_of_mut!(RING3_SYSCALL_VALID), 0);
-        }
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_USER_RSP), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_FX_STATE), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_SYSCALL_CALLS), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_SYSCALL_VALID), 0);
     }
 
     serial::COM1.write(match mode {
@@ -588,7 +581,6 @@ extern "sysv64" fn exhi_syscall_handler(
     if valid { 0xC0DE_CAFE_F00D_BEEFu64 } else { 0xBAD0_BAD0_BAD0_BAD0u64 }
 }
 
-#[cfg(feature = "ring3-syscall-smoke-test")]
 global_asm!(
     r#"
     .section .text
