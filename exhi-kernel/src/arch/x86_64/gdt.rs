@@ -11,9 +11,7 @@ use core::sync::atomic::{compiler_fence, Ordering};
 pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
 pub const KERNEL_DATA_SELECTOR: u16 = 0x10;
 pub const TSS_SELECTOR: u16 = 0x18;
-#[cfg(feature = "ring3-smoke-test")]
 pub const USER_DATA_SELECTOR: u16 = 0x2B;
-#[cfg(feature = "ring3-smoke-test")]
 pub const USER_CODE_SELECTOR: u16 = 0x33;
 
 const GDT_NULL: u64 = 0;
