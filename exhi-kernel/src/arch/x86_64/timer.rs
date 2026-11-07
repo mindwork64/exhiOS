@@ -103,6 +103,13 @@ pub fn ticks() -> u64 {
     EXHIOS_PIT_TICKS.load(Ordering::Relaxed)
 }
 
+/// Returns elapsed ticks with wrapping subtraction, valid across counter wrap.
+#[cfg(feature = "timer-smoke-test")]
+#[inline]
+pub fn elapsed_ticks(start: u64) -> u64 {
+    ticks().wrapping_sub(start)
+}
+
 /// Masks IRQ0 again. The caller should execute CLI before calling this when
 /// it is shutting down a timer test or changing interrupt policy.
 #[cfg(any(

@@ -892,6 +892,7 @@ pub fn validate_user_range(
 /// Copies a user buffer into a kernel-owned slice after validating every page.
 /// The address space must be active and IF must be clear so it cannot be switched
 /// or modified while the validated mapping is being accessed.
+#[cfg(feature = "user-copy-smoke-test")]
 pub fn copy_from_user(
     space: &AddressSpace,
     user_source: u64,
@@ -918,6 +919,7 @@ pub fn copy_from_user(
 
 /// Copies a kernel-owned slice into a user buffer after validating every page.
 /// No bytes are copied when any page is unmapped or lacks user write permission.
+#[cfg(feature = "user-copy-smoke-test")]
 pub fn copy_to_user(
     space: &AddressSpace,
     user_destination: u64,
@@ -942,6 +944,7 @@ pub fn copy_to_user(
     Ok(())
 }
 
+#[cfg(feature = "user-copy-smoke-test")]
 fn ensure_user_copy_context(space: &AddressSpace) -> Result<(), UserRangeError> {
     let flags: u64;
     unsafe {
@@ -1011,6 +1014,7 @@ fn validate_user_pointer_ranges(space: &AddressSpace) -> bool {
         && too_large
 }
 
+#[cfg(feature = "user-copy-smoke-test")]
 fn validate_user_copy_runtime(space: &AddressSpace) -> bool {
     const PATTERN: [u8; 16] = [
         0x45, 0x58, 0x48, 0x49, 0x4F, 0x53, 0x2D, 0x55, 0x53, 0x45, 0x52, 0x2D, 0x43, 0x4F, 0x50,
