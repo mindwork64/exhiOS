@@ -414,7 +414,7 @@ impl AddressSpace {
     pub fn is_active(&self) -> Result<bool, AddressSpaceError> {
         ensure_initialized()?;
         self.ensure_live()?;
-        Ok(is_active(self.root_frame))
+        Ok(read_cr3() & PAGE_TABLE_ADDRESS_MASK == self.root_frame)
     }
 
     /// Switches CR3 to this address space. The caller must restore the kernel
