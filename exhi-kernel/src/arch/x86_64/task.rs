@@ -7,16 +7,60 @@
 use core::arch::{asm, global_asm};
 use core::mem::size_of;
 use core::ptr;
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "idle-wakeup-smoke-test",
+    feature = "preemptive-task-exit-smoke-test",
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(any(
+            feature = "preemptive-task-exit-smoke-test",
+            feature = "idle-wakeup-smoke-test",
+            feature = "ring3-smoke-test"
+        ))
+    )
+))]
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-use exhi_task::{ScheduleDecision, Scheduler, TaskContext, TaskId};
+use exhi_task::{ScheduleDecision, Scheduler, TaskId};
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "idle-wakeup-smoke-test",
+    feature = "preemptive-task-exit-smoke-test",
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(any(
+            feature = "preemptive-task-exit-smoke-test",
+            feature = "idle-wakeup-smoke-test",
+            feature = "ring3-smoke-test"
+        ))
+    )
+))]
+use exhi_task::TaskContext;
 
 #[cfg(any(
     feature = "task-accounting-smoke-test",
     feature = "timer-preemption-smoke-test"
 ))]
 use super::timer;
-use super::{gdt, paging, serial, vmm};
+use super::{gdt, serial};
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "idle-wakeup-smoke-test",
+    feature = "preemptive-task-exit-smoke-test",
+    all(
+        feature = "timer-preemption-smoke-test",
+        not(any(
+            feature = "preemptive-task-exit-smoke-test",
+            feature = "idle-wakeup-smoke-test",
+            feature = "ring3-smoke-test"
+        ))
+    )
+))]
+use super::{paging, vmm};
 
 const TASK_COUNT: usize = 2;
 const PAGE_SIZE: usize = 4096;
@@ -136,7 +180,15 @@ struct InterruptContext {
 const _: [(); 20 * size_of::<u64>()] = [(); size_of::<InterruptContext>()];
 
 static mut SCHEDULER: Scheduler<TASK_COUNT> = Scheduler::new();
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 static mut BOOT_STACK_POINTER: usize = 0;
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 static mut FINISHED_STACK_POINTER: usize = 0;
 
 #[cfg(any(
@@ -2320,6 +2372,10 @@ extern "sysv64" fn task_b() {
     serial::COM1.write(b"P4.2: task B resumed again; returning.\r\n");
 }
 
+#[cfg(any(
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 fn task_fatal(message: &'static [u8]) -> ! {
     serial::COM1.write(message);
     loop {
