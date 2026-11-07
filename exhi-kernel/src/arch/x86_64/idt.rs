@@ -7,6 +7,7 @@ use super::gdt::KERNEL_CODE_SELECTOR;
 const IDT_ENTRY_COUNT: usize = 256;
 const EXCEPTION_COUNT: usize = 32;
 const INTERRUPT_GATE_ATTRIBUTES: u8 = 0x8E;
+const USER_CALLABLE_INTERRUPT_GATE_ATTRIBUTES: u8 = 0xEE;
 const BLOCK_SCHEDULER_VECTOR: usize = 0x30;
 
 #[repr(C, packed)]
@@ -33,11 +34,23 @@ impl IdtEntry {
     };
 
     fn interrupt_gate(handler: u64, ist_index: u8) -> Self {
+        Self::interrupt_gate_with_attributes(handler, ist_index, INTERRUPT_GATE_ATTRIBUTES)
+    }
+
+    fn user_callable_interrupt_gate(handler: u64, ist_index: u8) -> Self {
+        Self::interrupt_gate_with_attributes(
+            handler,
+            ist_index,
+            USER_CALLABLE_INTERRUPT_GATE_ATTRIBUTES,
+        )
+    }
+
+    fn interrupt_gate_with_attributes(handler: u64, ist_index: u8, attributes: u8) -> Self {
         Self {
             offset_low: handler as u16,
             selector: KERNEL_CODE_SELECTOR,
             ist: ist_index & 0x7,
-            attributes: INTERRUPT_GATE_ATTRIBUTES,
+            attributes,
             offset_middle: (handler >> 16) as u16,
             offset_high: (handler >> 32) as u32,
             reserved: 0,
@@ -62,6 +75,7 @@ pub struct IdtStatus {
     pub base: u64,
     pub limit: u16,
     pub double_fault_ist: u8,
+    pub breakpoint_gate_valid: bool,
     pub timer_irq_valid: bool,
     pub keyboard_irq_valid: bool,
     pub block_scheduler_irq_valid: bool,
@@ -117,10 +131,15 @@ pub fn initialize() -> IdtStatus {
             // Vector 8 (double fault) is the only initial exception gate that
             // uses IST. Its stack is prepared and loaded in the TSS by GDT init.
             let ist_index = if index == 8 { 1 } else { 0 };
-            ptr::write_volatile(
-                entries.add(index),
-                IdtEntry::interrupt_gate(handler, ist_index),
-            );
+            let gate = if index == 3 && cfg!(feature = "ring3-smoke-test") {
+                // INT3 is a software-generated exception, so the processor
+                // checks this gate's DPL when CPL3 executes opcode CC. Keep
+                // every other exception gate supervisor-only.
+                IdtEntry::user_callable_interrupt_gate(handler, ist_index)
+            } else {
+                IdtEntry::interrupt_gate(handler, ist_index)
+            };
+            ptr::write_volatile(entries.add(index), gate);
         }
     }
 
@@ -196,6 +215,20 @@ pub fn initialize() -> IdtStatus {
     };
     // Copy the packed entry before reading its fields so no unaligned
     // references to IDT storage are created.
+    let breakpoint_gate = unsafe { ptr::read_volatile(entries.add(3)) };
+    let breakpoint_gate_address = u64::from(breakpoint_gate.offset_low)
+        | (u64::from(breakpoint_gate.offset_middle) << 16)
+        | (u64::from(breakpoint_gate.offset_high) << 32);
+    let expected_breakpoint_attributes = if cfg!(feature = "ring3-smoke-test") {
+        USER_CALLABLE_INTERRUPT_GATE_ATTRIBUTES
+    } else {
+        INTERRUPT_GATE_ATTRIBUTES
+    };
+    let breakpoint_gate_valid = breakpoint_gate_address == handlers[3]
+        && breakpoint_gate.selector == KERNEL_CODE_SELECTOR
+        && breakpoint_gate.ist & 0x7 == 0
+        && breakpoint_gate.attributes == expected_breakpoint_attributes;
+
     let timer_irq_gate = unsafe {
         ptr::read_volatile(entries.add(usize::from(super::timer::IRQ0_VECTOR)))
     };
@@ -235,12 +268,14 @@ pub fn initialize() -> IdtStatus {
         base: active_base,
         limit: active_limit,
         double_fault_ist,
+        breakpoint_gate_valid,
         timer_irq_valid,
         keyboard_irq_valid,
         block_scheduler_irq_valid,
         valid: active_base == expected_base
             && active_limit == expected_limit
             && double_fault_ist == 1
+            && breakpoint_gate_valid
             && timer_irq_valid
             && keyboard_irq_valid
             && block_scheduler_irq_valid,
