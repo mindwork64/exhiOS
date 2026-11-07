@@ -1062,12 +1062,12 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
     }
 
     let Some((space_a, code_a, stack_a)) =
-        create_user_task_address_space(0xA11C_E001, 0xA11C_E002)
+        create_user_task_address_space(0x211C_E001, 0x211C_E002)
     else {
         user_task_setup_failed(b"P5.6: user task A address space setup failed.\r\n");
     };
     let Some((space_b, code_b, stack_b)) =
-        create_user_task_address_space(0xB11C_E001, 0xB11C_E002)
+        create_user_task_address_space(0x311C_E001, 0x311C_E002)
     else {
         user_task_setup_failed(b"P5.6: user task B address space setup failed.\r\n");
     };
@@ -1220,24 +1220,31 @@ fn create_user_task_address_space(
     unsafe {
         ptr::copy_nonoverlapping(code.as_ptr(), code_frame as *mut u8, length);
     }
-    if unsafe {
+    let code_mapped = unsafe {
         space.map_user_page(
             USER_CODE_ADDRESS,
             code_frame,
             UserPageFlags { writable: false, executable: true },
         )
-    }.is_err()
-        || unsafe {
-            space.map_user_page(
-                USER_STACK_ADDRESS,
-                stack_frame,
-                UserPageFlags::read_write_nx(),
-            )
-        }.is_err()
-    {
+    }.is_ok();
+    if !code_mapped {
+        let _ = space.destroy();
         let _ = memory::release_frame(code_frame);
         let _ = memory::release_frame(stack_frame);
+        return None;
+    }
+    let stack_mapped = unsafe {
+        space.map_user_page(
+            USER_STACK_ADDRESS,
+            stack_frame,
+            UserPageFlags::read_write_nx(),
+        )
+    }.is_ok();
+    if !stack_mapped {
+        let _ = space.unmap_user_page(USER_CODE_ADDRESS);
         let _ = space.destroy();
+        let _ = memory::release_frame(code_frame);
+        let _ = memory::release_frame(stack_frame);
         return None;
     }
     let code_ok = space.translate(USER_CODE_ADDRESS)
@@ -1337,7 +1344,7 @@ fn prepare_user_task_kernel_frame(kernel_stack_top: u64) -> Option<usize> {
         rdx: 0, rcx: 0, rax: 0,
         rip: exhi_user_task_kernel_entry as *const () as usize as u64,
         cs: u64::from(gdt::KERNEL_CODE_SELECTOR),
-        rflags: 0x202,
+        rflags: 0x2,
         rsp: kernel_stack_top,
         ss: u64::from(gdt::KERNEL_DATA_SELECTOR),
     };
@@ -1552,12 +1559,12 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     let a_stack = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_STACK_FRAMES[0])) };
     let b_stack = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_STACK_FRAMES[1])) };
     let a_markers_ok = unsafe {
-        ptr::read_volatile((a_stack + PAGE_SIZE - 16) as *const u64) == 0xA11C_E001
-            && ptr::read_volatile((a_stack + PAGE_SIZE - 24) as *const u64) == 0xA11C_E002
+        ptr::read_volatile((a_stack + PAGE_SIZE - 16) as *const u64) == 0x211C_E001
+            && ptr::read_volatile((a_stack + PAGE_SIZE - 24) as *const u64) == 0x211C_E002
     };
     let b_markers_ok = unsafe {
-        ptr::read_volatile((b_stack + PAGE_SIZE - 16) as *const u64) == 0xB11C_E001
-            && ptr::read_volatile((b_stack + PAGE_SIZE - 24) as *const u64) == 0xB11C_E002
+        ptr::read_volatile((b_stack + PAGE_SIZE - 16) as *const u64) == 0x311C_E001
+            && ptr::read_volatile((b_stack + PAGE_SIZE - 24) as *const u64) == 0x311C_E002
     };
     let roots_private = user_task_space_a_root() != 0
         && user_task_space_b_root() != 0
@@ -1588,7 +1595,8 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     serial::COM1.write(if a_markers_ok { b"both" } else { b"bad " });
     serial::COM1.write(b" B markers=");
     serial::COM1.write(if b_markers_ok { b"both" } else { b"bad " });
-    serial::COM1.write(b" distinct CR3/code/stack=yes");
+    serial::COM1.write(b" distinct CR3/code/stack=");
+    serial::COM1.write(if roots_private { b"yes" } else { b"no " });
     serial::COM1.write(b"\r\nP5.6: Finished=");
     serial::COM1.write_hex(if tasks_ok { 2 } else { 0 });
     serial::COM1.write(b" kernel reaper running=yes TSS.RSP0=");
