@@ -1299,7 +1299,7 @@ pub fn initialize_fx_state_for_user_mode() -> Option<usize> {
     if !initialize_fx_contexts() {
         return None;
     }
-    Some(ptr::addr_of!(TASK_FX_STATES[0]) as usize)
+    Some(unsafe { ptr::addr_of!(TASK_FX_STATES[0]) as usize })
 }
 
 #[cfg(feature = "timer-preemption-smoke-test")]
