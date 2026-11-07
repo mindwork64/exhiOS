@@ -70,6 +70,7 @@ impl UserTaskMetadata {
     pub const fn user_stack_pointer(self) -> u64 { self.user_stack_pointer }
     pub const fn kernel_stack_top(self) -> u64 { self.kernel_stack_top }
     pub const fn fx_state_pointer(self) -> usize { self.fx_state_pointer }
+    pub fn set_user_stack_pointer(&mut self, value: u64) { self.user_stack_pointer = value; }
 
     pub const fn is_valid(self) -> bool {
         self.address_space_root != 0
@@ -110,6 +111,7 @@ impl Task {
     pub fn context_mut(&mut self) -> &mut TaskContext { &mut self.context }
     pub const fn runtime_ticks(&self) -> u64 { self.runtime_ticks }
     pub const fn user_metadata(&self) -> Option<UserTaskMetadata> { self.user_metadata }
+    pub fn user_metadata_mut(&mut self) -> Option<&mut UserTaskMetadata> { self.user_metadata.as_mut() }
     pub const fn is_user_task(&self) -> bool { self.user_metadata.is_some() }
 }
 
@@ -498,6 +500,16 @@ mod tests {
         let kernel_id = scheduler.spawn("kernel-task", context(0x4000)).unwrap();
         assert!(!scheduler.get(kernel_id).unwrap().is_user_task());
         assert_eq!(scheduler.get(kernel_id).unwrap().user_metadata(), None);
+    }
+
+    #[test]
+    fn updates_saved_user_stack_pointer_metadata() {
+        let mut scheduler = Scheduler::<1>::new();
+        let metadata = UserTaskMetadata::new(0x2000, 0x2FF8, 0x4000, 0x5000);
+        let id = scheduler.spawn_user("user-A", context(0x3000), metadata).unwrap();
+        scheduler.get_mut(id).unwrap().user_metadata_mut().unwrap()
+            .set_user_stack_pointer(0x2FE8);
+        assert_eq!(scheduler.get(id).unwrap().user_metadata().unwrap().user_stack_pointer(), 0x2FE8);
     }
 
     #[test]
