@@ -692,6 +692,8 @@ pub enum UserRangeError {
     NotUserMemory,
     PermissionDenied,
     AddressSpace(address_space::AddressSpaceError),
+    AddressSpaceNotActive,
+    InterruptsEnabled,
 }
 
 const MAX_USER_POINTER_RANGE: u64 = 16 * 1024 * 1024;
@@ -742,7 +744,65 @@ pub fn validate_user_range(
     Ok(())
 }
 
+/// Copies a user buffer into a kernel-owned slice after validating every page.
+/// The address space must be active and IF must be clear so it cannot be switched
+/// or modified while the validated mapping is being accessed.
+pub fn copy_from_user(
+    space: &AddressSpace,
+    user_source: u64,
+    kernel_destination: &mut [u8],
+) -> Result<(), UserRangeError> {
+    ensure_user_copy_context(space)?;
+    validate_user_range(space, user_source, kernel_destination.len(), UserAccess::Read)?;
+    if !kernel_destination.is_empty() {
+        unsafe {
+            ptr::copy(
+                user_source as *const u8,
+                kernel_destination.as_mut_ptr(),
+                kernel_destination.len(),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Copies a kernel-owned slice into a user buffer after validating every page.
+/// No bytes are copied when any page is unmapped or lacks user write permission.
+pub fn copy_to_user(
+    space: &AddressSpace,
+    user_destination: u64,
+    kernel_source: &[u8],
+) -> Result<(), UserRangeError> {
+    ensure_user_copy_context(space)?;
+    validate_user_range(space, user_destination, kernel_source.len(), UserAccess::Write)?;
+    if !kernel_source.is_empty() {
+        unsafe {
+            ptr::copy(
+                kernel_source.as_ptr(),
+                user_destination as *mut u8,
+                kernel_source.len(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn ensure_user_copy_context(space: &AddressSpace) -> Result<(), UserRangeError> {
+    let flags: u64;
+    unsafe {
+        asm!("pushfq", "pop {}", out(reg) flags, options(preserves_flags));
+    }
+    if flags & (1 << 9) != 0 {
+        return Err(UserRangeError::InterruptsEnabled);
+    }
+    if !space.is_active().map_err(UserRangeError::AddressSpace)? {
+        return Err(UserRangeError::AddressSpaceNotActive);
+    }
+    Ok(())
+}
+
 fn validate_user_pointer_ranges(space: &AddressSpace) -> bool {
+    // This validator is called before any raw user pointer is dereferenced.
     let code_read = validate_user_range(space, USER_CODE_ADDRESS, 10, UserAccess::Read).is_ok();
     let code_execute = validate_user_range(space, USER_CODE_ADDRESS, 10, UserAccess::Execute).is_ok();
     let code_write = validate_user_range(space, USER_CODE_ADDRESS, 1, UserAccess::Write)
