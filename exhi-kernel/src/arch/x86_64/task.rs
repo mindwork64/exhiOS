@@ -681,8 +681,8 @@ fn finish_preemption_test(target_reached: bool) -> ! {
     let failures = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_FAILURES)) };
     let a_progress = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_PROGRESS)) };
     let b_progress = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_PROGRESS)) };
-    let a_local = TASK_A_LOCAL_ADDRESS.load(Ordering::Relaxed) as u64;
-    let b_local = TASK_B_LOCAL_ADDRESS.load(Ordering::Relaxed) as u64;
+    let a_local = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_LOCAL)) as u64 };
+    let b_local = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_LOCAL)) as u64 };
     let a_base = unsafe { ptr::addr_of!(TASK_STACKS[0]) as u64 };
     let b_base = unsafe { ptr::addr_of!(TASK_STACKS[1]) as u64 };
     let a_top = unsafe { ptr::read_volatile(ptr::addr_of!(TASK_STACK_TOPS[0])) };
@@ -1193,6 +1193,10 @@ exhi_preemptive_task_a:
 .Lpreempt_a_loop:
     inc qword ptr [rip + EXHIOS_P4_4_A_PROGRESS]
     mov rdx, qword ptr [rip + EXHIOS_PIT_TICKS]
+    cmp qword ptr [rip + EXHIOS_P4_4_FAILURES], 0
+    jne .Lpreempt_a_fail
+    cmp rdx, 80
+    jae .Lpreempt_a_fail
     cmp rdx, 16
     jb .Lpreempt_a_loop
     mov rdx, qword ptr [rbp - 8]
@@ -1207,8 +1211,6 @@ exhi_preemptive_task_a:
     jb .Lpreempt_a_loop
     cmp qword ptr [rip + EXHIOS_P4_4_B_XMM_OK], 1
     jne .Lpreempt_a_loop
-    cmp qword ptr [rip + EXHIOS_P4_4_FAILURES], 0
-    jne .Lpreempt_a_fail
     call exhi_preemption_test_pass
     ud2
 .Lpreempt_a_fail:
