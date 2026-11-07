@@ -1803,7 +1803,8 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     serial::COM1.write_hex(denied_count);
     serial::COM1.write(b" switches=");
     serial::COM1.write_hex(switch_count);
-    serial::COM1.write(b"\r\nP5.7: A grants yield+exit; B grants exit only; denied yield returned -1=");
+    serial::COM1
+        .write(b"\r\nP5.7: A grants yield+exit; B grants exit only; denied yield returned -1=");
     serial::COM1.write(if denied_count == 1 && capability_grants_ok {
         b"yes"
     } else {
