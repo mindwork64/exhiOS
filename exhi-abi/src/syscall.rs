@@ -1,5 +1,3 @@
-#![no_std]
-
 //! Stable x86-64 syscall numbers, register convention and return statuses.
 //!
 //! The syscall number is passed in RAX. Up to six arguments are passed in
