@@ -733,13 +733,19 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         halt_forever();
     }
 
+    #[cfg(feature = "idle-wakeup-smoke-test")]
+    {
+        kernel_console.write(b"P4.6: starting idle-context and timed task wake-up smoke test.\r\n");
+        arch::x86_64::task::idle_wakeup_smoke_test();
+    }
+
     #[cfg(feature = "preemptive-task-exit-smoke-test")]
     {
         kernel_console.write(b"P4.5: starting preemptive task-exit lifecycle smoke test.\r\n");
         arch::x86_64::task::preemptive_task_exit_smoke_test();
     }
 
-    #[cfg(all(feature = "timer-preemption-smoke-test", not(feature = "preemptive-task-exit-smoke-test")))]
+    #[cfg(all(feature = "timer-preemption-smoke-test", not(any(feature = "preemptive-task-exit-smoke-test", feature = "idle-wakeup-smoke-test"))))]
     {
         kernel_console.write(b"P4.4: starting timer-driven task preemption smoke test.\r\n");
         arch::x86_64::task::timer_preemption_smoke_test();
@@ -750,7 +756,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         keyboard_smoke_test(&mut kernel_console, &mut driver_registry);
     }
 
-    #[cfg(not(any(feature = "serial-rx-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test", feature = "task-accounting-smoke-test", feature = "timer-preemption-smoke-test")))]
+    #[cfg(not(any(feature = "serial-rx-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test", feature = "task-accounting-smoke-test", feature = "timer-preemption-smoke-test", feature = "idle-wakeup-smoke-test")))]
     {
         #[cfg(feature = "qemu-debug-exit-smoke-test")]
         {
