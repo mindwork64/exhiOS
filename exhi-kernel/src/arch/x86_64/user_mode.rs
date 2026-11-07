@@ -1001,6 +1001,752 @@ fn validate_user_copy_runtime(space: &AddressSpace) -> bool {
     write_rejected && read_rejected && before == after
 }
 
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+pub fn user_task_lifecycle_smoke_test() -> ! {
+    unsafe {
+        asm!("cli", options(nomem, nostack, preserves_flags));
+        ptr::write(ptr::addr_of_mut!(USER_TASK_SCHEDULER), Scheduler::new());
+        ptr::write(ptr::addr_of_mut!(USER_TASK_SPACE_A), None);
+        ptr::write(ptr::addr_of_mut!(USER_TASK_SPACE_B), None);
+        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_CODE_FRAMES), [0; 2]);
+        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_STACK_FRAMES), [0; 2]);
+        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_KERNEL_STACK_TOPS), [0; 3]);
+        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SYSCALL_USER_RSP), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SYSCALL_KERNEL_STACK_TOP), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SYSCALL_FX_STATE), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SYSCALL_COUNT), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_YIELD_COUNT), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_EXIT_COUNT), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_SWITCH_COUNT), 0);
+    }
+
+    serial::COM1.write(b"P5.6: preparing two isolated Ring 3 tasks and one kernel reaper task.\r\n");
+    let Some(template_fx) = task::initialize_fx_state_for_user_mode() else {
+        user_task_setup_failed(b"P5.6: FXSR/SSE context initialization failed.\r\n");
+    };
+    unsafe {
+        for index in 0..3 {
+            ptr::copy_nonoverlapping(
+                template_fx as *const u8,
+                ptr::addr_of_mut!(USER_TASK_FX_STATES[index]) as *mut u8,
+                512,
+            );
+        }
+    }
+
+    let mut kernel_tops = [0u64; 3];
+    for (index, top_slot) in kernel_tops.iter_mut().enumerate() {
+        let base = unsafe {
+            ptr::addr_of_mut!(USER_TASK_KERNEL_STACKS[index]) as u64
+        };
+        let Some(top) = base.checked_add(STACK_TOTAL_SIZE as u64) else {
+            user_task_setup_failed(b"P5.6: kernel stack address overflow.\r\n");
+        };
+        if base % PAGE_SIZE != 0 || top % 16 != 0 || top >= 0x1_0000_0000 {
+            user_task_setup_failed(b"P5.6: invalid per-task kernel stack bounds.\r\n");
+        }
+        if vmm::unmap_page(base).ok() != Some(base)
+            || super::paging::translate_current(base)
+                != Err(super::paging::PagingError::NotMapped)
+        {
+            user_task_setup_failed(b"P5.6: could not install a per-task kernel stack guard.\r\n");
+        }
+        *top_slot = top;
+    }
+    unsafe {
+        ptr::write_volatile(
+            ptr::addr_of_mut!(USER_TASK_KERNEL_STACK_TOPS),
+            kernel_tops,
+        );
+    }
+
+    let Some((space_a, code_a, stack_a)) =
+        create_user_task_address_space(0xA11C_E001, 0xA11C_E002)
+    else {
+        user_task_setup_failed(b"P5.6: user task A address space setup failed.\r\n");
+    };
+    let Some((space_b, code_b, stack_b)) =
+        create_user_task_address_space(0xB11C_E001, 0xB11C_E002)
+    else {
+        user_task_setup_failed(b"P5.6: user task B address space setup failed.\r\n");
+    };
+    if space_a.root_address() == space_b.root_address()
+        || code_a == code_b
+        || stack_a == stack_b
+    {
+        user_task_setup_failed(b"P5.6: user tasks do not have private roots and data frames.\r\n");
+    }
+    let root_a = space_a.root_address();
+    let root_b = space_b.root_address();
+    unsafe {
+        ptr::write(ptr::addr_of_mut!(USER_TASK_SPACE_A), Some(space_a));
+        ptr::write(ptr::addr_of_mut!(USER_TASK_SPACE_B), Some(space_b));
+        ptr::write_volatile(
+            ptr::addr_of_mut!(USER_TASK_CODE_FRAMES),
+            [code_a, code_b],
+        );
+        ptr::write_volatile(
+            ptr::addr_of_mut!(USER_TASK_STACK_FRAMES),
+            [stack_a, stack_b],
+        );
+    }
+
+    let frame_a = prepare_user_task_initial_frame(
+        0,
+        USER_TASK_KERNEL_STACK_TOPS[0],
+        USER_TASK_FX_STATES[0].0.as_ptr() as usize,
+        USER_TASK_SPACE_A_ROOT(),
+    );
+    let frame_b = prepare_user_task_initial_frame(
+        1,
+        kernel_tops[1],
+        ptr::addr_of!(USER_TASK_FX_STATES[1]) as usize,
+        root_b,
+    );
+    let Some(frame_a) = frame_a else {
+        user_task_setup_failed(b"P5.6: user task A initial context failed.\r\n");
+    };
+    let Some(frame_b) = frame_b else {
+        user_task_setup_failed(b"P5.6: user task B initial context failed.\r\n");
+    };
+    let Some(kernel_frame) = prepare_user_task_kernel_frame(kernel_tops[2]) else {
+        user_task_setup_failed(b"P5.6: kernel reaper initial context failed.\r\n");
+    };
+
+    let scheduler = ptr::addr_of_mut!(USER_TASK_SCHEDULER);
+    let id_a = unsafe {
+        (*scheduler)
+            .spawn_user(
+                "ring3-A",
+                TaskContext::new(frame_a),
+                UserTaskMetadata::new(
+                    root_a,
+                    USER_STACK_POINTER,
+                    kernel_tops[0],
+                    ptr::addr_of!(USER_TASK_FX_STATES[0]) as usize,
+                ),
+            )
+            .unwrap_or_else(|_| user_task_setup_failed(b"P5.6: could not register user task A.\r\n"))
+    };
+    let id_b = unsafe {
+        (*scheduler)
+            .spawn_user(
+                "ring3-B",
+                TaskContext::new(frame_b),
+                UserTaskMetadata::new(
+                    root_b,
+                    USER_STACK_POINTER,
+                    kernel_tops[1],
+                    ptr::addr_of!(USER_TASK_FX_STATES[1]) as usize,
+                ),
+            )
+            .unwrap_or_else(|_| user_task_setup_failed(b"P5.6: could not register user task B.\r\n"))
+    };
+    let id_kernel = unsafe {
+        (*scheduler)
+            .spawn("user-task-reaper", TaskContext::new(kernel_frame))
+            .unwrap_or_else(|_| user_task_setup_failed(b"P5.6: could not register the kernel reaper.\r\n"))
+    };
+    if id_a.get() != 1
+        || id_b.get() != 2
+        || id_kernel.get() != 3
+        || unsafe { (*scheduler).start() } != Ok(id_a)
+    {
+        user_task_setup_failed(b"P5.6: scheduler did not select user task A first.\r\n");
+    }
+
+    if !initialize_syscall_msrs_for_entry(exhi_user_task_syscall_entry as *const () as u64) {
+        user_task_setup_failed(b"P5.6: syscall entry MSR setup failed.\r\n");
+    }
+    unsafe {
+        ptr::write_volatile(
+            ptr::addr_of_mut!(USER_TASK_SYSCALL_KERNEL_STACK_TOP),
+            kernel_tops[0],
+        );
+        ptr::write_volatile(
+            ptr::addr_of_mut!(USER_TASK_SYSCALL_FX_STATE),
+            ptr::addr_of!(USER_TASK_FX_STATES[0]) as usize,
+        );
+    }
+    let space_slot = unsafe { &*ptr::addr_of!(USER_TASK_SPACE_A) };
+    if !space_slot.as_ref().is_some_and(|space| space.activate().is_ok())
+        || !gdt::set_rsp0(kernel_tops[0])
+    {
+        user_task_setup_failed(b"P5.6: could not activate user task A and its kernel stack.\r\n");
+    }
+
+    serial::COM1.write(b"P5.6: private CR3 roots, RX code, RW+NX stacks and guarded kernel stacks ready.\r\n");
+    serial::COM1.write(b"P5.6: A/B each yield twice and then exit through SYSCALL; kernel task reclaims later.\r\n");
+    unsafe {
+        exhi_interrupt_context_start(
+            frame_a,
+            ptr::addr_of!(USER_TASK_FX_STATES[0]) as usize,
+        );
+    }
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn USER_TASK_SPACE_A_ROOT() -> u64 {
+    unsafe {
+        (&*ptr::addr_of!(USER_TASK_SPACE_A))
+            .as_ref()
+            .map(AddressSpace::root_address)
+            .unwrap_or(0)
+    }
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn create_user_task_address_space(
+    initial_marker: u32,
+    resumed_marker: u32,
+) -> Option<(AddressSpace, u64, u64)> {
+    let mut space = AddressSpace::create().ok()?;
+    let code_frame = memory::allocate_frame().ok()?;
+    let stack_frame = match memory::allocate_frame() {
+        Ok(frame) => frame,
+        Err(_) => {
+            let _ = memory::release_frame(code_frame);
+            return None;
+        }
+    };
+    if code_frame == 0
+        || stack_frame == 0
+        || code_frame % PAGE_SIZE != 0
+        || stack_frame % PAGE_SIZE != 0
+        || code_frame >= 0x1_0000_0000
+        || stack_frame >= 0x1_0000_0000
+    {
+        let _ = memory::release_frame(code_frame);
+        let _ = memory::release_frame(stack_frame);
+        return None;
+    }
+    unsafe {
+        ptr::write_bytes(code_frame as *mut u8, 0, PAGE_SIZE as usize);
+        ptr::write_bytes(stack_frame as *mut u8, 0, PAGE_SIZE as usize);
+    }
+    let (code, length) = build_user_task_program(initial_marker, resumed_marker);
+    unsafe {
+        ptr::copy_nonoverlapping(code.as_ptr(), code_frame as *mut u8, length);
+    }
+    if unsafe {
+        space.map_user_page(
+            USER_CODE_ADDRESS,
+            code_frame,
+            UserPageFlags { writable: false, executable: true },
+        )
+    }.is_err()
+        || unsafe {
+            space.map_user_page(
+                USER_STACK_ADDRESS,
+                stack_frame,
+                UserPageFlags::read_write_nx(),
+            )
+        }.is_err()
+    {
+        let _ = memory::release_frame(code_frame);
+        let _ = memory::release_frame(stack_frame);
+        let _ = space.destroy();
+        return None;
+    }
+    let code_ok = space.translate(USER_CODE_ADDRESS)
+        .is_ok_and(|map| map.user && map.executable && !map.writable);
+    let stack_ok = space.translate(USER_STACK_ADDRESS)
+        .is_ok_and(|map| map.user && map.writable && !map.executable);
+    if !code_ok || !stack_ok
+        || space.translate(USER_CODE_ADDRESS + PAGE_SIZE).is_ok()
+    {
+        let _ = space.unmap_user_page(USER_CODE_ADDRESS);
+        let _ = space.unmap_user_page(USER_STACK_ADDRESS);
+        let _ = space.destroy();
+        let _ = memory::release_frame(code_frame);
+        let _ = memory::release_frame(stack_frame);
+        return None;
+    }
+    Some((space, code_frame, stack_frame))
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn build_user_task_program(
+    initial_marker: u32,
+    resumed_marker: u32,
+) -> ([u8; 64], usize) {
+    let mut code = [0u8; 64];
+    let mut position = 0;
+    code[position..position + 10].copy_from_slice(&[
+        0x48, 0xC7, 0x44, 0x24, 0xF8,
+        initial_marker as u8,
+        (initial_marker >> 8) as u8,
+        (initial_marker >> 16) as u8,
+        (initial_marker >> 24) as u8,
+        0,
+    ]);
+    position += 10;
+    code[position..position + 5].copy_from_slice(&[0xB8, 1, 0, 0, 0]); // SYS_YIELD
+    position += 5;
+    code[position..position + 2].copy_from_slice(&[0x0F, 0x05]);
+    position += 2;
+    code[position..position + 10].copy_from_slice(&[
+        0x48, 0xC7, 0x44, 0x24, 0xF0,
+        resumed_marker as u8,
+        (resumed_marker >> 8) as u8,
+        (resumed_marker >> 16) as u8,
+        (resumed_marker >> 24) as u8,
+        0,
+    ]);
+    position += 10;
+    code[position..position + 5].copy_from_slice(&[0xB8, 1, 0, 0, 0]); // SYS_YIELD
+    position += 5;
+    code[position..position + 2].copy_from_slice(&[0x0F, 0x05]);
+    position += 2;
+    code[position..position + 5].copy_from_slice(&[0xB8, 2, 0, 0, 0]); // SYS_EXIT
+    position += 5;
+    code[position..position + 2].copy_from_slice(&[0x0F, 0x05]);
+    position += 2;
+    code[position] = 0xCC; // Must be unreachable after SYS_EXIT.
+    position += 1;
+    (code, position)
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn prepare_user_task_initial_frame(
+    index: usize,
+    kernel_stack_top: u64,
+    _fx_state: usize,
+    _root: u64,
+) -> Option<usize> {
+    if index >= 2 {
+        return None;
+    }
+    let rsp = (kernel_stack_top as usize).checked_sub(size_of::<UserTaskInterruptFrame>())?;
+    if rsp % 16 != 0 {
+        return None;
+    }
+    let frame = UserTaskInterruptFrame {
+        r15: 0, r14: 0, r13: 0, r12: 0,
+        r11: 0, r10: 0, r9: 0, r8: 0,
+        rdi: 0, rsi: 0, rbp: 0, rbx: 0,
+        rdx: 0, rcx: 0, rax: 0,
+        rip: USER_CODE_ADDRESS,
+        cs: u64::from(gdt::USER_CODE_SELECTOR),
+        rflags: 0x202,
+        rsp: USER_STACK_POINTER,
+        ss: u64::from(gdt::USER_DATA_SELECTOR),
+    };
+    unsafe { ptr::write(rsp as *mut UserTaskInterruptFrame, frame); }
+    Some(rsp)
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn prepare_user_task_kernel_frame(kernel_stack_top: u64) -> Option<usize> {
+    let rsp = (kernel_stack_top as usize).checked_sub(size_of::<UserTaskInterruptFrame>())?;
+    if rsp % 16 != 0 {
+        return None;
+    }
+    let frame = UserTaskInterruptFrame {
+        r15: 0, r14: 0, r13: 0, r12: 0,
+        r11: 0, r10: 0, r9: 0, r8: 0,
+        rdi: 0, rsi: 0, rbp: 0, rbx: 0,
+        rdx: 0, rcx: 0, rax: 0,
+        rip: exhi_user_task_kernel_entry as *const () as usize as u64,
+        cs: u64::from(gdt::KERNEL_CODE_SELECTOR),
+        rflags: 0x202,
+        rsp: kernel_stack_top,
+        ss: u64::from(gdt::KERNEL_DATA_SELECTOR),
+    };
+    unsafe { ptr::write(rsp as *mut UserTaskInterruptFrame, frame); }
+    Some(rsp)
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn user_task_stack_bounds(index: usize) -> Option<(u64, u64)> {
+    if index >= 3 {
+        return None;
+    }
+    let base = unsafe { ptr::addr_of!(USER_TASK_KERNEL_STACKS[index]) as u64 };
+    let top = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_KERNEL_STACK_TOPS[index])) };
+    Some((base, top))
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn user_task_select_context(id: TaskId) -> usize {
+    let scheduler = ptr::addr_of_mut!(USER_TASK_SCHEDULER);
+    let index = usize::try_from(id.get()).ok()
+        .and_then(|raw| raw.checked_sub(1))
+        .filter(|index| *index < 3)
+        .unwrap_or_else(|| user_task_runtime_failed(b"P5.6: scheduler selected an unknown task id.\r\n"));
+    let current = unsafe { (*scheduler).get(id) }
+        .unwrap_or_else(|| user_task_runtime_failed(b"P5.6: scheduler selected a missing task.\r\n"));
+    let frame = current.context().saved_stack_pointer();
+    let Some((base, top)) = user_task_stack_bounds(index) else {
+        user_task_runtime_failed(b"P5.6: selected task stack metadata missing.\r\n");
+    };
+    let end = (frame as u64).checked_add(size_of::<UserTaskInterruptFrame>() as u64);
+    if frame == 0
+        || (frame as u64) < base + PAGE_SIZE
+        || end.map_or(true, |value| value > top)
+    {
+        user_task_runtime_failed(b"P5.6: selected task interrupt frame is out of bounds.\r\n");
+    }
+
+    if let Some(metadata) = current.user_metadata() {
+        let expected_root = match index {
+            0 => USER_TASK_SPACE_A_ROOT(),
+            1 => USER_TASK_SPACE_B_ROOT(),
+            _ => 0,
+        };
+        if expected_root == 0
+            || metadata.address_space_root() != expected_root
+            || metadata.kernel_stack_top() != top
+            || metadata.fx_state_pointer()
+                != unsafe { ptr::addr_of!(USER_TASK_FX_STATES[index]) as usize }
+        {
+            user_task_runtime_failed(b"P5.6: user task metadata does not match owned resources.\r\n");
+        }
+        let space_ok = match index {
+            0 => unsafe { (&*ptr::addr_of!(USER_TASK_SPACE_A)).as_ref() }
+                .is_some_and(|space| space.activate().is_ok()),
+            1 => unsafe { (&*ptr::addr_of!(USER_TASK_SPACE_B)).as_ref() }
+                .is_some_and(|space| space.activate().is_ok()),
+            _ => false,
+        };
+        if !space_ok || !gdt::set_rsp0(top) {
+            user_task_runtime_failed(b"P5.6: failed to activate the selected user address space.\r\n");
+        }
+        unsafe {
+            ptr::write_volatile(
+                ptr::addr_of_mut!(USER_TASK_SYSCALL_KERNEL_STACK_TOP),
+                top,
+            );
+            ptr::write_volatile(
+                ptr::addr_of_mut!(USER_TASK_SYSCALL_FX_STATE),
+                metadata.fx_state_pointer(),
+            );
+        }
+    } else {
+        if index != 2
+            || address_space::restore_kernel().is_err()
+            || !gdt::set_rsp0(top)
+        {
+            user_task_runtime_failed(b"P5.6: failed to switch to the kernel reaper context.\r\n");
+        }
+        unsafe {
+            ptr::write_volatile(
+                ptr::addr_of_mut!(USER_TASK_SYSCALL_KERNEL_STACK_TOP),
+                top,
+            );
+            ptr::write_volatile(
+                ptr::addr_of_mut!(USER_TASK_SYSCALL_FX_STATE),
+                ptr::addr_of!(USER_TASK_FX_STATES[2]) as usize,
+            );
+        }
+    }
+
+    unsafe {
+        let count = ptr::addr_of_mut!(USER_TASK_SWITCH_COUNT);
+        ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
+    }
+    frame
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+#[no_mangle]
+extern "sysv64" fn exhi_user_task_syscall_handler(
+    frame: *mut UserTaskInterruptFrame,
+) -> usize {
+    unsafe { asm!("cli", options(nomem, nostack, preserves_flags)); }
+    let frame_address = frame as usize;
+    let scheduler = ptr::addr_of_mut!(USER_TASK_SCHEDULER);
+    let current_id = unsafe {
+        (*scheduler).current().map(|task| task.id())
+    }.unwrap_or_else(|| user_task_runtime_failed(b"P5.6: syscall arrived without a current task.\r\n"));
+    let current_task = unsafe { (*scheduler).get(current_id) }
+        .unwrap_or_else(|| user_task_runtime_failed(b"P5.6: current user task metadata missing.\r\n"));
+    let Some(metadata) = current_task.user_metadata() else {
+        user_task_runtime_failed(b"P5.6: kernel reaper unexpectedly invoked from CPL3.\r\n");
+    };
+    let index = usize::try_from(current_id.get()).ok()
+        .and_then(|raw| raw.checked_sub(1))
+        .filter(|index| *index < 2)
+        .unwrap_or_else(|| user_task_runtime_failed(b"P5.6: syscall came from a non-user task.\r\n"));
+    let Some((base, top)) = user_task_stack_bounds(index) else {
+        user_task_runtime_failed(b"P5.6: syscall task stack bounds missing.\r\n");
+    };
+    let end = (frame_address as u64).checked_add(size_of::<UserTaskInterruptFrame>() as u64);
+    if frame_address == 0
+        || (frame_address as u64) < base + PAGE_SIZE
+        || end.map_or(true, |value| value > top)
+        || metadata.kernel_stack_top() != top
+    {
+        user_task_runtime_failed(b"P5.6: syscall frame escaped the active task kernel stack.\r\n");
+    }
+
+    let syscall_number = unsafe { ptr::read_volatile(ptr::addr_of!((*frame).rax)) };
+    unsafe {
+        (*scheduler)
+            .get_mut(current_id)
+            .unwrap()
+            .context_mut()
+            .set_saved_stack_pointer(frame_address);
+        let user_rsp = ptr::read_volatile(ptr::addr_of!((*frame).rsp));
+        (*scheduler)
+            .get_mut(current_id)
+            .unwrap()
+            .user_metadata_mut()
+            .unwrap()
+            .set_user_stack_pointer(user_rsp);
+        let count = ptr::addr_of_mut!(USER_TASK_SYSCALL_COUNT);
+        ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
+    }
+
+    let next = match syscall_number {
+        1 => {
+            unsafe {
+                let count = ptr::addr_of_mut!(USER_TASK_YIELD_COUNT);
+                ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
+                (*scheduler).yield_current()
+                    .ok()
+                    .and_then(|decision| match decision {
+                        exhi_task::ScheduleDecision::Switch { to, .. } => Some(to),
+                        exhi_task::ScheduleDecision::Continue { .. } => None,
+                    })
+            }
+        }
+        2 => {
+            unsafe {
+                let count = ptr::addr_of_mut!(USER_TASK_EXIT_COUNT);
+                ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(1));
+                (*scheduler).finish_current().ok().flatten()
+            }
+        }
+        _ => None,
+    }.unwrap_or_else(|| user_task_runtime_failed(b"P5.6: invalid syscall or scheduler did not select a peer.\r\n"));
+    user_task_select_context(next)
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+#[no_mangle]
+extern "sysv64" fn exhi_user_task_finish() -> ! {
+    unsafe { asm!("cli", options(nomem, nostack, preserves_flags)); }
+    let scheduler = ptr::addr_of_mut!(USER_TASK_SCHEDULER);
+    let current = unsafe { (*scheduler).current().map(|task| task.id()) };
+    let tasks_ok = unsafe {
+        current.map(TaskId::get) == Some(3)
+            && (*scheduler).get(TaskId::from_raw(1))
+                .is_some_and(|task| task.state() == exhi_task::TaskState::Finished)
+            && (*scheduler).get(TaskId::from_raw(2))
+                .is_some_and(|task| task.state() == exhi_task::TaskState::Finished)
+            && (*scheduler).get(TaskId::from_raw(3))
+                .is_some_and(|task| task.state() == exhi_task::TaskState::Running)
+            && (*scheduler).finished_count() == 2
+            && (*scheduler).ready_count() == 0
+            && (*scheduler).blocked_count() == 0
+    };
+    let syscall_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_SYSCALL_COUNT)) };
+    let yield_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_YIELD_COUNT)) };
+    let exit_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_EXIT_COUNT)) };
+    let switch_count = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_SWITCH_COUNT)) };
+    let a_code = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_CODE_FRAMES[0])) };
+    let b_code = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_CODE_FRAMES[1])) };
+    let a_stack = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_STACK_FRAMES[0])) };
+    let b_stack = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_STACK_FRAMES[1])) };
+    let a_markers_ok = unsafe {
+        ptr::read_volatile((a_stack + PAGE_SIZE - 16) as *const u64) == 0xA11C_E001
+            && ptr::read_volatile((a_stack + PAGE_SIZE - 24) as *const u64) == 0xA11C_E002
+    };
+    let b_markers_ok = unsafe {
+        ptr::read_volatile((b_stack + PAGE_SIZE - 16) as *const u64) == 0xB11C_E001
+            && ptr::read_volatile((b_stack + PAGE_SIZE - 24) as *const u64) == 0xB11C_E002
+    };
+    let roots_private = USER_TASK_SPACE_A_ROOT() != 0
+        && USER_TASK_SPACE_B_ROOT() != 0
+        && USER_TASK_SPACE_A_ROOT() != USER_TASK_SPACE_B_ROOT()
+        && a_code != b_code
+        && a_stack != b_stack;
+    let tss_valid = gdt::read_rsp0()
+        == unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_KERNEL_STACK_TOPS[2])) };
+    let passed = tasks_ok
+        && syscall_count == 6
+        && yield_count == 4
+        && exit_count == 2
+        && switch_count == 6
+        && roots_private
+        && a_markers_ok && b_markers_ok
+        && tss_valid;
+    serial::COM1.write(b"P5.6: syscalls=");
+    serial::COM1.write_hex(syscall_count);
+    serial::COM1.write(b" yields=");
+    serial::COM1.write_hex(yield_count);
+    serial::COM1.write(b" exits=");
+    serial::COM1.write_hex(exit_count);
+    serial::COM1.write(b" switches=");
+    serial::COM1.write_hex(switch_count);
+    serial::COM1.write(b"\r\nP5.6: A markers=");
+    serial::COM1.write(if a_markers_ok { b"both" } else { b"bad " });
+    serial::COM1.write(b" B markers=");
+    serial::COM1.write(if b_markers_ok { b"both" } else { b"bad " });
+    serial::COM1.write(b" distinct CR3/code/stack=yes");
+    serial::COM1.write(b"\r\nP5.6: Finished=");
+    serial::COM1.write_hex(if tasks_ok { 2 } else { 0 });
+    serial::COM1.write(b" kernel reaper running=yes TSS.RSP0=");
+    serial::COM1.write_hex(gdt::read_rsp0());
+    serial::COM1.write(b"\r\n");
+
+    let cleanup_ok = reclaim_user_task_resources();
+    let rsp0_cleared = gdt::set_rsp0(0) && gdt::read_rsp0() == 0;
+    serial::COM1.write(if passed && cleanup_ok && rsp0_cleared {
+        b"P5.6: two-user-task yield/exit lifecycle smoke test passed.\r\n"
+    } else {
+        b"P5.6: two-user-task yield/exit lifecycle smoke test failed.\r\n"
+    });
+    serial::COM1.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
+    let exit = if passed && cleanup_ok && rsp0_cleared { 0x10u32 } else { 0x11u32 };
+    unsafe { asm!("out dx, eax", in("dx") 0xF4u16, in("eax") exit, options(nomem, nostack, preserves_flags)); }
+    loop { unsafe { asm!("cli", "hlt", options(nomem, nostack)); } }
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn reclaim_user_task_resources() -> bool {
+    if address_space::restore_kernel().is_err() {
+        return false;
+    }
+    let mut all_ok = true;
+    for index in 0..2 {
+        let space_slot = if index == 0 {
+            ptr::addr_of_mut!(USER_TASK_SPACE_A)
+        } else {
+            ptr::addr_of_mut!(USER_TASK_SPACE_B)
+        };
+        let mut space = unsafe { (*space_slot).take() };
+        let Some(ref mut address_space) = space else {
+            all_ok = false;
+            continue;
+        };
+        let code = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_CODE_FRAMES[index])) };
+        let stack = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_STACK_FRAMES[index])) };
+        let code_unmapped = address_space.unmap_user_page(USER_CODE_ADDRESS) == Ok(code);
+        let stack_unmapped = address_space.unmap_user_page(USER_STACK_ADDRESS) == Ok(stack);
+        let destroyed = address_space.destroy().is_ok();
+        let code_released = code_unmapped && memory::release_frame(code).is_ok();
+        let stack_released = stack_unmapped && memory::release_frame(stack).is_ok();
+        if !(code_unmapped && stack_unmapped && destroyed && code_released && stack_released) {
+            unsafe { ptr::write(ptr::addr_of_mut!(*space_slot), space); }
+            all_ok = false;
+        }
+    }
+    all_ok
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn user_task_setup_failed(message: &'static [u8]) -> ! {
+    serial::COM1.write(message);
+    serial::COM1.write(b"P5.6: setup failed; static stacks are retained.\r\n");
+    user_task_runtime_failed(b"P5.6: controlled failure exit.\r\n")
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn user_task_runtime_failed(message: &'static [u8]) -> ! {
+    serial::COM1.write(message);
+    serial::COM1.write(b"P5.6: two-user-task yield/exit lifecycle smoke test failed.\r\n");
+    serial::COM1.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
+    unsafe { asm!("out dx, eax", in("dx") 0xF4u16, in("eax") 0x11u32, options(nomem, nostack, preserves_flags)); }
+    loop { unsafe { asm!("cli", "hlt", options(nomem, nostack)); } }
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+global_asm!(
+    r#"
+    .section .text
+    .global exhi_user_task_syscall_entry
+    .type exhi_user_task_syscall_entry, @function
+exhi_user_task_syscall_entry:
+    # SYSCALL leaves RSP on the untrusted user stack. Save it before moving
+    # to the active task's dedicated kernel stack.
+    mov qword ptr [rip + USER_TASK_SYSCALL_USER_RSP], rsp
+    mov rsp, qword ptr [rip + USER_TASK_SYSCALL_KERNEL_STACK_TOP]
+
+    push rax
+    push rcx
+    push rdx
+    push rbx
+    push rbp
+    push rsi
+    push rdi
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+
+    # Normalize the SYSCALL state to the same 20-qword frame used by IRETQ.
+    push 0x2B
+    push qword ptr [rip + USER_TASK_SYSCALL_USER_RSP]
+    push r11
+    push 0x33
+    push rcx
+
+    mov rax, qword ptr [rip + USER_TASK_SYSCALL_FX_STATE]
+    test rax, rax
+    jz .Luser_task_syscall_fatal
+    fxsave64 [rax]
+
+    mov rdi, rsp
+    and rsp, -16
+    cld
+    call exhi_user_task_syscall_handler
+    test rax, rax
+    jz .Luser_task_syscall_fatal
+
+    # The scheduler handler selected the next task and updated CR3, TSS.RSP0,
+    # kernel-stack top and FX-state pointer before returning its saved frame.
+    mov rcx, qword ptr [rip + USER_TASK_SYSCALL_FX_STATE]
+    fxrstor64 [rcx]
+    mov rsp, rax
+
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rdi
+    pop rsi
+    pop rbp
+    pop rbx
+    pop rdx
+    pop rcx
+    pop rax
+    iretq
+
+.Luser_task_syscall_fatal:
+    mov dx, 0xF4
+    mov eax, 0x11
+    out dx, eax
+    cli
+.Luser_task_syscall_halt:
+    hlt
+    jmp .Luser_task_syscall_halt
+
+    .global exhi_user_task_kernel_entry
+    .type exhi_user_task_kernel_entry, @function
+exhi_user_task_kernel_entry:
+    # Same-CPL IRETQ does not pop RSP/SS. Skip those two normalized qwords
+    # before entering a normal SysV function on the dedicated kernel stack.
+    add rsp, 16
+    and rsp, -16
+    call exhi_user_task_finish
+.Luser_task_finish_halt:
+    cli
+    hlt
+    jmp .Luser_task_finish_halt
+"#
+);
+
 fn reclaim_user_address_space() -> bool {
     if address_space::restore_kernel().is_err() {
         return false;
