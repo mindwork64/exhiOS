@@ -278,13 +278,16 @@ unsafe extern "sysv64" {
 unsafe extern "sysv64" {
     fn exhi_irq0_preempt_stub();
     fn exhi_interrupt_context_start(initial_rsp: usize, fx_state: usize) -> !;
-    #[cfg(all(
-        feature = "timer-preemption-smoke-test",
-        not(any(
-            feature = "preemptive-task-exit-smoke-test",
-            feature = "idle-wakeup-smoke-test",
-            feature = "ring3-smoke-test"
-        ))
+    #[cfg(any(
+        feature = "idle-wakeup-smoke-test",
+        all(
+            feature = "timer-preemption-smoke-test",
+            not(any(
+                feature = "preemptive-task-exit-smoke-test",
+                feature = "idle-wakeup-smoke-test",
+                feature = "ring3-smoke-test"
+            ))
+        )
     ))]
     fn exhi_preemptive_task_bootstrap() -> !;
     #[cfg(all(
@@ -601,7 +604,7 @@ pub fn block_interrupt_stub_address() -> u64 {
 
 #[cfg(feature = "idle-wakeup-smoke-test")]
 unsafe fn prepare_idle_context() -> Option<(usize, u64)> {
-    let base = unsafe { ptr::addr_of_mut!(IDLE_STACK) as u64 };
+    let base = ptr::addr_of_mut!(IDLE_STACK) as u64;
     let top = base.checked_add(STACK_TOTAL_SIZE as u64)?;
     if base % PAGE_SIZE as u64 != 0 || top % 16 != 0 || top >= 0x1_0000_0000 {
         return None;
@@ -790,7 +793,7 @@ unsafe extern "sysv64" fn idle_wakeup_task_a() -> ! {
         }
     }
     TASK_A_PROGRESS.store(2, Ordering::Relaxed);
-    unsafe { exhi_preemptive_task_finished() }
+    exhi_preemptive_task_finished()
 }
 
 #[cfg(feature = "idle-wakeup-smoke-test")]
@@ -829,7 +832,7 @@ unsafe extern "sysv64" fn idle_wakeup_task_b() -> ! {
         }
     }
     TASK_B_PROGRESS.store(2, Ordering::Relaxed);
-    unsafe { exhi_preemptive_task_finished() }
+    exhi_preemptive_task_finished()
 }
 
 #[cfg(feature = "idle-wakeup-smoke-test")]
@@ -1735,7 +1738,7 @@ unsafe fn prepare_preemption_stack(
 fn switch_to_idle_context() -> ! {
     let idle_rsp = unsafe { ptr::read_volatile(ptr::addr_of!(IDLE_CONTEXT_RSP)) };
     let idle_top = unsafe { ptr::read_volatile(ptr::addr_of!(IDLE_STACK_TOP)) };
-    let idle_base = unsafe { ptr::addr_of!(IDLE_STACK) as u64 };
+    let idle_base = ptr::addr_of!(IDLE_STACK) as u64;
     let end = (idle_rsp as u64).checked_add(size_of::<InterruptContext>() as u64);
     if idle_rsp == 0
         || (idle_rsp as u64) < idle_base + PAGE_SIZE as u64
@@ -1788,7 +1791,7 @@ fn dispatch_task_from_idle(id: TaskId, now: u64) -> usize {
 
 #[cfg(feature = "idle-wakeup-smoke-test")]
 fn handle_idle_timer_interrupt(frame_address: usize) -> usize {
-    let idle_base = unsafe { ptr::addr_of!(IDLE_STACK) as u64 };
+    let idle_base = ptr::addr_of!(IDLE_STACK) as u64;
     let idle_top = unsafe { ptr::read_volatile(ptr::addr_of!(IDLE_STACK_TOP)) };
     let end = (frame_address as u64).checked_add(size_of::<InterruptContext>() as u64);
     if frame_address == 0
