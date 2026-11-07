@@ -1035,13 +1035,23 @@ extern "sysv64" fn exhi_preemptive_task_finished() -> ! {
             }
         }
         None => {
-            if !gdt::set_rsp0(0) {
-                preemption_setup_failed(b"P4.5: failed to clear TSS.RSP0 after final task.\r\n");
+            #[cfg(feature = "idle-wakeup-smoke-test")]
+            {
+                if unsafe { (*scheduler).is_idle() } {
+                    switch_to_idle_context();
+                }
+                finish_idle_wakeup_test(true);
             }
-            unsafe {
-                ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE), 0);
+            #[cfg(not(feature = "idle-wakeup-smoke-test"))]
+            {
+                if !gdt::set_rsp0(0) {
+                    preemption_setup_failed(b"P4.5: failed to clear TSS.RSP0 after final task.\r\n");
+                }
+                unsafe {
+                    ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE), 0);
+                }
+                finish_preemptive_exit_test(true);
             }
-            finish_preemptive_exit_test(true);
         }
     }
 }
@@ -1380,6 +1390,87 @@ unsafe fn prepare_preemption_stack(
     Some((rsp, top))
 }
 
+
+#[cfg(feature = "idle-wakeup-smoke-test")]
+fn switch_to_idle_context() -> ! {
+    let idle_rsp = unsafe { ptr::read_volatile(ptr::addr_of!(IDLE_CONTEXT_RSP)) };
+    let idle_top = unsafe { ptr::read_volatile(ptr::addr_of!(IDLE_STACK_TOP)) };
+    let idle_base = unsafe { ptr::addr_of!(IDLE_STACK) as u64 };
+    let end = (idle_rsp as u64).checked_add(size_of::<InterruptContext>() as u64);
+    if idle_rsp == 0
+        || (idle_rsp as u64) < idle_base + PAGE_SIZE as u64
+        || end.map_or(true, |value| value > idle_top)
+        || !gdt::set_rsp0(idle_top)
+    {
+        preemption_setup_failed(b"P4.6: idle context frame or TSS.RSP0 is invalid.\r\n");
+    }
+    unsafe {
+        ptr::write_volatile(
+            ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE),
+            ptr::addr_of_mut!(IDLE_FX_STATE) as usize,
+        );
+        let counter = ptr::addr_of_mut!(P4_6_IDLE_ENTRIES);
+        ptr::write_volatile(counter, ptr::read_volatile(counter).saturating_add(1));
+        exhi_interrupt_context_start(idle_rsp, ptr::addr_of!(IDLE_FX_STATE) as usize);
+    }
+}
+
+#[cfg(feature = "idle-wakeup-smoke-test")]
+fn dispatch_task_from_idle(id: TaskId, now: u64) -> usize {
+    let Some(index) = task_stack_index(id) else { return 0; };
+    let Some(task) = (unsafe { (*ptr::addr_of_mut!(SCHEDULER)).get(id) }) else { return 0; };
+    let rsp = task.context().saved_stack_pointer();
+    let top = unsafe { ptr::read_volatile(ptr::addr_of!(TASK_STACK_TOPS[index])) };
+    let base = unsafe { ptr::addr_of!(TASK_STACKS[index]) as u64 };
+    let end = (rsp as u64).checked_add(size_of::<InterruptContext>() as u64);
+    if rsp == 0 || (rsp as u64) < base + PAGE_SIZE as u64
+        || end.map_or(true, |value| value > top) || !gdt::set_rsp0(top)
+    {
+        return 0;
+    }
+    unsafe {
+        ptr::write_volatile(ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS[index]), now);
+        ptr::write_volatile(
+            ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE),
+            ptr::addr_of_mut!(TASK_FX_STATES[index]) as usize,
+        );
+        let counter = ptr::addr_of_mut!(EXHIOS_P4_4_SWITCHES);
+        ptr::write_volatile(counter, ptr::read_volatile(counter).saturating_add(1));
+    }
+    rsp
+}
+
+#[cfg(feature = "idle-wakeup-smoke-test")]
+fn handle_idle_timer_interrupt(frame_address: usize) -> usize {
+    let idle_base = unsafe { ptr::addr_of!(IDLE_STACK) as u64 };
+    let idle_top = unsafe { ptr::read_volatile(ptr::addr_of!(IDLE_STACK_TOP)) };
+    let end = (frame_address as u64).checked_add(size_of::<InterruptContext>() as u64);
+    if frame_address == 0 || (frame_address as u64) < idle_base + PAGE_SIZE as u64
+        || end.map_or(true, |value| value > idle_top)
+    {
+        return 0;
+    }
+    unsafe { ptr::write_volatile(ptr::addr_of_mut!(IDLE_CONTEXT_RSP), frame_address); }
+    unsafe {
+        let ticks = ptr::addr_of_mut!(P4_6_IDLE_TICKS);
+        ptr::write_volatile(ticks, ptr::read_volatile(ticks).saturating_add(1));
+    }
+    let now = timer::ticks();
+    let scheduler = ptr::addr_of_mut!(SCHEDULER);
+    let woke = unsafe { (*scheduler).wake_due(now) };
+    if woke != 0 {
+        unsafe {
+            let count = ptr::addr_of_mut!(P4_6_WAKE_COUNT);
+            ptr::write_volatile(count, ptr::read_volatile(count).saturating_add(woke as u64));
+        }
+    }
+    match unsafe { (*scheduler).schedule_from_idle() } {
+        Ok(Some(id)) => dispatch_task_from_idle(id, now),
+        Ok(None) => frame_address,
+        Err(_) => 0,
+    }
+}
+
 #[cfg(feature = "timer-preemption-smoke-test")]
 #[no_mangle]
 extern "sysv64" fn exhi_preemption_handler(frame: *mut InterruptContext) -> usize {
@@ -1392,6 +1483,10 @@ extern "sysv64" fn exhi_preemption_handler(frame: *mut InterruptContext) -> usiz
         return 0;
     }
     let scheduler = ptr::addr_of_mut!(SCHEDULER);
+    #[cfg(feature = "idle-wakeup-smoke-test")]
+    if unsafe { (*scheduler).current().is_none() && (*scheduler).is_idle() } {
+        return handle_idle_timer_interrupt(frame_address);
+    }
     let Some(id) = (unsafe { (*scheduler).current().map(|task| task.id()) }) else {
         unsafe {
             let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
