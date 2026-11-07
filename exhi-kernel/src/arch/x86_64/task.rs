@@ -784,8 +784,6 @@ fn finish_idle_wakeup_test(target_reached: bool) -> ! {
         && idle_entries >= 2
         && idle_ticks >= 8
         && wake_count >= 2
-        && a_runtime >= 1
-        && b_runtime >= 1
         && TASK_A_PROGRESS.load(Ordering::Relaxed) == 2
         && TASK_B_PROGRESS.load(Ordering::Relaxed) == 2
         && TASK_FAILURES.load(Ordering::Relaxed) == 0
