@@ -21,10 +21,7 @@ use exhi_task::{Capability, CapabilitySet, Scheduler, TaskContext, TaskId, UserT
 
 use super::address_space::{self, AddressSpace, UserPageFlags};
 use super::{gdt, serial, task, vmm};
-#[cfg(any(
-    feature = "ring3-syscall-smoke-test",
-    feature = "user-task-lifecycle-smoke-test"
-))]
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
 use super::syscall;
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 use super::syscall::UserTaskSyscallFrame as UserTaskInterruptFrame;
