@@ -1659,13 +1659,13 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     serial::COM1.write(if reaped_ok && scheduler_clean { b"yes" } else { b"no " });
     serial::COM1.write(b" TSS.RSP0 cleared=");
     serial::COM1.write(if rsp0_cleared { b"yes" } else { b"no " });
-    serial::COM1.write(b"\\r\\n");
+    serial::COM1.write(b"\r\n");
     serial::COM1.write(if passed && cleanup_ok && reaped_ok && scheduler_clean && rsp0_cleared {
-        b"P5.6: two-user-task yield/exit/reap lifecycle smoke test passed.\\r\\n"
+        b"P5.6: two-user-task yield/exit/reap lifecycle smoke test passed.\r\n"
     } else {
-        b"P5.6: two-user-task yield/exit/reap lifecycle smoke test failed.\\r\\n"
+        b"P5.6: two-user-task yield/exit/reap lifecycle smoke test failed.\r\n"
     });
-    serial::COM1.write(b"QEMU debug-exit: requesting controlled shutdown.\\r\\n");
+    serial::COM1.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
     let exit = if passed && cleanup_ok && reaped_ok && scheduler_clean && rsp0_cleared {
         0x10u32
     } else {
