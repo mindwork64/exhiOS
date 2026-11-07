@@ -6,6 +6,7 @@ pub mod keyboard;
 pub mod paging;
 pub mod pic;
 pub mod serial;
+pub mod syscall;
 pub mod stack_guard;
 #[cfg(any(
     feature = "context-switch-smoke-test",
