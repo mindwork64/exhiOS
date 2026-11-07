@@ -681,88 +681,7 @@ pub fn handle_user_exception(
 
 #[cfg(feature = "ring3-syscall-smoke-test")]
 fn initialize_syscall_msrs() -> bool {
-    initialize_syscall_msrs_for_entry(exhi_syscall_entry as *const () as u64)
-}
-
-#[cfg(any(
-    feature = "ring3-syscall-smoke-test",
-    feature = "user-task-lifecycle-smoke-test"
-))]
-pub(crate) fn initialize_syscall_msrs_for_entry(entry: u64) -> bool {
-    const EFER: u32 = 0xC000_0080;
-    const STAR: u32 = 0xC000_0081;
-    const LSTAR: u32 = 0xC000_0082;
-    const FMASK: u32 = 0xC000_0084;
-    const EFER_SCE: u64 = 1;
-    const KERNEL_CS: u64 = gdt::KERNEL_CODE_SELECTOR as u64;
-    // SYSRETQ computes SS = STAR[63:48] + 8 and CS = STAR[63:48] + 16.
-    // The base value itself intentionally denotes no descriptor.
-    const USER_STAR_BASE: u64 = 0x23;
-    const FMASK_BITS: u64 = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 18);
-
-    if entry == 0 {
-        return false;
-    }
-    let max_extended = core::arch::x86_64::__cpuid(0x8000_0000);
-    if max_extended.eax < 0x8000_0001 {
-        return false;
-    }
-    let features = core::arch::x86_64::__cpuid(0x8000_0001);
-    if features.edx & (1 << 11) == 0 {
-        return false;
-    }
-
-    let mut efer = unsafe { read_msr(EFER) };
-    efer |= EFER_SCE;
-    let star = (USER_STAR_BASE << 48) | (KERNEL_CS << 32);
-    unsafe {
-        write_msr(EFER, efer);
-        write_msr(STAR, star);
-        write_msr(LSTAR, entry);
-        write_msr(FMASK, FMASK_BITS);
-    }
-
-    unsafe {
-        read_msr(EFER) & EFER_SCE != 0
-            && read_msr(STAR) == star
-            && read_msr(LSTAR) == entry
-            && read_msr(FMASK) == FMASK_BITS
-    }
-}
-
-#[cfg(any(
-    feature = "ring3-syscall-smoke-test",
-    feature = "user-task-lifecycle-smoke-test"
-))]
-unsafe fn read_msr(msr: u32) -> u64 {
-    let low: u32;
-    let high: u32;
-    unsafe {
-        asm!(
-            "rdmsr",
-            in("ecx") msr,
-            out("eax") low,
-            out("edx") high,
-            options(nostack, preserves_flags)
-        );
-    }
-    (u64::from(high) << 32) | u64::from(low)
-}
-
-#[cfg(any(
-    feature = "ring3-syscall-smoke-test",
-    feature = "user-task-lifecycle-smoke-test"
-))]
-unsafe fn write_msr(msr: u32, value: u64) {
-    unsafe {
-        asm!(
-            "wrmsr",
-            in("ecx") msr,
-            in("eax") value as u32,
-            in("edx") (value >> 32) as u32,
-            options(nostack, preserves_flags)
-        );
-    }
+    super::syscall::initialize(exhi_syscall_entry as *const () as u64).is_ok()
 }
 
 #[cfg(feature = "ring3-syscall-smoke-test")]
@@ -1276,7 +1195,7 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
         user_task_setup_failed(b"P5.6: scheduler did not select user task A first.\r\n");
     }
 
-    if !initialize_syscall_msrs_for_entry(exhi_user_task_syscall_entry as *const () as u64) {
+    if !super::syscall::initialize(exhi_user_task_syscall_entry as *const () as u64).is_ok() {
         user_task_setup_failed(b"P5.6: syscall entry MSR setup failed.\r\n");
     }
     unsafe {
