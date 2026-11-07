@@ -1592,6 +1592,8 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
         == unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_KERNEL_STACK_TOPS[2])) };
     let saved_a_ok = user_task_saved_context_matches(TaskId::from_raw(1));
     let saved_b_ok = user_task_saved_context_matches(TaskId::from_raw(2));
+    report_user_task_saved_context(TaskId::from_raw(1), b"A");
+    report_user_task_saved_context(TaskId::from_raw(2), b"B");
     let passed = tasks_ok
         && syscall_count == 6
         && yield_count == 4
@@ -1637,6 +1639,63 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     let exit = if passed && cleanup_ok && rsp0_cleared { 0x10u32 } else { 0x11u32 };
     unsafe { asm!("out dx, eax", in("dx") 0xF4u16, in("eax") exit, options(nomem, nostack, preserves_flags)); }
     loop { unsafe { asm!("cli", "hlt", options(nomem, nostack)); } }
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn report_user_task_saved_context(id: TaskId, label: &'static [u8]) {
+    let scheduler = ptr::addr_of!(USER_TASK_SCHEDULER);
+    let Some(task) = (unsafe { (&*scheduler).get(id) }) else {
+        serial::COM1.write(b"P5.6: context ");
+        serial::COM1.write(label);
+        serial::COM1.write(b" task missing.\r\n");
+        return;
+    };
+    let frame_address = task.context().saved_stack_pointer();
+    let Some(metadata) = task.user_metadata() else {
+        serial::COM1.write(b"P5.6: context ");
+        serial::COM1.write(label);
+        serial::COM1.write(b" metadata missing.\r\n");
+        return;
+    };
+    serial::COM1.write(b"P5.6: context ");
+    serial::COM1.write(label);
+    serial::COM1.write(b" frame=0x");
+    serial::COM1.write_hex(frame_address as u64);
+    serial::COM1.write(b" expected RSP=0x");
+    serial::COM1.write_hex(metadata.user_stack_pointer());
+    serial::COM1.write(b" root=0x");
+    serial::COM1.write_hex(metadata.address_space_root());
+    let index = usize::try_from(id.get()).ok().and_then(|raw| raw.checked_sub(1));
+    let valid_index = index.filter(|index| *index < 2);
+    if let Some(index) = valid_index {
+        if let Some((base, top)) = user_task_stack_bounds(index) {
+            let end = (frame_address as u64)
+                .checked_add(size_of::<UserTaskInterruptFrame>() as u64);
+            let in_bounds = frame_address != 0
+                && (frame_address as u64) >= base + PAGE_SIZE
+                && end.map_or(false, |value| value <= top);
+            serial::COM1.write(b" stack=");
+            serial::COM1.write(if in_bounds { b"in" } else { b"out" });
+            if in_bounds {
+                let frame = unsafe { &*(frame_address as *const UserTaskInterruptFrame) };
+                serial::COM1.write(b" CS=0x");
+                serial::COM1.write_hex(frame.cs);
+                serial::COM1.write(b" SS=0x");
+                serial::COM1.write_hex(frame.ss);
+                serial::COM1.write(b" FLAGS=0x");
+                serial::COM1.write_hex(frame.rflags);
+                serial::COM1.write(b" RIP=0x");
+                serial::COM1.write_hex(frame.rip);
+                serial::COM1.write(b" RSP=0x");
+                serial::COM1.write_hex(frame.rsp);
+            }
+        } else {
+            serial::COM1.write(b" stack=missing");
+        }
+    } else {
+        serial::COM1.write(b" index=invalid");
+    }
+    serial::COM1.write(b"\r\n");
 }
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
