@@ -259,15 +259,30 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
 
     if mode == Ring3TestMode::PointerValidation {
         let space_slot = unsafe { &*ptr::addr_of!(RING3_ADDRESS_SPACE) };
-        let pointers_valid = space_slot
+        let range_checks = space_slot
             .as_ref()
             .is_some_and(validate_user_pointer_ranges);
+        let copy_checks = if let Some(space) = space_slot.as_ref() {
+            if space.activate().is_ok() {
+                validate_user_copy_runtime(space)
+            } else {
+                false
+            }
+        } else {
+            false
+        };
         let cleanup_ok = reclaim_user_address_space();
         let rsp0_cleared = gdt::set_rsp0(0) && gdt::read_rsp0() == 0;
-        serial::COM1.write(if pointers_valid {
+        let pointers_valid = range_checks && copy_checks;
+        serial::COM1.write(if range_checks {
             b"P5.4: user/read/write/execute/guard/overflow range checks passed.\r\n"
         } else {
             b"P5.4: user-pointer range validation failed.\r\n"
+        });
+        serial::COM1.write(if copy_checks {
+            b"P5.5: copy_from_user/copy_to_user round-trip and atomic rejection passed.\r\n"
+        } else {
+            b"P5.5: user-copy runtime test failed.\r\n"
         });
         finish(pointers_valid && cleanup_ok && rsp0_cleared);
     }
@@ -853,6 +868,44 @@ fn validate_user_pointer_ranges(space: &AddressSpace) -> bool {
         && stack_read && stack_write && stack_execute
         && guard_rejected && crossing_guard_rejected
         && supervisor_rejected && zero_length && overflow && too_large
+}
+
+fn validate_user_copy_runtime(space: &AddressSpace) -> bool {
+    const PATTERN: [u8; 16] = [
+        0x45, 0x58, 0x48, 0x49, 0x4F, 0x53, 0x2D, 0x55,
+        0x53, 0x45, 0x52, 0x2D, 0x43, 0x4F, 0x50, 0x59,
+    ];
+    let mut received = [0u8; 16];
+    let destination = USER_STACK_TOP - 64;
+
+    if copy_to_user(space, destination, &PATTERN).is_err()
+        || copy_from_user(space, destination, &mut received).is_err()
+        || received != PATTERN
+    {
+        return false;
+    }
+
+    // The destination starts four bytes before the end of the writable
+    // mapping and extends four bytes into the unmapped page. No prefix may
+    // be copied before the whole range has been rejected.
+    let boundary = USER_STACK_TOP - 4;
+    let stack_frame = unsafe { ptr::read_volatile(ptr::addr_of!(RING3_STACK_FRAME)) };
+    let tail = (stack_frame + PAGE_SIZE - 4) as *const u32;
+    let before = unsafe { ptr::read_volatile(tail) };
+    let invalid_source = [0xA5u8; 8];
+    let write_rejected = matches!(
+        copy_to_user(space, boundary, &invalid_source),
+        Err(UserRangeError::AddressSpace(_))
+    );
+    let after = unsafe { ptr::read_volatile(tail) };
+
+    let mut invalid_destination = [0u8; 8];
+    let read_rejected = matches!(
+        copy_from_user(space, boundary, &mut invalid_destination),
+        Err(UserRangeError::AddressSpace(_))
+    );
+
+    write_rejected && read_rejected && before == after
 }
 
 fn reclaim_user_address_space() -> bool {
