@@ -8,6 +8,7 @@
 - The kernel is a freestanding ELF64 image built for `x86_64-unknown-none`.
 - Every milestone must have reproducible build or runtime evidence before it is marked complete.
 - A successful compile is not proof that a subsystem works at runtime.
+- ОБНОВИ ROADMAP, ДУРЕНЬ!
 
 ## P0 — UEFI boot chain
 
