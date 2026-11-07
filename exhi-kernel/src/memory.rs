@@ -1,9 +1,7 @@
 use core::slice;
 
 use exhi_abi::BootInfo;
-use exhi_memory::{
-    FrameAllocator, MemoryError, MemoryStats, MAX_PHYSICAL_ADDRESS, PAGE_SIZE,
-};
+use exhi_memory::{FrameAllocator, MemoryError, MemoryStats, MAX_PHYSICAL_ADDRESS, PAGE_SIZE};
 
 const MAX_FRAME_COUNT: usize = (MAX_PHYSICAL_ADDRESS / PAGE_SIZE) as usize;
 const BITMAP_WORD_COUNT: usize = MAX_FRAME_COUNT / 64;

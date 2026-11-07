@@ -76,9 +76,7 @@ pub struct FrameAllocator<const FRAME_COUNT: usize, const WORD_COUNT: usize> {
     initialized: bool,
 }
 
-impl<const FRAME_COUNT: usize, const WORD_COUNT: usize>
-    FrameAllocator<FRAME_COUNT, WORD_COUNT>
-{
+impl<const FRAME_COUNT: usize, const WORD_COUNT: usize> FrameAllocator<FRAME_COUNT, WORD_COUNT> {
     pub const fn new() -> Self {
         Self {
             managed: [0; WORD_COUNT],
@@ -191,8 +189,8 @@ impl<const FRAME_COUNT: usize, const WORD_COUNT: usize>
             }
 
             for frame in usable_start..usable_end {
-                let index = usize::try_from(frame)
-                    .map_err(|_| MemoryError::InvalidBitmapCapacity)?;
+                let index =
+                    usize::try_from(frame).map_err(|_| MemoryError::InvalidBitmapCapacity)?;
                 let word = index / 64;
                 let mask = 1u64 << (index % 64);
 
@@ -365,8 +363,7 @@ fn read_u64(bytes: &[u8], offset: usize) -> Result<u64, MemoryError> {
         .get(offset..end)
         .ok_or(MemoryError::InvalidDescriptorSize)?;
     Ok(u64::from_le_bytes([
-        value[0], value[1], value[2], value[3],
-        value[4], value[5], value[6], value[7],
+        value[0], value[1], value[2], value[3], value[4], value[5], value[6], value[7],
     ]))
 }
 
@@ -387,8 +384,7 @@ mod tests {
         bytes[TYPE_OFFSET..TYPE_OFFSET + 4].copy_from_slice(&memory_type.to_le_bytes());
         bytes[PHYSICAL_START_OFFSET..PHYSICAL_START_OFFSET + 8]
             .copy_from_slice(&physical_start.to_le_bytes());
-        bytes[PAGE_COUNT_OFFSET..PAGE_COUNT_OFFSET + 8]
-            .copy_from_slice(&page_count.to_le_bytes());
+        bytes[PAGE_COUNT_OFFSET..PAGE_COUNT_OFFSET + 8].copy_from_slice(&page_count.to_le_bytes());
         bytes
     }
 
@@ -439,7 +435,10 @@ mod tests {
 
         allocator.free_page(first).unwrap();
         assert_eq!(allocator.stats().free_pages, 1);
-        assert_eq!(allocator.free_page(first), Err(MemoryError::PageAlreadyFree));
+        assert_eq!(
+            allocator.free_page(first),
+            Err(MemoryError::PageAlreadyFree)
+        );
 
         let reused = allocator.allocate_page().unwrap();
         assert_eq!(reused, first);
@@ -495,12 +494,18 @@ mod tests {
             .initialize_from_uefi(&bytes, TEST_DESCRIPTOR_SIZE, 1)
             .unwrap();
 
-        assert_eq!(allocator.free_page(0x10_0001), Err(MemoryError::UnalignedAddress));
+        assert_eq!(
+            allocator.free_page(0x10_0001),
+            Err(MemoryError::UnalignedAddress)
+        );
         assert_eq!(
             allocator.free_page(0x10_0000_0000),
             Err(MemoryError::AddressOutOfRange)
         );
-        assert_eq!(allocator.free_page(0x2000), Err(MemoryError::PageNotManaged));
+        assert_eq!(
+            allocator.free_page(0x2000),
+            Err(MemoryError::PageNotManaged)
+        );
     }
 
     #[test]
@@ -571,6 +576,9 @@ mod tests {
 
         assert_eq!(stats.managed_pages, 1);
         assert_eq!(stats.ignored_above_limit_pages, 2);
-        assert_eq!(allocator.allocate_page().unwrap(), allocator_limit - PAGE_SIZE);
+        assert_eq!(
+            allocator.allocate_page().unwrap(),
+            allocator_limit - PAGE_SIZE
+        );
     }
 }

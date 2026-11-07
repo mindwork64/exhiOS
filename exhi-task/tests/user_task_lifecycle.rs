@@ -29,11 +29,17 @@ fn user_tasks_finish_into_idle_then_reaper_runs_and_reclaims_them() {
     assert_eq!(scheduler.start(), Ok(user_a));
     assert_eq!(
         scheduler.yield_current(),
-        Ok(ScheduleDecision::Switch { from: user_a, to: user_b })
+        Ok(ScheduleDecision::Switch {
+            from: user_a,
+            to: user_b
+        })
     );
     assert_eq!(
         scheduler.yield_current(),
-        Ok(ScheduleDecision::Switch { from: user_b, to: user_a })
+        Ok(ScheduleDecision::Switch {
+            from: user_b,
+            to: user_a
+        })
     );
 
     // The first exit hands off to the other user task. The second exit must
@@ -49,8 +55,14 @@ fn user_tasks_finish_into_idle_then_reaper_runs_and_reclaims_them() {
     scheduler.wake(reaper).unwrap();
     assert_eq!(scheduler.schedule_from_idle(), Ok(Some(reaper)));
     assert_eq!(scheduler.current().map(|task| task.id()), Some(reaper));
-    assert_eq!(scheduler.get(user_a).map(|task| task.state()), Some(TaskState::Finished));
-    assert_eq!(scheduler.get(user_b).map(|task| task.state()), Some(TaskState::Finished));
+    assert_eq!(
+        scheduler.get(user_a).map(|task| task.state()),
+        Some(TaskState::Finished)
+    );
+    assert_eq!(
+        scheduler.get(user_b).map(|task| task.state()),
+        Some(TaskState::Finished)
+    );
 
     // Reaping is legal only after execution has switched to the reaper.
     scheduler.reap(user_a).unwrap();
@@ -72,7 +84,10 @@ fn scheduler_never_reaps_a_running_task_or_a_non_finished_task() {
     assert!(scheduler.reap(first).is_err());
     assert_eq!(
         scheduler.yield_current(),
-        Ok(ScheduleDecision::Switch { from: first, to: second })
+        Ok(ScheduleDecision::Switch {
+            from: first,
+            to: second
+        })
     );
     assert!(scheduler.reap(first).is_err());
     assert_eq!(scheduler.finish_current(), Ok(Some(first)));
@@ -80,6 +95,9 @@ fn scheduler_never_reaps_a_running_task_or_a_non_finished_task() {
     // The finished task can be reclaimed, but the newly running task cannot.
     assert!(scheduler.reap(first).is_err());
     scheduler.reap(second).unwrap();
-    assert_eq!(scheduler.get(first).map(|task| task.state()), Some(TaskState::Running));
+    assert_eq!(
+        scheduler.get(first).map(|task| task.state()),
+        Some(TaskState::Running)
+    );
     assert_eq!(scheduler.get(second), None);
 }

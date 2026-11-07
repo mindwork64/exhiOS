@@ -73,9 +73,15 @@ impl PagingError {
             Self::FiveLevelPagingNotSupportedByBootstrap => {
                 b"five-level paging is active; bootstrap supports four levels"
             }
-            Self::InvalidPageTableStorage => b"bootstrap page-table storage is invalid or above 4 GiB",
-            Self::InvalidKernelStackRange => b"boot kernel stack bounds are invalid or do not contain the active stack",
-            Self::AddressOutOfRange => b"required address range is outside the initial 4 GiB identity map",
+            Self::InvalidPageTableStorage => {
+                b"bootstrap page-table storage is invalid or above 4 GiB"
+            }
+            Self::InvalidKernelStackRange => {
+                b"boot kernel stack bounds are invalid or do not contain the active stack"
+            }
+            Self::AddressOutOfRange => {
+                b"required address range is outside the initial 4 GiB identity map"
+            }
             Self::MissingPageTableEntry => b"required page-table entry is not present",
             Self::UnexpectedPageSize => b"unexpected page-table entry size",
             Self::Cr3Mismatch => b"CR3 readback does not match the new PML4 address",
@@ -134,10 +140,7 @@ pub fn initialize_identity_map_4g(boot_info: &BootInfo) -> Result<PagingStatus, 
         .checked_add(TABLE_STORAGE_BYTES)
         .ok_or(PagingError::InvalidPageTableStorage)?;
 
-    if root_address % PAGE_SIZE != 0
-        || root_address == 0
-        || table_end > IDENTITY_MAP_LIMIT
-    {
+    if root_address % PAGE_SIZE != 0 || root_address == 0 || table_end > IDENTITY_MAP_LIMIT {
         return Err(PagingError::InvalidPageTableStorage);
     }
 
@@ -290,11 +293,7 @@ pub fn translate_current(virtual_address: u64) -> Result<u64, PagingError> {
     translate_from_root(read_cr3() & PAGE_TABLE_ADDRESS_MASK, virtual_address)
 }
 
-fn verify_identity_range(
-    root_address: u64,
-    start: u64,
-    length: u64,
-) -> Result<(), PagingError> {
+fn verify_identity_range(root_address: u64, start: u64, length: u64) -> Result<(), PagingError> {
     validate_identity_range(start, length)?;
     if length == 0 {
         return Ok(());
@@ -395,9 +394,7 @@ fn translate_from_root(root_address: u64, virtual_address: u64) -> Result<u64, P
 
 fn table_address(index: usize) -> u64 {
     // SAFETY: Internal callers use only indexes 0..TABLE_COUNT.
-    unsafe {
-        (ptr::addr_of_mut!(BOOTSTRAP_TABLES) as *mut PageTable).add(index) as u64
-    }
+    unsafe { (ptr::addr_of_mut!(BOOTSTRAP_TABLES) as *mut PageTable).add(index) as u64 }
 }
 
 fn write_entry(table_address: u64, index: usize, value: u64) {

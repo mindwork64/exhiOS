@@ -112,7 +112,9 @@ impl<const CAPACITY: usize> DriverRegistry<CAPACITY> {
             return Err(RegistryError::NotFound);
         };
 
-        let entry = self.entries[index].as_mut().expect("located registry entry");
+        let entry = self.entries[index]
+            .as_mut()
+            .expect("located registry entry");
         if entry.state == state {
             return Ok(());
         }
@@ -191,10 +193,23 @@ mod tests {
         registry.register(SERIAL).unwrap();
         registry.register(PIT).unwrap();
         assert_eq!(registry.len(), 2);
-        assert_eq!(registry.get(DriverId::SerialCom1).unwrap().descriptor.name(), "COM1");
+        assert_eq!(
+            registry
+                .get(DriverId::SerialCom1)
+                .unwrap()
+                .descriptor
+                .name(),
+            "COM1"
+        );
         let mut entries = registry.iter();
-        assert_eq!(entries.next().map(|entry| entry.descriptor.id()), Some(DriverId::SerialCom1));
-        assert_eq!(entries.next().map(|entry| entry.descriptor.id()), Some(DriverId::PitChannel0));
+        assert_eq!(
+            entries.next().map(|entry| entry.descriptor.id()),
+            Some(DriverId::SerialCom1)
+        );
+        assert_eq!(
+            entries.next().map(|entry| entry.descriptor.id()),
+            Some(DriverId::PitChannel0)
+        );
         assert!(entries.next().is_none());
     }
 
@@ -202,7 +217,10 @@ mod tests {
     fn new_entries_start_registered() {
         let mut registry = DriverRegistry::<2>::new();
         registry.register(KEYBOARD).unwrap();
-        assert_eq!(registry.get(DriverId::Ps2Keyboard).unwrap().state, DriverState::Registered);
+        assert_eq!(
+            registry.get(DriverId::Ps2Keyboard).unwrap().state,
+            DriverState::Registered
+        );
     }
 
     #[test]
@@ -225,7 +243,9 @@ mod tests {
     fn supports_registered_to_initialized_transition() {
         let mut registry = DriverRegistry::<2>::new();
         registry.register(PIT).unwrap();
-        registry.set_state(DriverId::PitChannel0, DriverState::Initialized).unwrap();
+        registry
+            .set_state(DriverId::PitChannel0, DriverState::Initialized)
+            .unwrap();
         assert_eq!(registry.initialized_count(), 1);
     }
 
@@ -233,7 +253,9 @@ mod tests {
     fn supports_failure_transition_and_counts_failures() {
         let mut registry = DriverRegistry::<2>::new();
         registry.register(KEYBOARD).unwrap();
-        registry.set_state(DriverId::Ps2Keyboard, DriverState::Failed).unwrap();
+        registry
+            .set_state(DriverId::Ps2Keyboard, DriverState::Failed)
+            .unwrap();
         assert_eq!(registry.failed_count(), 1);
         assert_eq!(
             registry.set_state(DriverId::Ps2Keyboard, DriverState::Registered),

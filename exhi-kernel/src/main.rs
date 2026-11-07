@@ -6,12 +6,14 @@ mod console;
 mod heap;
 mod memory;
 
-use arch::x86_64::{address_space, framebuffer, gdt, idt, keyboard, paging, pic, serial, stack_guard, timer, vmm};
+use arch::x86_64::{
+    address_space, framebuffer, gdt, idt, keyboard, paging, pic, serial, stack_guard, timer, vmm,
+};
 use console::KernelConsole;
-use exhi_console::Color;
-use exhi_driver::{DriverClass, DriverId, DriverRegistry, DriverState, RegistryError};
 use core::arch::asm;
 use core::panic::PanicInfo;
+use exhi_console::Color;
+use exhi_driver::{DriverClass, DriverId, DriverRegistry, DriverState, RegistryError};
 
 use exhi_abi::{BootInfo, BOOT_INFO_MAGIC, BOOT_INFO_VERSION};
 
@@ -83,9 +85,17 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
 
     serial::COM1.write(b"IDT: installed and verified (CPU exceptions 0-31).\r\n");
     serial::COM1.write(b"IDT IRQ0 timer gate: ");
-    serial::COM1.write(if idt_status.timer_irq_valid { b"valid" } else { b"bad  " });
+    serial::COM1.write(if idt_status.timer_irq_valid {
+        b"valid"
+    } else {
+        b"bad  "
+    });
     serial::COM1.write(b"\r\nIDT IRQ1 keyboard gate: ");
-    serial::COM1.write(if idt_status.keyboard_irq_valid { b"valid" } else { b"bad  " });
+    serial::COM1.write(if idt_status.keyboard_irq_valid {
+        b"valid"
+    } else {
+        b"bad  "
+    });
     serial::COM1.write(b"\r\n");
 
     #[cfg(feature = "exception-smoke-test")]
@@ -126,10 +136,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         // SAFETY: The bootloader passes a pointer to a dedicated LOADER_DATA
         // page and retains that page for the lifetime of the kernel.
         let info = unsafe { &*boot_info };
-        if info.magic == BOOT_INFO_MAGIC
-            && info.version == BOOT_INFO_VERSION
-            && info.is_valid()
-        {
+        if info.magic == BOOT_INFO_MAGIC && info.version == BOOT_INFO_VERSION && info.is_valid() {
             serial::COM1.write(b"BootInfo: valid\r\n");
 
             serial::COM1.write(b"Memory map address: 0x");
@@ -214,7 +221,8 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                     halt_forever();
                 }
             };
-            serial::COM1.write(b"Physical allocator smoke test: allocated, freed and reused page 0x");
+            serial::COM1
+                .write(b"Physical allocator smoke test: allocated, freed and reused page 0x");
             serial::COM1.write_hex(reused_page);
             serial::COM1.write(b"\r\nP2.1: physical page allocator ready.\r\n");
 
@@ -262,7 +270,9 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 halt_forever();
             }
 
-            serial::COM1.write(b"\r\nP2.2: kernel page tables active; CR3 and identity mappings verified.\r\n");
+            serial::COM1.write(
+                b"\r\nP2.2: kernel page tables active; CR3 and identity mappings verified.\r\n",
+            );
 
             serial::COM1.write(b"P2.3: initializing virtual memory manager.\r\n");
             let vmm_status = match vmm::initialize() {
@@ -277,7 +287,11 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial::COM1.write(b"4 KiB page size: 0x");
             serial::COM1.write_hex(vmm_status.page_size);
             serial::COM1.write(b"\r\nNX support: ");
-            serial::COM1.write(if vmm_status.nx_enabled { b"enabled" } else { b"unavailable" });
+            serial::COM1.write(if vmm_status.nx_enabled {
+                b"enabled"
+            } else {
+                b"unavailable"
+            });
             serial::COM1.write(b"\r\nVMM identity-map limit: 0x");
             serial::COM1.write_hex(vmm_status.identity_map_limit);
             serial::COM1.write(b"\r\nVMM virtual-address limit: 0x");
@@ -292,7 +306,8 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             }
             serial::COM1.write(b"P2.6: unmapped guard page below boot kernel stack: 0x");
             serial::COM1.write_hex(stack_guard_reservation.guard_page);
-            serial::COM1.write(b"\r\nP2.6: boot kernel stack remains mapped and supervisor-only.\r\n");
+            serial::COM1
+                .write(b"\r\nP2.6: boot kernel stack remains mapped and supervisor-only.\r\n");
 
             // Exercise a page inside an otherwise unused 1 GiB virtual range.
             // The test temporarily splits one 2 MiB huge page, maps a managed
@@ -320,7 +335,8 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 }
             };
             if original_frame != VMM_SMOKE_VIRTUAL_PAGE {
-                serial::COM1.write(b"P2.3: bootstrap identity mapping did not match expected frame.\r\n");
+                serial::COM1
+                    .write(b"P2.3: bootstrap identity mapping did not match expected frame.\r\n");
                 halt_forever();
             }
 
@@ -365,7 +381,8 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                     let actual =
                         core::ptr::read_volatile((VMM_SMOKE_VIRTUAL_PAGE as *const u8).add(index));
                     if actual != expected {
-                        serial::COM1.write(b"P2.3: mapped-page read/write verification failed.\r\n");
+                        serial::COM1
+                            .write(b"P2.3: mapped-page read/write verification failed.\r\n");
                         halt_forever();
                     }
                 }
@@ -381,7 +398,8 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 }
             };
             if removed_frame != data_frame
-                || paging::translate_current(VMM_SMOKE_VIRTUAL_PAGE) != Err(paging::PagingError::NotMapped)
+                || paging::translate_current(VMM_SMOKE_VIRTUAL_PAGE)
+                    != Err(paging::PagingError::NotMapped)
             {
                 serial::COM1.write(b"P2.3: TLB invalidation or unmap verification failed.\r\n");
                 halt_forever();
@@ -409,11 +427,14 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             }
 
             serial::COM1.write(b"P2.3: 2 MiB page split into 4 KiB entries.\r\n");
-            serial::COM1.write(b"P2.3: RW supervisor NX map, read/write, unmap and TLB invalidation verified.\r\n");
+            serial::COM1.write(
+                b"P2.3: RW supervisor NX map, read/write, unmap and TLB invalidation verified.\r\n",
+            );
             match vmm::try_coalesce_large_page(VMM_SMOKE_VIRTUAL_PAGE) {
                 Ok(true) => {}
                 Ok(false) => {
-                    serial::COM1.write(b"P2.3: equivalent 4 KiB entries could not be coalesced.\r\n");
+                    serial::COM1
+                        .write(b"P2.3: equivalent 4 KiB entries could not be coalesced.\r\n");
                     halt_forever();
                 }
                 Err(error) => {
@@ -427,8 +448,11 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 serial::COM1.write(b"P2.3: huge-page coalescing changed the physical mapping.\r\n");
                 halt_forever();
             }
-            serial::COM1.write(b"P2.3: original identity mapping restored; page-table frame safely reclaimed.\r\n");
-            serial::COM1.write(b"P2.3: virtual memory manager 4 KiB mapping smoke test passed.\r\n");
+            serial::COM1.write(
+                b"P2.3: original identity mapping restored; page-table frame safely reclaimed.\r\n",
+            );
+            serial::COM1
+                .write(b"P2.3: virtual memory manager 4 KiB mapping smoke test passed.\r\n");
 
             serial::COM1.write(b"P2.4: initializing page-backed kernel heap.\r\n");
             let mut heap_status = match heap::initialize() {
@@ -503,7 +527,8 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial::COM1.write(b"\r\nAddress-space B physical page: 0x");
             serial::COM1.write_hex(address_space_status.second_physical_page);
             serial::COM1.write(b"\r\nP2.5: separate roots, shared kernel maps, private user mappings and CR3 switching verified.\r\n");
-            serial::COM1.write(b"P2.5: private page tables reclaimed; data frames safely returned.\r\n");
+            serial::COM1
+                .write(b"P2.5: private page tables reclaimed; data frames safely returned.\r\n");
             serial::COM1.write(b"P2.5: kernel address-space smoke test passed.\r\n");
 
             // SAFETY: GOP memory remains allocated after ExitBootServices and is
@@ -537,7 +562,17 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 }
             }
 
-            #[cfg(all(feature = "qemu-debug-exit-smoke-test", not(any(feature = "timer-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test", feature = "task-accounting-smoke-test", feature = "timer-preemption-smoke-test"))))]
+            #[cfg(all(
+                feature = "qemu-debug-exit-smoke-test",
+                not(any(
+                    feature = "timer-smoke-test",
+                    feature = "keyboard-smoke-test",
+                    feature = "driver-registry-smoke-test",
+                    feature = "context-switch-smoke-test",
+                    feature = "task-accounting-smoke-test",
+                    feature = "timer-preemption-smoke-test"
+                ))
+            ))]
             {
                 serial::COM1.write(b"P2.6: forcing an exception-frame write into the unmapped stack guard page.\r\n");
                 idt::trigger_double_fault_guard_stack_smoke_test(
@@ -545,7 +580,6 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                     stack_guard_reservation.guard_page,
                 );
             }
-
         } else {
             serial::COM1.write(b"BootInfo: invalid; cannot initialize physical memory.\r\n");
             halt_forever();
@@ -583,8 +617,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         let timer_status = timer::initialize();
         kernel_console.write_fmt(format_args!(
             "P3.3: PIT initialized at {} Hz (divisor {}); IRQ0 unmasked.\r\n",
-            timer_status.requested_hz,
-            timer_status.pit_divisor
+            timer_status.requested_hz, timer_status.pit_divisor
         ));
         if !timer_status.irq0_unmasked {
             let _ = driver_registry.set_state(timer::DRIVER.id(), DriverState::Failed);
@@ -680,10 +713,14 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         kernel_console.write(b"P4.2: starting x86-64 cooperative context-switch smoke test.\r\n");
         let passed = arch::x86_64::task::context_switch_smoke_test();
         if passed {
-            kernel_console.write(b"P4.2: two tasks yielded to each other and preserved independent stacks.\r\n");
-            kernel_console.write(b"P4.2: cooperative context-switch runtime smoke test passed.\r\n");
+            kernel_console.write(
+                b"P4.2: two tasks yielded to each other and preserved independent stacks.\r\n",
+            );
+            kernel_console
+                .write(b"P4.2: cooperative context-switch runtime smoke test passed.\r\n");
         } else {
-            kernel_console.write(b"P4.2: cooperative context-switch runtime smoke test failed.\r\n");
+            kernel_console
+                .write(b"P4.2: cooperative context-switch runtime smoke test failed.\r\n");
         }
 
         let exit_value = if passed {
@@ -706,13 +743,17 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
 
     #[cfg(feature = "task-accounting-smoke-test")]
     {
-        kernel_console.write(b"P4.3: starting PIT-backed scheduler runtime-accounting smoke test.\r\n");
+        kernel_console
+            .write(b"P4.3: starting PIT-backed scheduler runtime-accounting smoke test.\r\n");
         let passed = arch::x86_64::task::timer_accounting_smoke_test();
         if passed {
-            kernel_console.write(b"P4.3: scheduler recorded independent task runtime from PIT ticks.\r\n");
-            kernel_console.write(b"P4.3: cooperative task runtime-accounting smoke test passed.\r\n");
+            kernel_console
+                .write(b"P4.3: scheduler recorded independent task runtime from PIT ticks.\r\n");
+            kernel_console
+                .write(b"P4.3: cooperative task runtime-accounting smoke test passed.\r\n");
         } else {
-            kernel_console.write(b"P4.3: cooperative task runtime-accounting smoke test failed.\r\n");
+            kernel_console
+                .write(b"P4.3: cooperative task runtime-accounting smoke test failed.\r\n");
         }
 
         let exit_value = if passed {
@@ -763,9 +804,13 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         arch::x86_64::user_mode::ring3_supervisor_fault_smoke_test();
     }
 
-    #[cfg(all(feature = "ring3-smoke-test", not(feature = "ring3-supervisor-fault-smoke-test")))]
+    #[cfg(all(
+        feature = "ring3-smoke-test",
+        not(feature = "ring3-supervisor-fault-smoke-test")
+    ))]
     {
-        kernel_console.write(b"P5.1: starting the Ring 3 entry and exception-return smoke test.\r\n");
+        kernel_console
+            .write(b"P5.1: starting the Ring 3 entry and exception-return smoke test.\r\n");
         arch::x86_64::user_mode::ring3_smoke_test();
     }
 
@@ -781,7 +826,14 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         arch::x86_64::task::preemptive_task_exit_smoke_test();
     }
 
-    #[cfg(all(feature = "timer-preemption-smoke-test", not(any(feature = "preemptive-task-exit-smoke-test", feature = "idle-wakeup-smoke-test", feature = "ring3-smoke-test"))))]
+    #[cfg(all(
+        feature = "timer-preemption-smoke-test",
+        not(any(
+            feature = "preemptive-task-exit-smoke-test",
+            feature = "idle-wakeup-smoke-test",
+            feature = "ring3-smoke-test"
+        ))
+    ))]
     {
         kernel_console.write(b"P4.4: starting timer-driven task preemption smoke test.\r\n");
         arch::x86_64::task::timer_preemption_smoke_test();
@@ -792,25 +844,34 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         keyboard_smoke_test(&mut kernel_console, &mut driver_registry);
     }
 
-    #[cfg(not(any(feature = "serial-rx-smoke-test", feature = "keyboard-smoke-test", feature = "driver-registry-smoke-test", feature = "context-switch-smoke-test", feature = "task-accounting-smoke-test", feature = "timer-preemption-smoke-test", feature = "idle-wakeup-smoke-test")))]
+    #[cfg(not(any(
+        feature = "serial-rx-smoke-test",
+        feature = "keyboard-smoke-test",
+        feature = "driver-registry-smoke-test",
+        feature = "context-switch-smoke-test",
+        feature = "task-accounting-smoke-test",
+        feature = "timer-preemption-smoke-test",
+        feature = "idle-wakeup-smoke-test"
+    )))]
     {
         #[cfg(feature = "qemu-debug-exit-smoke-test")]
         {
-        kernel_console.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
-        // SAFETY: The QEMU test script attaches isa-debug-exit at port 0xF4.
-        // Writing value 0x10 makes QEMU terminate with status (0x10 << 1) | 1.
-        unsafe {
-            asm!(
-                "out dx, eax",
-                in("dx") QEMU_DEBUG_EXIT_PORT,
-                in("eax") QEMU_DEBUG_EXIT_VALUE,
-                options(nomem, nostack, preserves_flags)
-            );
+            kernel_console.write(b"QEMU debug-exit: requesting controlled shutdown.\r\n");
+            // SAFETY: The QEMU test script attaches isa-debug-exit at port 0xF4.
+            // Writing value 0x10 makes QEMU terminate with status (0x10 << 1) | 1.
+            unsafe {
+                asm!(
+                    "out dx, eax",
+                    in("dx") QEMU_DEBUG_EXIT_PORT,
+                    in("eax") QEMU_DEBUG_EXIT_VALUE,
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+            kernel_console.write(b"QEMU debug-exit: device did not terminate the guest.\r\n");
         }
-        kernel_console.write(b"QEMU debug-exit: device did not terminate the guest.\r\n");
-    }
 
-        kernel_console.write(b"ExhiOS: interrupts remain disabled until IRQ handlers are installed.\r\n");
+        kernel_console
+            .write(b"ExhiOS: interrupts remain disabled until IRQ handlers are installed.\r\n");
         kernel_console.write(b"ExhiOS: halt loop entered.\r\n");
 
         halt_forever()
@@ -890,7 +951,8 @@ pub extern "sysv64" fn exhi_exception_handler(
                         options(nomem, nostack, preserves_flags)
                     );
                 }
-                serial::COM1.write(b"QEMU debug-exit: device did not terminate after IST test.\r\n");
+                serial::COM1
+                    .write(b"QEMU debug-exit: device did not terminate after IST test.\r\n");
             }
         } else {
             serial::COM1.write(b"P2.6: double fault did not use the dedicated IST1 stack.\r\n");
@@ -945,13 +1007,14 @@ fn exception_name(vector: u64) -> &'static [u8] {
     }
 }
 
-
 fn heap_init_error_message(error: heap::HeapInitError) -> &'static [u8] {
     match error {
         heap::HeapInitError::AlreadyInitialized => b"heap was already initialized",
         heap::HeapInitError::OutOfVirtualSpace => b"heap virtual range exhausted",
         heap::HeapInitError::OutOfPhysicalFrames => b"physical frame allocator exhausted",
-        heap::HeapInitError::InvalidPhysicalFrame => b"physical allocator returned an invalid frame",
+        heap::HeapInitError::InvalidPhysicalFrame => {
+            b"physical allocator returned an invalid frame"
+        }
         heap::HeapInitError::Vmm(error) => error.message(),
         heap::HeapInitError::Heap(_) => b"heap region registration failed",
     }
@@ -1017,7 +1080,9 @@ fn keyboard_smoke_test(console: &mut KernelConsole, drivers: &mut DriverRegistry
                 event.modifiers.scroll_lock
             ));
             if event.pressed && event.key == exhi_input::KeyCode::D && event.modifiers.control {
-                unsafe { asm!("cli", options(nomem, nostack)); }
+                unsafe {
+                    asm!("cli", options(nomem, nostack));
+                }
                 let pic_status = keyboard::mask_irq1();
                 let dropped = keyboard::dropped_scancodes();
                 console.write_fmt(format_args!(
@@ -1043,7 +1108,9 @@ fn keyboard_smoke_test(console: &mut KernelConsole, drivers: &mut DriverRegistry
                 halt_forever();
             }
         }
-        unsafe { asm!("sti", "hlt", options(nomem, nostack)); }
+        unsafe {
+            asm!("sti", "hlt", options(nomem, nostack));
+        }
     }
 }
 

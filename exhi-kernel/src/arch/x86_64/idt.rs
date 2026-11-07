@@ -229,9 +229,8 @@ pub fn initialize() -> IdtStatus {
         && breakpoint_gate.ist & 0x7 == 0
         && breakpoint_gate.attributes == expected_breakpoint_attributes;
 
-    let timer_irq_gate = unsafe {
-        ptr::read_volatile(entries.add(usize::from(super::timer::IRQ0_VECTOR)))
-    };
+    let timer_irq_gate =
+        unsafe { ptr::read_volatile(entries.add(usize::from(super::timer::IRQ0_VECTOR))) };
     let timer_irq_gate_address = u64::from(timer_irq_gate.offset_low)
         | (u64::from(timer_irq_gate.offset_middle) << 16)
         | (u64::from(timer_irq_gate.offset_high) << 32);
@@ -240,9 +239,8 @@ pub fn initialize() -> IdtStatus {
         && timer_irq_gate.ist & 0x7 == 0
         && timer_irq_gate.attributes == INTERRUPT_GATE_ATTRIBUTES;
 
-    let keyboard_irq_gate = unsafe {
-        ptr::read_volatile(entries.add(usize::from(super::keyboard::IRQ1_VECTOR)))
-    };
+    let keyboard_irq_gate =
+        unsafe { ptr::read_volatile(entries.add(usize::from(super::keyboard::IRQ1_VECTOR))) };
     let keyboard_irq_gate_address = u64::from(keyboard_irq_gate.offset_low)
         | (u64::from(keyboard_irq_gate.offset_middle) << 16)
         | (u64::from(keyboard_irq_gate.offset_high) << 32);
@@ -316,40 +314,39 @@ pub fn trigger_double_fault_guard_stack_smoke_test(stack_bottom: u64, guard_page
     }
 }
 
-
 unsafe extern "sysv64" {
-        fn exhi_isr_0();
-        fn exhi_isr_1();
-        fn exhi_isr_2();
-        fn exhi_isr_3();
-        fn exhi_isr_4();
-        fn exhi_isr_5();
-        fn exhi_isr_6();
-        fn exhi_isr_7();
-        fn exhi_isr_8();
-        fn exhi_isr_9();
-        fn exhi_isr_10();
-        fn exhi_isr_11();
-        fn exhi_isr_12();
-        fn exhi_isr_13();
-        fn exhi_isr_14();
-        fn exhi_isr_15();
-        fn exhi_isr_16();
-        fn exhi_isr_17();
-        fn exhi_isr_18();
-        fn exhi_isr_19();
-        fn exhi_isr_20();
-        fn exhi_isr_21();
-        fn exhi_isr_22();
-        fn exhi_isr_23();
-        fn exhi_isr_24();
-        fn exhi_isr_25();
-        fn exhi_isr_26();
-        fn exhi_isr_27();
-        fn exhi_isr_28();
-        fn exhi_isr_29();
-        fn exhi_isr_30();
-        fn exhi_isr_31();
+    fn exhi_isr_0();
+    fn exhi_isr_1();
+    fn exhi_isr_2();
+    fn exhi_isr_3();
+    fn exhi_isr_4();
+    fn exhi_isr_5();
+    fn exhi_isr_6();
+    fn exhi_isr_7();
+    fn exhi_isr_8();
+    fn exhi_isr_9();
+    fn exhi_isr_10();
+    fn exhi_isr_11();
+    fn exhi_isr_12();
+    fn exhi_isr_13();
+    fn exhi_isr_14();
+    fn exhi_isr_15();
+    fn exhi_isr_16();
+    fn exhi_isr_17();
+    fn exhi_isr_18();
+    fn exhi_isr_19();
+    fn exhi_isr_20();
+    fn exhi_isr_21();
+    fn exhi_isr_22();
+    fn exhi_isr_23();
+    fn exhi_isr_24();
+    fn exhi_isr_25();
+    fn exhi_isr_26();
+    fn exhi_isr_27();
+    fn exhi_isr_28();
+    fn exhi_isr_29();
+    fn exhi_isr_30();
+    fn exhi_isr_31();
 }
 
 global_asm!(
@@ -589,7 +586,6 @@ exhi_exception_common:
         ud2
     "#
 );
-
 
 #[cfg(feature = "qemu-debug-exit-smoke-test")]
 global_asm!(

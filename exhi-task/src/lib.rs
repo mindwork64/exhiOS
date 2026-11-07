@@ -24,7 +24,9 @@ pub struct TaskContext {
 
 impl TaskContext {
     pub const fn new(saved_stack_pointer: usize) -> Self {
-        Self { saved_stack_pointer }
+        Self {
+            saved_stack_pointer,
+        }
     }
 
     pub const fn saved_stack_pointer(self) -> usize {
@@ -70,11 +72,21 @@ impl UserTaskMetadata {
         }
     }
 
-    pub const fn address_space_root(self) -> u64 { self.address_space_root }
-    pub const fn user_stack_pointer(self) -> u64 { self.user_stack_pointer }
-    pub const fn kernel_stack_top(self) -> u64 { self.kernel_stack_top }
-    pub const fn fx_state_pointer(self) -> usize { self.fx_state_pointer }
-    pub fn set_user_stack_pointer(&mut self, value: u64) { self.user_stack_pointer = value; }
+    pub const fn address_space_root(self) -> u64 {
+        self.address_space_root
+    }
+    pub const fn user_stack_pointer(self) -> u64 {
+        self.user_stack_pointer
+    }
+    pub const fn kernel_stack_top(self) -> u64 {
+        self.kernel_stack_top
+    }
+    pub const fn fx_state_pointer(self) -> usize {
+        self.fx_state_pointer
+    }
+    pub fn set_user_stack_pointer(&mut self, value: u64) {
+        self.user_stack_pointer = value;
+    }
 
     pub const fn is_valid(self) -> bool {
         self.address_space_root != 0
@@ -108,15 +120,33 @@ pub struct Task {
 }
 
 impl Task {
-    pub const fn id(&self) -> TaskId { self.id }
-    pub const fn name(&self) -> &'static str { self.name }
-    pub const fn state(&self) -> TaskState { self.state }
-    pub const fn context(&self) -> TaskContext { self.context }
-    pub fn context_mut(&mut self) -> &mut TaskContext { &mut self.context }
-    pub const fn runtime_ticks(&self) -> u64 { self.runtime_ticks }
-    pub const fn user_metadata(&self) -> Option<UserTaskMetadata> { self.user_metadata }
-    pub fn user_metadata_mut(&mut self) -> Option<&mut UserTaskMetadata> { self.user_metadata.as_mut() }
-    pub const fn is_user_task(&self) -> bool { self.user_metadata.is_some() }
+    pub const fn id(&self) -> TaskId {
+        self.id
+    }
+    pub const fn name(&self) -> &'static str {
+        self.name
+    }
+    pub const fn state(&self) -> TaskState {
+        self.state
+    }
+    pub const fn context(&self) -> TaskContext {
+        self.context
+    }
+    pub fn context_mut(&mut self) -> &mut TaskContext {
+        &mut self.context
+    }
+    pub const fn runtime_ticks(&self) -> u64 {
+        self.runtime_ticks
+    }
+    pub const fn user_metadata(&self) -> Option<UserTaskMetadata> {
+        self.user_metadata
+    }
+    pub fn user_metadata_mut(&mut self) -> Option<&mut UserTaskMetadata> {
+        self.user_metadata.as_mut()
+    }
+    pub const fn is_user_task(&self) -> bool {
+        self.user_metadata.is_some()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -195,7 +225,10 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
         if context.saved_stack_pointer() == 0 {
             return Err(SchedulerError::InvalidContext);
         }
-        let index = self.slots.iter().position(Option::is_none)
+        let index = self
+            .slots
+            .iter()
+            .position(Option::is_none)
             .ok_or(SchedulerError::Full)?;
         if self.next_id == 0 {
             return Err(SchedulerError::IdExhausted);
@@ -222,7 +255,9 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
         if self.current_index.is_some() || self.idle_active {
             return Err(SchedulerError::AlreadyStarted);
         }
-        let index = self.find_ready_from(0).ok_or(SchedulerError::NoRunnableTask)?;
+        let index = self
+            .find_ready_from(0)
+            .ok_or(SchedulerError::NoRunnableTask)?;
         let task = self.slots[index].as_mut().expect("ready slot exists");
         task.state = TaskState::Running;
         let id = task.id;
@@ -243,7 +278,9 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
 
     fn reschedule_current(&mut self) -> Result<ScheduleDecision, SchedulerError> {
         let current = self.current_index.ok_or(SchedulerError::NotStarted)?;
-        let running = self.slots[current].as_ref().ok_or(SchedulerError::NotFound)?;
+        let running = self.slots[current]
+            .as_ref()
+            .ok_or(SchedulerError::NotFound)?;
         if running.state != TaskState::Running {
             return Err(SchedulerError::InvalidStateTransition);
         }
@@ -252,7 +289,10 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
             return Ok(ScheduleDecision::Continue { current: from });
         };
         let to = self.slots[next].as_ref().expect("ready slot exists").id;
-        self.slots[current].as_mut().expect("running slot exists").state = TaskState::Ready;
+        self.slots[current]
+            .as_mut()
+            .expect("running slot exists")
+            .state = TaskState::Ready;
         self.slots[next].as_mut().expect("ready slot exists").state = TaskState::Running;
         self.current_index = Some(next);
         Ok(ScheduleDecision::Switch { from, to })
@@ -261,7 +301,9 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
     /// Finishes the current task and selects another Ready task, if any.
     pub fn finish_current(&mut self) -> Result<Option<TaskId>, SchedulerError> {
         let current = self.current_index.ok_or(SchedulerError::NotStarted)?;
-        let running = self.slots[current].as_ref().ok_or(SchedulerError::NotFound)?;
+        let running = self.slots[current]
+            .as_ref()
+            .ok_or(SchedulerError::NotFound)?;
         if running.state != TaskState::Running {
             return Err(SchedulerError::InvalidStateTransition);
         }
@@ -288,14 +330,21 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
     /// Failure leaves the current task Running when there is no peer.
     pub fn block_current(&mut self) -> Result<TaskId, SchedulerError> {
         let current = self.current_index.ok_or(SchedulerError::NotStarted)?;
-        let running = self.slots[current].as_ref().ok_or(SchedulerError::NotFound)?;
+        let running = self.slots[current]
+            .as_ref()
+            .ok_or(SchedulerError::NotFound)?;
         if running.state != TaskState::Running {
             return Err(SchedulerError::InvalidStateTransition);
         }
-        let next = self.find_next_ready(current).ok_or(SchedulerError::NoRunnableTask)?;
+        let next = self
+            .find_next_ready(current)
+            .ok_or(SchedulerError::NoRunnableTask)?;
         let next_id = self.slots[next].as_ref().expect("ready slot exists").id;
 
-        self.slots[current].as_mut().expect("running slot exists").state = TaskState::Blocked;
+        self.slots[current]
+            .as_mut()
+            .expect("running slot exists")
+            .state = TaskState::Blocked;
         self.slots[next].as_mut().expect("ready slot exists").state = TaskState::Running;
         self.current_index = Some(next);
         Ok(next_id)
@@ -314,9 +363,14 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
         self.block_current_with_deadline(Some(deadline))
     }
 
-    fn block_current_with_deadline(&mut self, deadline: Option<u64>) -> Result<Option<TaskId>, SchedulerError> {
+    fn block_current_with_deadline(
+        &mut self,
+        deadline: Option<u64>,
+    ) -> Result<Option<TaskId>, SchedulerError> {
         let current = self.current_index.ok_or(SchedulerError::NotStarted)?;
-        let running = self.slots[current].as_ref().ok_or(SchedulerError::NotFound)?;
+        let running = self.slots[current]
+            .as_ref()
+            .ok_or(SchedulerError::NotFound)?;
         if running.state != TaskState::Running {
             return Err(SchedulerError::InvalidStateTransition);
         }
@@ -406,8 +460,12 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
     pub fn wake_due(&mut self, now: u64) -> usize {
         let mut woken = 0;
         for slot in &mut self.slots {
-            let Some(task) = slot.as_mut() else { continue; };
-            let Some(deadline) = task.wake_deadline else { continue; };
+            let Some(task) = slot.as_mut() else {
+                continue;
+            };
+            let Some(deadline) = task.wake_deadline else {
+                continue;
+            };
             if task.state == TaskState::Blocked && now.wrapping_sub(deadline) < (1u64 << 63) {
                 task.state = TaskState::Ready;
                 task.wake_deadline = None;
@@ -436,7 +494,9 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
     /// scheduling boundary; the IRQ handler itself never accesses Scheduler.
     pub fn account_current_ticks(&mut self, elapsed_ticks: u64) -> Result<u64, SchedulerError> {
         let current = self.current_index.ok_or(SchedulerError::NotStarted)?;
-        let task = self.slots[current].as_mut().ok_or(SchedulerError::NotFound)?;
+        let task = self.slots[current]
+            .as_mut()
+            .ok_or(SchedulerError::NotFound)?;
         if task.state != TaskState::Running {
             return Err(SchedulerError::InvalidStateTransition);
         }
@@ -445,11 +505,13 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
     }
 
     pub fn current(&self) -> Option<&Task> {
-        self.current_index.and_then(|index| self.slots[index].as_ref())
+        self.current_index
+            .and_then(|index| self.slots[index].as_ref())
     }
 
     pub fn get(&self, id: TaskId) -> Option<&Task> {
-        self.find_index(id).and_then(|index| self.slots[index].as_ref())
+        self.find_index(id)
+            .and_then(|index| self.slots[index].as_ref())
     }
 
     pub fn get_mut(&mut self, id: TaskId) -> Option<&mut Task> {
@@ -461,46 +523,76 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
         self.slots.iter().filter_map(Option::as_ref)
     }
 
-    pub const fn len(&self) -> usize { self.task_count }
-    pub const fn capacity(&self) -> usize { CAPACITY }
-    pub const fn is_empty(&self) -> bool { self.task_count == 0 }
+    pub const fn len(&self) -> usize {
+        self.task_count
+    }
+    pub const fn capacity(&self) -> usize {
+        CAPACITY
+    }
+    pub const fn is_empty(&self) -> bool {
+        self.task_count == 0
+    }
 
-    pub fn ready_count(&self) -> usize { self.count_state(TaskState::Ready) }
-    pub fn blocked_count(&self) -> usize { self.count_state(TaskState::Blocked) }
-    pub fn finished_count(&self) -> usize { self.count_state(TaskState::Finished) }
+    pub fn ready_count(&self) -> usize {
+        self.count_state(TaskState::Ready)
+    }
+    pub fn blocked_count(&self) -> usize {
+        self.count_state(TaskState::Blocked)
+    }
+    pub fn finished_count(&self) -> usize {
+        self.count_state(TaskState::Finished)
+    }
 
     fn count_state(&self, state: TaskState) -> usize {
         self.iter().filter(|task| task.state == state).count()
     }
 
     fn find_index(&self, id: TaskId) -> Option<usize> {
-        self.slots.iter().position(|slot| slot.as_ref().is_some_and(|task| task.id == id))
+        self.slots
+            .iter()
+            .position(|slot| slot.as_ref().is_some_and(|task| task.id == id))
     }
 
     fn find_ready_from(&self, start: usize) -> Option<usize> {
-        if CAPACITY == 0 { return None; }
+        if CAPACITY == 0 {
+            return None;
+        }
         (0..CAPACITY)
             .map(|distance| (start + distance) % CAPACITY)
-            .find(|&index| self.slots[index].as_ref().is_some_and(|task| task.state == TaskState::Ready))
+            .find(|&index| {
+                self.slots[index]
+                    .as_ref()
+                    .is_some_and(|task| task.state == TaskState::Ready)
+            })
     }
 
     fn find_next_ready(&self, current: usize) -> Option<usize> {
-        if CAPACITY < 2 { return None; }
+        if CAPACITY < 2 {
+            return None;
+        }
         (1..CAPACITY)
             .map(|distance| (current + distance) % CAPACITY)
-            .find(|&index| self.slots[index].as_ref().is_some_and(|task| task.state == TaskState::Ready))
+            .find(|&index| {
+                self.slots[index]
+                    .as_ref()
+                    .is_some_and(|task| task.state == TaskState::Ready)
+            })
     }
 }
 
 impl<const CAPACITY: usize> Default for Scheduler<CAPACITY> {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn context(pointer: usize) -> TaskContext { TaskContext::new(pointer) }
+    fn context(pointer: usize) -> TaskContext {
+        TaskContext::new(pointer)
+    }
 
     #[test]
     fn stores_user_task_metadata_without_interpreting_architecture_addresses() {
@@ -511,7 +603,9 @@ mod tests {
             0x0000_0000_0012_0000,
             0x0000_0000_0013_0000,
         );
-        let id = scheduler.spawn_user("user-A", context(0x3000), metadata).unwrap();
+        let id = scheduler
+            .spawn_user("user-A", context(0x3000), metadata)
+            .unwrap();
         let task = scheduler.get(id).unwrap();
         assert!(task.is_user_task());
         assert_eq!(task.user_metadata(), Some(metadata));
@@ -524,13 +618,29 @@ mod tests {
     fn blocked_reaper_becomes_runnable_after_last_user_task_exits() {
         let mut scheduler = Scheduler::<3>::new();
         let metadata = UserTaskMetadata::new(0x2000, 0x2FF8, 0x4000, 0x5000);
-        let user_a = scheduler.spawn_user("user-A", context(0x3000), metadata).unwrap();
-        let user_b = scheduler.spawn_user("user-B", context(0x6000), metadata).unwrap();
+        let user_a = scheduler
+            .spawn_user("user-A", context(0x3000), metadata)
+            .unwrap();
+        let user_b = scheduler
+            .spawn_user("user-B", context(0x6000), metadata)
+            .unwrap();
         let reaper = scheduler.spawn("reaper", context(0x9000)).unwrap();
         scheduler.block_ready(reaper).unwrap();
         assert_eq!(scheduler.start(), Ok(user_a));
-        assert_eq!(scheduler.yield_current(), Ok(ScheduleDecision::Switch { from: user_a, to: user_b }));
-        assert_eq!(scheduler.yield_current(), Ok(ScheduleDecision::Switch { from: user_b, to: user_a }));
+        assert_eq!(
+            scheduler.yield_current(),
+            Ok(ScheduleDecision::Switch {
+                from: user_a,
+                to: user_b
+            })
+        );
+        assert_eq!(
+            scheduler.yield_current(),
+            Ok(ScheduleDecision::Switch {
+                from: user_b,
+                to: user_a
+            })
+        );
         assert_eq!(scheduler.finish_current(), Ok(Some(user_b)));
         assert_eq!(scheduler.finish_current(), Ok(None));
         assert!(scheduler.is_idle());
@@ -544,10 +654,24 @@ mod tests {
     fn updates_saved_user_stack_pointer_metadata() {
         let mut scheduler = Scheduler::<1>::new();
         let metadata = UserTaskMetadata::new(0x2000, 0x2FF8, 0x4000, 0x5000);
-        let id = scheduler.spawn_user("user-A", context(0x3000), metadata).unwrap();
-        scheduler.get_mut(id).unwrap().user_metadata_mut().unwrap()
+        let id = scheduler
+            .spawn_user("user-A", context(0x3000), metadata)
+            .unwrap();
+        scheduler
+            .get_mut(id)
+            .unwrap()
+            .user_metadata_mut()
+            .unwrap()
             .set_user_stack_pointer(0x2FE8);
-        assert_eq!(scheduler.get(id).unwrap().user_metadata().unwrap().user_stack_pointer(), 0x2FE8);
+        assert_eq!(
+            scheduler
+                .get(id)
+                .unwrap()
+                .user_metadata()
+                .unwrap()
+                .user_stack_pointer(),
+            0x2FE8
+        );
     }
 
     #[test]
@@ -574,7 +698,10 @@ mod tests {
         scheduler.spawn("second", context(0x2000)).unwrap();
         assert_eq!(scheduler.start(), Ok(first));
         assert_eq!(scheduler.current().map(Task::id), Some(first));
-        assert_eq!(scheduler.get(first).map(Task::state), Some(TaskState::Running));
+        assert_eq!(
+            scheduler.get(first).map(Task::state),
+            Some(TaskState::Running)
+        );
     }
 
     #[test]
@@ -584,9 +711,27 @@ mod tests {
         let second = scheduler.spawn("second", context(0x2000)).unwrap();
         let third = scheduler.spawn("third", context(0x3000)).unwrap();
         assert_eq!(scheduler.start(), Ok(first));
-        assert_eq!(scheduler.yield_current(), Ok(ScheduleDecision::Switch { from: first, to: second }));
-        assert_eq!(scheduler.yield_current(), Ok(ScheduleDecision::Switch { from: second, to: third }));
-        assert_eq!(scheduler.yield_current(), Ok(ScheduleDecision::Switch { from: third, to: first }));
+        assert_eq!(
+            scheduler.yield_current(),
+            Ok(ScheduleDecision::Switch {
+                from: first,
+                to: second
+            })
+        );
+        assert_eq!(
+            scheduler.yield_current(),
+            Ok(ScheduleDecision::Switch {
+                from: second,
+                to: third
+            })
+        );
+        assert_eq!(
+            scheduler.yield_current(),
+            Ok(ScheduleDecision::Switch {
+                from: third,
+                to: first
+            })
+        );
     }
 
     #[test]
@@ -594,8 +739,14 @@ mod tests {
         let mut scheduler = Scheduler::<1>::new();
         let only = scheduler.spawn("only", context(0x1000)).unwrap();
         scheduler.start().unwrap();
-        assert_eq!(scheduler.yield_current(), Ok(ScheduleDecision::Continue { current: only }));
-        assert_eq!(scheduler.current().map(Task::state), Some(TaskState::Running));
+        assert_eq!(
+            scheduler.yield_current(),
+            Ok(ScheduleDecision::Continue { current: only })
+        );
+        assert_eq!(
+            scheduler.current().map(Task::state),
+            Some(TaskState::Running)
+        );
     }
 
     #[test]
@@ -605,7 +756,10 @@ mod tests {
         let second = scheduler.spawn("second", context(0x2000)).unwrap();
         scheduler.start().unwrap();
         assert_eq!(scheduler.finish_current(), Ok(Some(second)));
-        assert_eq!(scheduler.get(first).map(Task::state), Some(TaskState::Finished));
+        assert_eq!(
+            scheduler.get(first).map(Task::state),
+            Some(TaskState::Finished)
+        );
         assert_eq!(scheduler.finish_current(), Ok(None));
         assert_eq!(scheduler.current(), None);
         assert_eq!(scheduler.finished_count(), 2);
@@ -618,9 +772,18 @@ mod tests {
         let second = scheduler.spawn("second", context(0x2000)).unwrap();
         scheduler.start().unwrap();
         assert_eq!(scheduler.block_current(), Ok(second));
-        assert_eq!(scheduler.get(first).map(Task::state), Some(TaskState::Blocked));
+        assert_eq!(
+            scheduler.get(first).map(Task::state),
+            Some(TaskState::Blocked)
+        );
         assert_eq!(scheduler.wake(first), Ok(()));
-        assert_eq!(scheduler.yield_current(), Ok(ScheduleDecision::Switch { from: second, to: first }));
+        assert_eq!(
+            scheduler.yield_current(),
+            Ok(ScheduleDecision::Switch {
+                from: second,
+                to: first
+            })
+        );
     }
 
     #[test]
@@ -628,7 +791,10 @@ mod tests {
         let mut scheduler = Scheduler::<1>::new();
         let only = scheduler.spawn("only", context(0x1000)).unwrap();
         scheduler.start().unwrap();
-        assert_eq!(scheduler.block_current(), Err(SchedulerError::NoRunnableTask));
+        assert_eq!(
+            scheduler.block_current(),
+            Err(SchedulerError::NoRunnableTask)
+        );
         assert_eq!(scheduler.current().map(Task::id), Some(only));
     }
 
@@ -637,7 +803,10 @@ mod tests {
         let mut scheduler = Scheduler::<2>::new();
         let first = scheduler.spawn("first", context(0x1000)).unwrap();
         assert_eq!(scheduler.wake(TaskId(999)), Err(SchedulerError::NotFound));
-        assert_eq!(scheduler.wake(first), Err(SchedulerError::InvalidStateTransition));
+        assert_eq!(
+            scheduler.wake(first),
+            Err(SchedulerError::InvalidStateTransition)
+        );
         scheduler.spawn("second", context(0x2000)).unwrap();
         scheduler.start().unwrap();
         scheduler.block_current().unwrap();
@@ -659,7 +828,10 @@ mod tests {
         assert_eq!(scheduler.schedule_from_idle(), Ok(Some(only)));
         assert!(!scheduler.is_idle());
         assert_eq!(scheduler.current().map(Task::id), Some(only));
-        assert_eq!(scheduler.get(only).map(Task::state), Some(TaskState::Running));
+        assert_eq!(
+            scheduler.get(only).map(Task::state),
+            Some(TaskState::Running)
+        );
     }
 
     #[test]
@@ -698,7 +870,10 @@ mod tests {
         assert_eq!(scheduler.current(), None);
         assert_eq!(scheduler.blocked_count(), 1);
         assert!(scheduler.is_idle());
-        assert_eq!(scheduler.wake(second), Err(SchedulerError::InvalidStateTransition));
+        assert_eq!(
+            scheduler.wake(second),
+            Err(SchedulerError::InvalidStateTransition)
+        );
         assert_eq!(scheduler.wake(first), Ok(()));
         assert_eq!(scheduler.schedule_from_idle(), Ok(Some(first)));
         assert_eq!(scheduler.current().map(Task::id), Some(first));
@@ -707,14 +882,29 @@ mod tests {
     #[test]
     fn idle_state_rejects_invalid_entry_and_dispatch() {
         let mut scheduler = Scheduler::<2>::new();
-        assert_eq!(scheduler.enter_idle(), Err(SchedulerError::InvalidStateTransition));
-        assert_eq!(scheduler.schedule_from_idle(), Err(SchedulerError::InvalidStateTransition));
+        assert_eq!(
+            scheduler.enter_idle(),
+            Err(SchedulerError::InvalidStateTransition)
+        );
+        assert_eq!(
+            scheduler.schedule_from_idle(),
+            Err(SchedulerError::InvalidStateTransition)
+        );
         let first = scheduler.spawn("first", context(0x1000)).unwrap();
         scheduler.start().unwrap();
-        assert_eq!(scheduler.enter_idle(), Err(SchedulerError::InvalidStateTransition));
+        assert_eq!(
+            scheduler.enter_idle(),
+            Err(SchedulerError::InvalidStateTransition)
+        );
         assert_eq!(scheduler.block_current_or_idle(), Ok(None));
-        assert_eq!(scheduler.block_current_or_idle(), Err(SchedulerError::NotStarted));
-        assert_eq!(scheduler.enter_idle(), Err(SchedulerError::InvalidStateTransition));
+        assert_eq!(
+            scheduler.block_current_or_idle(),
+            Err(SchedulerError::NotStarted)
+        );
+        assert_eq!(
+            scheduler.enter_idle(),
+            Err(SchedulerError::InvalidStateTransition)
+        );
         assert_eq!(scheduler.wake(first), Ok(()));
         assert_eq!(scheduler.schedule_from_idle(), Ok(Some(first)));
     }
@@ -734,9 +924,15 @@ mod tests {
     #[test]
     fn enforces_capacity_and_rejects_zero_stack_pointer() {
         let mut scheduler = Scheduler::<1>::new();
-        assert_eq!(scheduler.spawn("invalid", context(0)), Err(SchedulerError::InvalidContext));
+        assert_eq!(
+            scheduler.spawn("invalid", context(0)),
+            Err(SchedulerError::InvalidContext)
+        );
         scheduler.spawn("first", context(0x1000)).unwrap();
-        assert_eq!(scheduler.spawn("second", context(0x2000)), Err(SchedulerError::Full));
+        assert_eq!(
+            scheduler.spawn("second", context(0x2000)),
+            Err(SchedulerError::Full)
+        );
     }
 
     #[test]
@@ -768,14 +964,26 @@ mod tests {
         assert_eq!(scheduler.start(), Ok(first));
         assert_eq!(
             scheduler.preempt_current(),
-            Ok(ScheduleDecision::Switch { from: first, to: second })
+            Ok(ScheduleDecision::Switch {
+                from: first,
+                to: second
+            })
         );
         assert_eq!(scheduler.current().map(Task::id), Some(second));
-        assert_eq!(scheduler.get(first).map(Task::state), Some(TaskState::Ready));
-        assert_eq!(scheduler.get(second).map(Task::state), Some(TaskState::Running));
+        assert_eq!(
+            scheduler.get(first).map(Task::state),
+            Some(TaskState::Ready)
+        );
+        assert_eq!(
+            scheduler.get(second).map(Task::state),
+            Some(TaskState::Running)
+        );
         assert_eq!(
             scheduler.preempt_current(),
-            Ok(ScheduleDecision::Switch { from: second, to: first })
+            Ok(ScheduleDecision::Switch {
+                from: second,
+                to: first
+            })
         );
         assert_eq!(scheduler.current().map(Task::id), Some(first));
     }
@@ -787,10 +995,13 @@ mod tests {
         let second = scheduler.spawn("second", context(0x2000)).unwrap();
         assert_eq!(scheduler.start(), Ok(first));
         assert_eq!(scheduler.account_current_ticks(7), Ok(7));
-        assert_eq!(scheduler.yield_current(), Ok(ScheduleDecision::Switch {
-            from: first,
-            to: second,
-        }));
+        assert_eq!(
+            scheduler.yield_current(),
+            Ok(ScheduleDecision::Switch {
+                from: first,
+                to: second,
+            })
+        );
         assert_eq!(scheduler.account_current_ticks(3), Ok(3));
         assert_eq!(scheduler.get(first).map(Task::runtime_ticks), Some(7));
         assert_eq!(scheduler.get(second).map(Task::runtime_ticks), Some(3));
@@ -801,7 +1012,10 @@ mod tests {
         let mut scheduler = Scheduler::<1>::new();
         let only = scheduler.spawn("only", context(0x1000)).unwrap();
         scheduler.start().unwrap();
-        assert_eq!(scheduler.account_current_ticks(u64::MAX - 1), Ok(u64::MAX - 1));
+        assert_eq!(
+            scheduler.account_current_ticks(u64::MAX - 1),
+            Ok(u64::MAX - 1)
+        );
         assert_eq!(scheduler.account_current_ticks(10), Ok(u64::MAX));
         assert_eq!(scheduler.get(only).map(Task::runtime_ticks), Some(u64::MAX));
     }
@@ -809,11 +1023,17 @@ mod tests {
     #[test]
     fn runtime_accounting_requires_a_running_task() {
         let mut scheduler = Scheduler::<1>::new();
-        assert_eq!(scheduler.account_current_ticks(1), Err(SchedulerError::NotStarted));
+        assert_eq!(
+            scheduler.account_current_ticks(1),
+            Err(SchedulerError::NotStarted)
+        );
         let only = scheduler.spawn("only", context(0x1000)).unwrap();
         scheduler.start().unwrap();
         assert_eq!(scheduler.finish_current(), Ok(None));
-        assert_eq!(scheduler.account_current_ticks(1), Err(SchedulerError::NotStarted));
+        assert_eq!(
+            scheduler.account_current_ticks(1),
+            Err(SchedulerError::NotStarted)
+        );
         assert_eq!(scheduler.get(only).map(Task::runtime_ticks), Some(0));
     }
 }

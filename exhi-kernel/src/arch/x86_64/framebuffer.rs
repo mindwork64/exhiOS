@@ -69,8 +69,8 @@ pub unsafe fn initialize(
         return Err(FramebufferInitError::OutsideIdentityMap);
     }
 
-    let len = usize::try_from(required_pixels)
-        .map_err(|_| FramebufferInitError::AddressSpaceTooSmall)?;
+    let len =
+        usize::try_from(required_pixels).map_err(|_| FramebufferInitError::AddressSpaceTooSmall)?;
     let pointer = info.physical_address as *mut u32;
     // SAFETY: the caller guarantees framebuffer lifetime, identity mapping and exclusive access.
     let pixels = unsafe { slice::from_raw_parts_mut(pointer, len) };

@@ -1,6 +1,6 @@
 use core::arch::asm;
-use core::ptr;
 use core::arch::x86_64::__cpuid;
+use core::ptr;
 
 use crate::arch::x86_64::paging;
 use crate::memory;
@@ -303,8 +303,7 @@ pub fn query_page(virtual_address: u64) -> Result<PageMapping, VmmError> {
     let virtual_page = virtual_address & !(PAGE_SIZE - 1);
     if path.directory_entry & PAGE_SIZE_BIT != 0 {
         let physical_base = path.directory_entry & LARGE_PAGE_ADDRESS_MASK;
-        let physical_page =
-            (physical_base | (virtual_address & (TWO_MIB - 1))) & !(PAGE_SIZE - 1);
+        let physical_page = (physical_base | (virtual_address & (TWO_MIB - 1))) & !(PAGE_SIZE - 1);
         return Ok(PageMapping {
             virtual_page,
             physical_page,
@@ -325,7 +324,6 @@ pub fn query_page(virtual_address: u64) -> Result<PageMapping, VmmError> {
         flags: flags_from_entry(entry),
     })
 }
-
 
 /// Attempts to collapse a complete 2 MiB region of equivalent 4 KiB entries.
 ///
@@ -390,19 +388,13 @@ pub fn try_coalesce_large_page(virtual_address: u64) -> Result<bool, VmmError> {
         hardware_status |= entry & HARDWARE_STATUS;
     }
 
-    let mut large_entry = physical_base
-        | (common_attributes & !PAGE_PAT)
-        | hardware_status
-        | PAGE_SIZE_BIT;
+    let mut large_entry =
+        physical_base | (common_attributes & !PAGE_PAT) | hardware_status | PAGE_SIZE_BIT;
     if common_attributes & PAGE_PAT != 0 {
         large_entry |= LARGE_PAGE_PAT;
     }
 
-    write_entry(
-        path.directory_address,
-        path.directory_index,
-        large_entry,
-    );
+    write_entry(path.directory_address, path.directory_index, large_entry);
 
     let virtual_base = virtual_address & !(TWO_MIB - 1);
     for index in 0..512u64 {
@@ -412,8 +404,7 @@ pub fn try_coalesce_large_page(virtual_address: u64) -> Result<bool, VmmError> {
     // The PDE no longer references the table and no translation in this
     // 2 MiB region can retain a walk through it. This kernel is single-core;
     // IF is clear, so no concurrent page walker can be using the old table.
-    memory::release_frame(table_address)
-        .map_err(|_| VmmError::PhysicalFrameReleaseFailed)?;
+    memory::release_frame(table_address).map_err(|_| VmmError::PhysicalFrameReleaseFailed)?;
 
     Ok(true)
 }
@@ -539,11 +530,7 @@ fn split_large_page(path: DirectoryPath) -> Result<u64, VmmError> {
 
     for index in 0..512usize {
         let physical_address = physical_base + index as u64 * PAGE_SIZE;
-        write_entry(
-            table_address,
-            index,
-            physical_address | leaf_flags,
-        );
+        write_entry(table_address, index, physical_address | leaf_flags);
     }
 
     // The parent becomes a page-table pointer, so its RW bit is enabled and

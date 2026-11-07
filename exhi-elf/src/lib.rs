@@ -119,9 +119,8 @@ impl<'a> ElfFile<'a> {
             return Err(ElfError::InvalidProgramHeaderSize);
         }
 
-        let program_header_count = usize::from(
-            read_u16(bytes, 56).ok_or(ElfError::TruncatedHeader)?,
-        );
+        let program_header_count =
+            usize::from(read_u16(bytes, 56).ok_or(ElfError::TruncatedHeader)?);
 
         if program_header_count == 0 {
             return Err(ElfError::NoProgramHeaders);
@@ -130,10 +129,9 @@ impl<'a> ElfFile<'a> {
             return Err(ElfError::TooManyProgramHeaders);
         }
 
-        let program_header_offset = usize::try_from(
-            read_u64(bytes, 32).ok_or(ElfError::TruncatedHeader)?,
-        )
-        .map_err(|_| ElfError::ProgramHeaderTableOutOfBounds)?;
+        let program_header_offset =
+            usize::try_from(read_u64(bytes, 32).ok_or(ElfError::TruncatedHeader)?)
+                .map_err(|_| ElfError::ProgramHeaderTableOutOfBounds)?;
 
         let table_size = program_header_count
             .checked_mul(ELF64_PROGRAM_HEADER_SIZE)
@@ -199,8 +197,7 @@ impl<'a> ElfFile<'a> {
 
             if header.alignment > 1 {
                 if !header.alignment.is_power_of_two()
-                    || header.offset % header.alignment
-                        != header.virtual_address % header.alignment
+                    || header.offset % header.alignment != header.virtual_address % header.alignment
                 {
                     return Err(ElfError::InvalidSegmentAlignment);
                 }
@@ -220,8 +217,7 @@ impl<'a> ElfFile<'a> {
             // Reject byte-range overlap. The initial kernel linker script emits
             // distinct text/rodata and data ranges, so no overlap is required.
             for previous_index in 0..index {
-                let previous =
-                    parse_program_header(bytes, program_header_offset, previous_index)?;
+                let previous = parse_program_header(bytes, program_header_offset, previous_index)?;
 
                 if previous.is_loadable() {
                     let previous_end = previous
@@ -229,8 +225,7 @@ impl<'a> ElfFile<'a> {
                         .checked_add(previous.memory_size)
                         .ok_or(ElfError::SegmentAddressOverflow)?;
 
-                    let previous_page_start =
-                        previous.physical_address & !(ELF_PAGE_SIZE - 1);
+                    let previous_page_start = previous.physical_address & !(ELF_PAGE_SIZE - 1);
                     let previous_page_end = previous_end
                         .checked_add(ELF_PAGE_SIZE - 1)
                         .ok_or(ElfError::PageRangeOverflow)?
@@ -242,9 +237,7 @@ impl<'a> ElfFile<'a> {
                         return Err(ElfError::OverlappingLoadSegments);
                     }
 
-                    if page_start < previous_page_end
-                        && previous_page_start < page_end
-                    {
+                    if page_start < previous_page_end && previous_page_start < page_end {
                         return Err(ElfError::OverlappingPageRanges);
                     }
                 }
@@ -324,10 +317,8 @@ fn parse_program_header(
 
     Ok(ProgramHeader {
         kind: read_u32(bytes, entry_offset).ok_or(ElfError::ProgramHeaderTableOutOfBounds)?,
-        flags: read_u32(bytes, entry_offset + 4)
-            .ok_or(ElfError::ProgramHeaderTableOutOfBounds)?,
-        offset: read_u64(bytes, entry_offset + 8)
-            .ok_or(ElfError::ProgramHeaderTableOutOfBounds)?,
+        flags: read_u32(bytes, entry_offset + 4).ok_or(ElfError::ProgramHeaderTableOutOfBounds)?,
+        offset: read_u64(bytes, entry_offset + 8).ok_or(ElfError::ProgramHeaderTableOutOfBounds)?,
         virtual_address: read_u64(bytes, entry_offset + 16)
             .ok_or(ElfError::ProgramHeaderTableOutOfBounds)?,
         physical_address: read_u64(bytes, entry_offset + 24)
@@ -489,11 +480,7 @@ mod tests {
     #[test]
     fn rejects_writable_executable_segment() {
         let mut bytes = valid_elf();
-        put_u32(
-            &mut bytes.0,
-            PROGRAM_HEADER_OFFSET + 4,
-            PF_X | PF_W,
-        );
+        put_u32(&mut bytes.0, PROGRAM_HEADER_OFFSET + 4, PF_X | PF_W);
         assert_eq!(
             ElfFile::parse(&bytes.0),
             Err(ElfError::WritableExecutableSegment)
@@ -513,17 +500,12 @@ mod tests {
     #[test]
     fn rejects_load_segment_file_range_outside_file() {
         let mut bytes = valid_elf();
-        put_u64(
-            &mut bytes.0,
-            PROGRAM_HEADER_OFFSET + 8,
-            u64::MAX - 4,
-        );
+        put_u64(&mut bytes.0, PROGRAM_HEADER_OFFSET + 8, u64::MAX - 4);
         assert_eq!(
             ElfFile::parse(&bytes.0),
             Err(ElfError::SegmentFileRangeOutOfBounds)
         );
     }
-
 
     #[test]
     fn rejects_physical_virtual_address_mismatch() {
@@ -551,13 +533,7 @@ mod tests {
         put_u16(&mut bytes, 54, ELF64_PROGRAM_HEADER_SIZE as u16);
         put_u16(&mut bytes, 56, 2);
 
-        write_load_header(
-            &mut bytes,
-            PROGRAM_HEADER_OFFSET,
-            176,
-            0x10_0000,
-            PF_X,
-        );
+        write_load_header(&mut bytes, PROGRAM_HEADER_OFFSET, 176, 0x10_0000, PF_X);
         write_load_header(
             &mut bytes,
             PROGRAM_HEADER_OFFSET + ELF64_PROGRAM_HEADER_SIZE,
@@ -565,10 +541,7 @@ mod tests {
             0x10_0010,
             4,
         );
-        assert_eq!(
-            ElfFile::parse(&bytes),
-            Err(ElfError::OverlappingPageRanges)
-        );
+        assert_eq!(ElfFile::parse(&bytes), Err(ElfError::OverlappingPageRanges));
     }
 
     #[test]
@@ -587,13 +560,7 @@ mod tests {
         put_u16(&mut bytes, 54, ELF64_PROGRAM_HEADER_SIZE as u16);
         put_u16(&mut bytes, 56, 2);
 
-        write_load_header(
-            &mut bytes,
-            PROGRAM_HEADER_OFFSET,
-            176,
-            0x10_0000,
-            PF_X,
-        );
+        write_load_header(&mut bytes, PROGRAM_HEADER_OFFSET, 176, 0x10_0000, PF_X);
         write_load_header(
             &mut bytes,
             PROGRAM_HEADER_OFFSET + ELF64_PROGRAM_HEADER_SIZE,

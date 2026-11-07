@@ -55,22 +55,36 @@ impl AddressSpaceError {
             Self::NotInitialized => b"address-space manager is not initialized",
             Self::AlreadyInitialized => b"address-space manager is already initialized",
             Self::InterruptsEnabled => b"address-space operations require IF=0",
-            Self::OutOfPhysicalFrames => b"physical allocator cannot provide an address-space table",
-            Self::InvalidPhysicalFrame => b"physical allocator returned an invalid page-table frame",
+            Self::OutOfPhysicalFrames => {
+                b"physical allocator cannot provide an address-space table"
+            }
+            Self::InvalidPhysicalFrame => {
+                b"physical allocator returned an invalid page-table frame"
+            }
             Self::KernelMappingMissing => b"required shared kernel mapping is missing",
-            Self::UnsupportedKernelPageTableLayout => b"kernel page tables do not match the current sharing policy",
-            Self::AddressOutOfRange => b"user virtual address is outside the reserved address-space window",
+            Self::UnsupportedKernelPageTableLayout => {
+                b"kernel page tables do not match the current sharing policy"
+            }
+            Self::AddressOutOfRange => {
+                b"user virtual address is outside the reserved address-space window"
+            }
             Self::UnalignedAddress => b"mapping address is not 4 KiB aligned",
             Self::AlreadyMapped => b"user virtual page is already mapped",
-            Self::WriteExecuteDenied => b"user page cannot be writable and executable at the same time",
+            Self::WriteExecuteDenied => {
+                b"user page cannot be writable and executable at the same time"
+            }
             Self::NotMapped => b"user virtual page is not mapped",
             Self::MissingPageTableEntry => b"required upper-level page-table entry is missing",
-            Self::UnexpectedLargePage => b"unexpected huge page in a private user page-table subtree",
+            Self::UnexpectedLargePage => {
+                b"unexpected huge page in a private user page-table subtree"
+            }
             Self::AddressSpaceActive => b"cannot destroy the currently active address space",
             Self::Destroyed => b"address space has already been destroyed",
             Self::InvalidAddressSpace => b"address-space root and private PDPT are inconsistent",
             Self::Cr3Mismatch => b"CR3 did not switch to the requested address-space root",
-            Self::FrameReleaseFailed => b"page-table frame could not be returned to the physical allocator",
+            Self::FrameReleaseFailed => {
+                b"page-table frame could not be returned to the physical allocator"
+            }
             Self::MappingVerificationFailed => b"address-space mapping verification failed",
         }
     }
@@ -234,9 +248,7 @@ impl AddressSpace {
         }
 
         let root_entry = unsafe { read_entry(self.root_frame, 0) };
-        if root_entry & PRESENT == 0
-            || root_entry & PAGE_TABLE_ADDRESS_MASK != self.pdpt_frame
-        {
+        if root_entry & PRESENT == 0 || root_entry & PAGE_TABLE_ADDRESS_MASK != self.pdpt_frame {
             return Err(AddressSpaceError::InvalidAddressSpace);
         }
         Ok(())
@@ -341,10 +353,7 @@ impl AddressSpace {
 
     /// Removes a user mapping and reclaims empty page-table levels.
     /// The returned physical frame remains owned by the caller.
-    pub fn unmap_user_page(
-        &mut self,
-        virtual_address: u64,
-    ) -> Result<u64, AddressSpaceError> {
+    pub fn unmap_user_page(&mut self, virtual_address: u64) -> Result<u64, AddressSpaceError> {
         ensure_initialized()?;
         ensure_interrupts_disabled()?;
         self.ensure_live()?;
@@ -648,7 +657,13 @@ pub fn smoke_test() -> Result<AddressSpaceTestStatus, AddressSpaceError> {
     }
 
     // SAFETY: first_frame was freshly allocated and remains owned by this test.
-    if let Err(error) = unsafe { first.map_user_page(USER_VIRTUAL_BASE, first_frame, UserPageFlags::read_write_nx()) } {
+    if let Err(error) = unsafe {
+        first.map_user_page(
+            USER_VIRTUAL_BASE,
+            first_frame,
+            UserPageFlags::read_write_nx(),
+        )
+    } {
         let _ = memory::release_frame(first_frame);
         let _ = memory::release_frame(second_frame);
         let _ = first.destroy();
@@ -656,7 +671,13 @@ pub fn smoke_test() -> Result<AddressSpaceTestStatus, AddressSpaceError> {
         return Err(error);
     }
     // SAFETY: second_frame was freshly allocated and remains owned by this test.
-    if let Err(error) = unsafe { second.map_user_page(USER_VIRTUAL_BASE, second_frame, UserPageFlags::read_write_nx()) } {
+    if let Err(error) = unsafe {
+        second.map_user_page(
+            USER_VIRTUAL_BASE,
+            second_frame,
+            UserPageFlags::read_write_nx(),
+        )
+    } {
         let _ = first.unmap_user_page(USER_VIRTUAL_BASE);
         let _ = memory::release_frame(first_frame);
         let _ = memory::release_frame(second_frame);
@@ -769,8 +790,8 @@ pub fn smoke_test() -> Result<AddressSpaceTestStatus, AddressSpaceError> {
         return Err(AddressSpaceError::MappingVerificationFailed);
     }
 
-    let post_destroy_frame = memory::allocate_frame()
-        .map_err(|_| AddressSpaceError::OutOfPhysicalFrames)?;
+    let post_destroy_frame =
+        memory::allocate_frame().map_err(|_| AddressSpaceError::OutOfPhysicalFrames)?;
     // SAFETY: The test owns this fresh frame. The destroyed-state check must
     // reject the operation before the frame can be referenced by a page table.
     let post_destroy_map = unsafe {
@@ -780,8 +801,7 @@ pub fn smoke_test() -> Result<AddressSpaceTestStatus, AddressSpaceError> {
             UserPageFlags::read_write_nx(),
         )
     };
-    memory::release_frame(post_destroy_frame)
-        .map_err(|_| AddressSpaceError::FrameReleaseFailed)?;
+    memory::release_frame(post_destroy_frame).map_err(|_| AddressSpaceError::FrameReleaseFailed)?;
     if post_destroy_map != Err(AddressSpaceError::Destroyed) {
         return Err(AddressSpaceError::MappingVerificationFailed);
     }

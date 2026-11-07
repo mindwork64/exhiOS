@@ -314,10 +314,19 @@ mod tests {
     #[test]
     fn rejects_bad_stride_format_and_short_buffer() {
         let mut pixels = vec![0u32; 16 * 16];
-        assert_eq!(FramebufferConsole::new(&mut pixels, 12, 16, 11, 0).err(), Some(ConsoleError::InvalidStride));
-        assert_eq!(FramebufferConsole::new(&mut pixels, 12, 16, 12, 5).err(), Some(ConsoleError::UnsupportedPixelFormat(5)));
+        assert_eq!(
+            FramebufferConsole::new(&mut pixels, 12, 16, 11, 0).err(),
+            Some(ConsoleError::InvalidStride)
+        );
+        assert_eq!(
+            FramebufferConsole::new(&mut pixels, 12, 16, 12, 5).err(),
+            Some(ConsoleError::UnsupportedPixelFormat(5))
+        );
         let mut short = vec![0u32; 12 * 15];
-        assert_eq!(FramebufferConsole::new(&mut short, 12, 16, 12, 0).err(), Some(ConsoleError::BufferTooSmall));
+        assert_eq!(
+            FramebufferConsole::new(&mut short, 12, 16, 12, 0).err(),
+            Some(ConsoleError::BufferTooSmall)
+        );
     }
 
     #[test]

@@ -12,11 +12,8 @@ use core::sync::atomic::{AtomicU64, Ordering};
 
 use exhi_driver::{DriverClass, DriverDescriptor, DriverId};
 
-pub const DRIVER: DriverDescriptor = DriverDescriptor::new(
-    DriverId::PitChannel0,
-    DriverClass::Clock,
-    "PIT channel 0",
-);
+pub const DRIVER: DriverDescriptor =
+    DriverDescriptor::new(DriverId::PitChannel0, DriverClass::Clock, "PIT channel 0");
 
 use super::pic;
 

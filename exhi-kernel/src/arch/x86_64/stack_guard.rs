@@ -1,6 +1,6 @@
 use exhi_abi::BootInfo;
 
-use crate::{memory, arch::x86_64::vmm};
+use crate::{arch::x86_64::vmm, memory};
 
 const PAGE_SIZE: u64 = 4096;
 const IDENTITY_MAP_LIMIT: u64 = 0x1_0000_0000;
@@ -22,9 +22,13 @@ impl StackGuardError {
             Self::InvalidStackBounds => b"BootInfo kernel stack bounds are invalid",
             Self::GuardAddressOverflow => b"kernel stack has no valid page below it",
             Self::PhysicalReservationFailed => b"physical guard page could not be reserved",
-            Self::UnexpectedPhysicalMapping => b"guard virtual address does not map to the expected physical page",
+            Self::UnexpectedPhysicalMapping => {
+                b"guard virtual address does not map to the expected physical page"
+            }
             Self::GuardMappingStillPresent => b"kernel stack guard mapping is still present",
-            Self::StackMappingLost => b"kernel stack mapping was changed while installing guard page",
+            Self::StackMappingLost => {
+                b"kernel stack mapping was changed while installing guard page"
+            }
             Self::Vmm(error) => error.message(),
         }
     }
@@ -65,8 +69,7 @@ pub fn reserve_before_allocations(
     // The UEFI memory-map buffer can occupy this physical page. The allocator
     // consumes that buffer before this function is called; after this point it
     // must never allocate the page even when firmware labels it Conventional.
-    memory::reserve_frame(guard_page)
-        .map_err(|_| StackGuardError::PhysicalReservationFailed)?;
+    memory::reserve_frame(guard_page).map_err(|_| StackGuardError::PhysicalReservationFailed)?;
 
     Ok(StackGuardReservation {
         stack_base,
@@ -77,17 +80,13 @@ pub fn reserve_before_allocations(
 }
 
 /// Removes the supervisor identity mapping directly below the boot stack.
-pub fn install(
-    reservation: StackGuardReservation,
-) -> Result<(), StackGuardError> {
-    let before = vmm::query_page(reservation.guard_page)
-        .map_err(StackGuardError::Vmm)?;
+pub fn install(reservation: StackGuardReservation) -> Result<(), StackGuardError> {
+    let before = vmm::query_page(reservation.guard_page).map_err(StackGuardError::Vmm)?;
     if before.physical_page != reservation.guard_page || before.flags.user {
         return Err(StackGuardError::UnexpectedPhysicalMapping);
     }
 
-    let removed = vmm::unmap_page(reservation.guard_page)
-        .map_err(StackGuardError::Vmm)?;
+    let removed = vmm::unmap_page(reservation.guard_page).map_err(StackGuardError::Vmm)?;
     if removed != reservation.guard_page {
         return Err(StackGuardError::UnexpectedPhysicalMapping);
     }
@@ -96,11 +95,9 @@ pub fn install(
         return Err(StackGuardError::GuardMappingStillPresent);
     }
 
-    let first_stack_page = vmm::query_page(reservation.stack_base)
-        .map_err(StackGuardError::Vmm)?;
+    let first_stack_page = vmm::query_page(reservation.stack_base).map_err(StackGuardError::Vmm)?;
     let last_stack_page_address = reservation.stack_end - PAGE_SIZE;
-    let last_stack_page = vmm::query_page(last_stack_page_address)
-        .map_err(StackGuardError::Vmm)?;
+    let last_stack_page = vmm::query_page(last_stack_page_address).map_err(StackGuardError::Vmm)?;
 
     if first_stack_page.physical_page != reservation.stack_base
         || last_stack_page.physical_page != last_stack_page_address

@@ -97,9 +97,10 @@ pub fn allocation_smoke_test() -> Result<HeapStatus, HeapTestError> {
         }
     }
 
-    let small_layout = Layout::from_size_align(256, 64).map_err(|_| HeapTestError::AllocationFailed)?;
-    let large_layout = Layout::from_size_align(48 * 1024, 4096)
-        .map_err(|_| HeapTestError::AllocationFailed)?;
+    let small_layout =
+        Layout::from_size_align(256, 64).map_err(|_| HeapTestError::AllocationFailed)?;
+    let large_layout =
+        Layout::from_size_align(48 * 1024, 4096).map_err(|_| HeapTestError::AllocationFailed)?;
 
     // SAFETY: The allocator is initialized and internally serializes each call.
     let small = unsafe { GLOBAL_HEAP_ALLOCATOR.alloc(small_layout) };

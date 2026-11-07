@@ -10,11 +10,11 @@ use core::{slice, time::Duration};
 
 use exhi_abi::{BootInfo, FramebufferInfo, MemoryMapInfo};
 use exhi_elf::{ElfFile, ProgramHeader, PT_LOAD};
+use uefi::fs::FileSystem;
 use uefi::mem::memory_map::MemoryMap;
 use uefi::prelude::*;
 use uefi::proto::console::gop::{GraphicsOutput, PixelFormat};
 use uefi::{boot, cstr16};
-use uefi::fs::FileSystem;
 
 const KERNEL_PATH: &uefi::CStr16 = cstr16!("\\exhi-kernel.elf");
 const MAX_KERNEL_SIZE: u64 = 64 * 1024 * 1024;
@@ -49,11 +49,7 @@ exhi_enter_kernel:
 );
 
 unsafe extern "sysv64" {
-    fn exhi_enter_kernel(
-        kernel_entry: u64,
-        stack_top: u64,
-        boot_info: *const BootInfo,
-    ) -> !;
+    fn exhi_enter_kernel(kernel_entry: u64, stack_top: u64, boot_info: *const BootInfo) -> !;
 }
 
 #[entry]
@@ -249,9 +245,7 @@ fn main() -> Status {
     let boot_info_ptr = boot_info_page.as_ptr().cast::<BootInfo>();
 
     uefi::println!("BootInfo prepared at {:#018x}.", boot_info_ptr as u64);
-    uefi::println!(
-        "Kernel stack guard page reserved: {stack_guard_page:#018x} (4096 bytes)."
-    );
+    uefi::println!("Kernel stack guard page reserved: {stack_guard_page:#018x} (4096 bytes).");
     uefi::println!(
         "Kernel stack: {stack_base:#018x}..{stack_top:#018x} ({} bytes).",
         stack_bytes

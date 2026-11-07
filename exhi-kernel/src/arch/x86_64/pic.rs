@@ -61,7 +61,10 @@ pub fn unmask_irq1() -> PicStatus {
     unsafe {
         let master = inb(MASTER_DATA) & !0x02;
         outb(MASTER_DATA, master);
-        PicStatus { master_mask: inb(MASTER_DATA), slave_mask: inb(SLAVE_DATA) }
+        PicStatus {
+            master_mask: inb(MASTER_DATA),
+            slave_mask: inb(SLAVE_DATA),
+        }
     }
 }
 
@@ -71,7 +74,10 @@ pub fn mask_irq1() -> PicStatus {
     unsafe {
         let master = inb(MASTER_DATA) | 0x02;
         outb(MASTER_DATA, master);
-        PicStatus { master_mask: inb(MASTER_DATA), slave_mask: inb(SLAVE_DATA) }
+        PicStatus {
+            master_mask: inb(MASTER_DATA),
+            slave_mask: inb(SLAVE_DATA),
+        }
     }
 }
 

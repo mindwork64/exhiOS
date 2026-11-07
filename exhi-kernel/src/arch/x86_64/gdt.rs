@@ -60,8 +60,7 @@ const _: [(); 104] = [(); size_of::<TaskStateSegment>()];
 #[repr(C, align(16))]
 struct TaskStateSegmentStorage(TaskStateSegment);
 
-static mut TSS: TaskStateSegmentStorage =
-    TaskStateSegmentStorage(TaskStateSegment::EMPTY);
+static mut TSS: TaskStateSegmentStorage = TaskStateSegmentStorage(TaskStateSegment::EMPTY);
 
 #[repr(C, align(4096))]
 struct InterruptStack([u8; DOUBLE_FAULT_IST_STACK_SIZE]);
@@ -239,7 +238,6 @@ exhi_load_gdt:
     ret
     "#
 );
-
 
 /// Updates the TSS RSP0 field for the currently active kernel task.
 ///

@@ -31,7 +31,10 @@ pub struct Heap {
 
 impl Heap {
     pub const fn new() -> Self {
-        Self { head: ptr::null_mut(), total_bytes: 0 }
+        Self {
+            head: ptr::null_mut(),
+            total_bytes: 0,
+        }
     }
 
     /// Adds a new non-overlapping region to the heap.
@@ -44,7 +47,9 @@ impl Heap {
             return Err(HeapError::InvalidRegion);
         }
         let raw_start = start as usize;
-        let raw_end = raw_start.checked_add(size).ok_or(HeapError::AddressOverflow)?;
+        let raw_end = raw_start
+            .checked_add(size)
+            .ok_or(HeapError::AddressOverflow)?;
         let alignment = align_of::<FreeBlock>();
         let region_start = align_up(raw_start, alignment).ok_or(HeapError::AddressOverflow)?;
         let region_end = raw_end & !(alignment - 1);
@@ -53,7 +58,10 @@ impl Heap {
         }
         let region_size = region_end - region_start;
         self.insert_free_region(region_start, region_size)?;
-        self.total_bytes = self.total_bytes.checked_add(region_size).ok_or(HeapError::AddressOverflow)?;
+        self.total_bytes = self
+            .total_bytes
+            .checked_add(region_size)
+            .ok_or(HeapError::AddressOverflow)?;
         Ok(())
     }
 
@@ -138,10 +146,13 @@ impl Heap {
             let header_pointer = (user_start - header_size) as *mut AllocationHeader;
             // SAFETY: Header is inside the reserved allocation and aligned.
             unsafe {
-                ptr::write(header_pointer, AllocationHeader {
-                    start: allocation_start,
-                    size: allocation_size,
-                });
+                ptr::write(
+                    header_pointer,
+                    AllocationHeader {
+                        start: allocation_start,
+                        size: allocation_size,
+                    },
+                );
             }
             return NonNull::new(user_pointer);
         }
@@ -204,14 +215,24 @@ impl Heap {
         }
 
         let new_node = start as *mut FreeBlock;
-        unsafe { ptr::write(new_node, FreeBlock { size, next: current }) };
+        unsafe {
+            ptr::write(
+                new_node,
+                FreeBlock {
+                    size,
+                    next: current,
+                },
+            )
+        };
         let mut merged = new_node;
 
         if !current.is_null() && end == current as usize {
             let current_size = unsafe { (*current).size };
             let current_next = unsafe { (*current).next };
             unsafe {
-                (*merged).size = size.checked_add(current_size).ok_or(HeapError::AddressOverflow)?;
+                (*merged).size = size
+                    .checked_add(current_size)
+                    .ok_or(HeapError::AddressOverflow)?;
                 (*merged).next = current_next;
             }
         }
@@ -226,7 +247,9 @@ impl Heap {
                 let merged_size = unsafe { (*merged).size };
                 let merged_next = unsafe { (*merged).next };
                 unsafe {
-                    (*previous).size = (*previous).size.checked_add(merged_size)
+                    (*previous).size = (*previous)
+                        .size
+                        .checked_add(merged_size)
                         .ok_or(HeapError::AddressOverflow)?;
                     (*previous).next = merged_next;
                 }
@@ -245,7 +268,9 @@ impl Heap {
                 let next_size = unsafe { (*next).size };
                 let next_next = unsafe { (*next).next };
                 unsafe {
-                    (*merged).size = (*merged).size.checked_add(next_size)
+                    (*merged).size = (*merged)
+                        .size
+                        .checked_add(next_size)
                         .ok_or(HeapError::AddressOverflow)?;
                     (*merged).next = next_next;
                 }
@@ -256,19 +281,25 @@ impl Heap {
 }
 
 impl Default for Heap {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Conservative contiguous space required, including alignment and metadata.
 pub fn minimum_region_size(layout: Layout) -> Option<usize> {
-    layout.size().max(1)
+    layout
+        .size()
+        .max(1)
         .checked_add(layout.align())?
         .checked_add(size_of::<AllocationHeader>())?
         .checked_add(size_of::<FreeBlock>())
 }
 
 fn align_up(value: usize, alignment: usize) -> Option<usize> {
-    value.checked_add(alignment - 1).map(|v| v & !(alignment - 1))
+    value
+        .checked_add(alignment - 1)
+        .map(|v| v & !(alignment - 1))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -324,7 +355,9 @@ mod tests {
             heap.add_region(backing, 64 * 1024).unwrap();
             heap.add_region(backing.add(64 * 1024), 64 * 1024).unwrap();
         }
-        let large = heap.allocate(Layout::from_size_align(100 * 1024, 16).unwrap()).unwrap();
+        let large = heap
+            .allocate(Layout::from_size_align(100 * 1024, 16).unwrap())
+            .unwrap();
         unsafe { heap.deallocate(large) };
         assert_eq!(heap.free_bytes(), heap.total_bytes());
         unsafe { system_dealloc(backing, backing_layout) };

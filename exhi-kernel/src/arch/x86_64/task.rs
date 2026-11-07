@@ -11,9 +11,12 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use exhi_task::{ScheduleDecision, Scheduler, TaskContext, TaskId};
 
-use super::{gdt, paging, serial, vmm};
-#[cfg(any(feature = "task-accounting-smoke-test", feature = "timer-preemption-smoke-test"))]
+#[cfg(any(
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 use super::timer;
+use super::{gdt, paging, serial, vmm};
 
 const TASK_COUNT: usize = 2;
 const PAGE_SIZE: usize = 4096;
@@ -98,11 +101,24 @@ static mut EXHIOS_P4_4_B_LOCAL: usize = 0;
 #[cfg(feature = "timer-preemption-smoke-test")]
 #[repr(C)]
 struct InterruptContext {
-    r15: u64, r14: u64, r13: u64, r12: u64,
-    r11: u64, r10: u64, r9: u64, r8: u64,
-    rdi: u64, rsi: u64, rbp: u64, rbx: u64,
-    rdx: u64, rcx: u64, rax: u64,
-    rip: u64, cs: u64, rflags: u64,
+    r15: u64,
+    r14: u64,
+    r13: u64,
+    r12: u64,
+    r11: u64,
+    r10: u64,
+    r9: u64,
+    r8: u64,
+    rdi: u64,
+    rsi: u64,
+    rbp: u64,
+    rbx: u64,
+    rdx: u64,
+    rcx: u64,
+    rax: u64,
+    rip: u64,
+    cs: u64,
+    rflags: u64,
     // In 64-bit mode the CPU always saves and IRETQ always restores RSP:SS,
     // including interrupts and returns that remain at CPL0.
     rsp: u64,
@@ -272,7 +288,6 @@ pub fn context_switch_smoke_test() -> bool {
     passed
 }
 
-
 /// Runs the cooperative scheduler with IRQ0 enabled and accounts elapsed PIT
 /// ticks to each task only at explicit scheduling boundaries.
 #[cfg(feature = "task-accounting-smoke-test")]
@@ -283,7 +298,10 @@ pub fn timer_accounting_smoke_test() -> bool {
         ptr::write(ptr::addr_of_mut!(BOOT_STACK_POINTER), 0);
         ptr::write(ptr::addr_of_mut!(FINISHED_STACK_POINTER), 0);
         ptr::write(ptr::addr_of_mut!(TASK_STACK_TOPS), [0; TASK_COUNT]);
-        ptr::write(ptr::addr_of_mut!(TASK_ACCOUNTING_START_TICKS), [0; TASK_COUNT]);
+        ptr::write(
+            ptr::addr_of_mut!(TASK_ACCOUNTING_START_TICKS),
+            [0; TASK_COUNT],
+        );
     }
     TASK_A_PROGRESS.store(0, Ordering::Relaxed);
     TASK_B_PROGRESS.store(0, Ordering::Relaxed);
@@ -296,7 +314,11 @@ pub fn timer_accounting_smoke_test() -> bool {
     serial::COM1.write(b" divisor=");
     serial::COM1.write_hex(u64::from(timer_status.pit_divisor));
     serial::COM1.write(b" IRQ0 unmasked=");
-    serial::COM1.write(if timer_status.irq0_unmasked { b"yes" } else { b"no " });
+    serial::COM1.write(if timer_status.irq0_unmasked {
+        b"yes"
+    } else {
+        b"no "
+    });
     serial::COM1.write(b"\r\n");
     if !timer_status.irq0_unmasked {
         let _ = timer::mask_irq0();
@@ -304,16 +326,12 @@ pub fn timer_accounting_smoke_test() -> bool {
         return false;
     }
 
-    let Some((a_initial_rsp, a_top)) =
-        (unsafe { prepare_stack(0, task_a_accounting) })
-    else {
+    let Some((a_initial_rsp, a_top)) = (unsafe { prepare_stack(0, task_a_accounting) }) else {
         let _ = timer::mask_irq0();
         serial::COM1.write(b"P4.3: task A stack setup failed.\r\n");
         return false;
     };
-    let Some((b_initial_rsp, b_top)) =
-        (unsafe { prepare_stack(1, task_b_accounting) })
-    else {
+    let Some((b_initial_rsp, b_top)) = (unsafe { prepare_stack(1, task_b_accounting) }) else {
         let _ = timer::mask_irq0();
         serial::COM1.write(b"P4.3: task B stack setup failed.\r\n");
         return false;
@@ -374,10 +392,16 @@ pub fn timer_accounting_smoke_test() -> bool {
             && (*scheduler).finished_count() == TASK_COUNT
     };
     let a_runtime = unsafe {
-        (*scheduler).get(first).map(|task| task.runtime_ticks()).unwrap_or(0)
+        (*scheduler)
+            .get(first)
+            .map(|task| task.runtime_ticks())
+            .unwrap_or(0)
     };
     let b_runtime = unsafe {
-        (*scheduler).get(second).map(|task| task.runtime_ticks()).unwrap_or(0)
+        (*scheduler)
+            .get(second)
+            .map(|task| task.runtime_ticks())
+            .unwrap_or(0)
     };
     let elapsed = timer::ticks();
     let irq0_masked = pic_status.master_mask & 0x01 != 0 && pic_status.slave_mask == 0xFF;
@@ -408,9 +432,6 @@ pub fn timer_accounting_smoke_test() -> bool {
     passed
 }
 
-
-
-
 #[cfg(feature = "idle-wakeup-smoke-test")]
 pub fn block_interrupt_stub_address() -> u64 {
     exhi_block_interrupt_stub as *const () as usize as u64
@@ -433,10 +454,21 @@ unsafe fn prepare_idle_context() -> Option<(usize, u64)> {
         return None;
     }
     let frame = InterruptContext {
-        r15: 0, r14: 0, r13: 0, r12: 0,
-        r11: 0, r10: 0, r9: 0, r8: 0,
-        rdi: 0, rsi: 0, rbp: 0, rbx: 0,
-        rdx: 0, rcx: 0, rax: 0,
+        r15: 0,
+        r14: 0,
+        r13: 0,
+        r12: 0,
+        r11: 0,
+        r10: 0,
+        r9: 0,
+        r8: 0,
+        rdi: 0,
+        rsi: 0,
+        rbp: 0,
+        rbx: 0,
+        rdx: 0,
+        rcx: 0,
+        rax: 0,
         rip: exhi_idle_loop as *const () as usize as u64,
         cs: u64::from(gdt::KERNEL_CODE_SELECTOR),
         rflags: 0x202,
@@ -458,7 +490,10 @@ pub fn idle_wakeup_smoke_test() -> ! {
         asm!("cli", options(nomem, nostack, preserves_flags));
         ptr::write(ptr::addr_of_mut!(SCHEDULER), Scheduler::new());
         ptr::write(ptr::addr_of_mut!(TASK_STACK_TOPS), [0; TASK_COUNT]);
-        ptr::write(ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS), [0; TASK_COUNT]);
+        ptr::write(
+            ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS),
+            [0; TASK_COUNT],
+        );
         ptr::write(ptr::addr_of_mut!(PREEMPTION_TASK_A_ID), None);
         ptr::write(ptr::addr_of_mut!(PREEMPTION_TASK_B_ID), None);
         ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE), 0);
@@ -485,14 +520,10 @@ pub fn idle_wakeup_smoke_test() -> ! {
     if !initialize_fx_contexts() {
         preemption_setup_failed(b"P4.6: CPU FXSR/SSE state initialization failed.\r\n");
     }
-    let Some((a_rsp, a_top)) =
-        (unsafe { prepare_preemption_stack(0, idle_wakeup_task_a) })
-    else {
+    let Some((a_rsp, a_top)) = (unsafe { prepare_preemption_stack(0, idle_wakeup_task_a) }) else {
         preemption_setup_failed(b"P4.6: task A stack setup failed.\r\n");
     };
-    let Some((b_rsp, _b_top)) =
-        (unsafe { prepare_preemption_stack(1, idle_wakeup_task_b) })
-    else {
+    let Some((b_rsp, _b_top)) = (unsafe { prepare_preemption_stack(1, idle_wakeup_task_b) }) else {
         preemption_setup_failed(b"P4.6: task B stack setup failed.\r\n");
     };
     let Some((_idle_rsp, idle_top)) = (unsafe { prepare_idle_context() }) else {
@@ -501,14 +532,17 @@ pub fn idle_wakeup_smoke_test() -> ! {
 
     let scheduler = ptr::addr_of_mut!(SCHEDULER);
     let first = unsafe {
-        (*scheduler).spawn("idle-wake-A", TaskContext::new(a_rsp))
+        (*scheduler)
+            .spawn("idle-wake-A", TaskContext::new(a_rsp))
             .unwrap_or_else(|_| preemption_setup_failed(b"P4.6: task A registration failed.\r\n"))
     };
     let second = unsafe {
-        (*scheduler).spawn("idle-wake-B", TaskContext::new(b_rsp))
+        (*scheduler)
+            .spawn("idle-wake-B", TaskContext::new(b_rsp))
             .unwrap_or_else(|_| preemption_setup_failed(b"P4.6: task B registration failed.\r\n"))
     };
-    if first.get() != 1 || second.get() != 2
+    if first.get() != 1
+        || second.get() != 2
         || unsafe { (*scheduler).start() } != Ok(first)
         || !gdt::set_rsp0(a_top)
     {
@@ -523,7 +557,10 @@ pub fn idle_wakeup_smoke_test() -> ! {
     unsafe {
         ptr::write_volatile(ptr::addr_of_mut!(PREEMPTION_TASK_A_ID), Some(first));
         ptr::write_volatile(ptr::addr_of_mut!(PREEMPTION_TASK_B_ID), Some(second));
-        ptr::write_volatile(ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS[0]), timer::ticks());
+        ptr::write_volatile(
+            ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS[0]),
+            timer::ticks(),
+        );
         ptr::write_volatile(
             ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE),
             ptr::addr_of_mut!(TASK_FX_STATES[0]) as usize,
@@ -532,7 +569,9 @@ pub fn idle_wakeup_smoke_test() -> ! {
     serial::COM1.write(b"P4.6: PIT 100 Hz ready; tasks will block, idle, wake and resume.\r\n");
     serial::COM1.write(b"P4.6: INT 0x30 saves a full task interrupt frame before blocking.\r\n");
     let _ = idle_top;
-    unsafe { exhi_interrupt_context_start(a_rsp, ptr::addr_of!(TASK_FX_STATES[0]) as usize); }
+    unsafe {
+        exhi_interrupt_context_start(a_rsp, ptr::addr_of!(TASK_FX_STATES[0]) as usize);
+    }
 }
 
 #[cfg(feature = "idle-wakeup-smoke-test")]
@@ -648,9 +687,7 @@ extern "sysv64" fn exhi_block_handler(frame: *mut InterruptContext) -> usize {
     let base = unsafe { ptr::addr_of!(TASK_STACKS[index]) as u64 };
     let top = unsafe { ptr::read_volatile(ptr::addr_of!(TASK_STACK_TOPS[index])) };
     let end = (frame_address as u64).checked_add(size_of::<InterruptContext>() as u64);
-    if (frame_address as u64) < base + PAGE_SIZE as u64
-        || end.map_or(true, |value| value > top)
-    {
+    if (frame_address as u64) < base + PAGE_SIZE as u64 || end.map_or(true, |value| value > top) {
         return 0;
     }
     let deadline = unsafe { ptr::read_volatile(ptr::addr_of!(PENDING_WAKE_DEADLINE)) };
@@ -667,7 +704,9 @@ extern "sysv64" fn exhi_block_handler(frame: *mut InterruptContext) -> usize {
     } else {
         return 0;
     }
-    unsafe { ptr::write_volatile(ptr::addr_of_mut!(PENDING_WAKE_DEADLINE), 0); }
+    unsafe {
+        ptr::write_volatile(ptr::addr_of_mut!(PENDING_WAKE_DEADLINE), 0);
+    }
 
     match unsafe { (*scheduler).block_current_until(deadline) } {
         Ok(Some(next_id)) => {
@@ -678,9 +717,8 @@ extern "sysv64" fn exhi_block_handler(frame: *mut InterruptContext) -> usize {
                 return 0;
             };
             let next_rsp = next_task.context().saved_stack_pointer();
-            let next_top = unsafe {
-                ptr::read_volatile(ptr::addr_of!(TASK_STACK_TOPS[next_index]))
-            };
+            let next_top =
+                unsafe { ptr::read_volatile(ptr::addr_of!(TASK_STACK_TOPS[next_index])) };
             let next_base = unsafe { ptr::addr_of!(TASK_STACKS[next_index]) as u64 };
             let next_end = (next_rsp as u64).checked_add(size_of::<InterruptContext>() as u64);
             if next_rsp == 0
@@ -712,7 +750,8 @@ extern "sysv64" fn exhi_block_handler(frame: *mut InterruptContext) -> usize {
             let idle_top = unsafe { ptr::read_volatile(ptr::addr_of!(IDLE_STACK_TOP)) };
             if idle_rsp == 0
                 || (idle_rsp as u64) < (ptr::addr_of!(IDLE_STACK) as u64) + PAGE_SIZE as u64
-                || (idle_rsp as u64).checked_add(size_of::<InterruptContext>() as u64)
+                || (idle_rsp as u64)
+                    .checked_add(size_of::<InterruptContext>() as u64)
                     .map_or(true, |value| value > idle_top)
                 || !gdt::set_rsp0(idle_top)
             {
@@ -734,25 +773,35 @@ extern "sysv64" fn exhi_block_handler(frame: *mut InterruptContext) -> usize {
 
 #[cfg(feature = "idle-wakeup-smoke-test")]
 fn finish_idle_wakeup_test(target_reached: bool) -> ! {
-    unsafe { asm!("cli", options(nomem, nostack, preserves_flags)); }
+    unsafe {
+        asm!("cli", options(nomem, nostack, preserves_flags));
+    }
     let pic_status = timer::mask_irq0();
     let elapsed = timer::ticks();
     let scheduler = ptr::addr_of_mut!(SCHEDULER);
     let a_id = unsafe { ptr::read_volatile(ptr::addr_of!(PREEMPTION_TASK_A_ID)) };
     let b_id = unsafe { ptr::read_volatile(ptr::addr_of!(PREEMPTION_TASK_B_ID)) };
     let a_finished = unsafe {
-        a_id.is_some_and(|id| (*scheduler).get(id)
-            .is_some_and(|task| task.state() == exhi_task::TaskState::Finished))
+        a_id.is_some_and(|id| {
+            (*scheduler)
+                .get(id)
+                .is_some_and(|task| task.state() == exhi_task::TaskState::Finished)
+        })
     };
     let b_finished = unsafe {
-        b_id.is_some_and(|id| (*scheduler).get(id)
-            .is_some_and(|task| task.state() == exhi_task::TaskState::Finished))
+        b_id.is_some_and(|id| {
+            (*scheduler)
+                .get(id)
+                .is_some_and(|task| task.state() == exhi_task::TaskState::Finished)
+        })
     };
     let a_runtime = unsafe {
-        a_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks())).unwrap_or(0)
+        a_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks()))
+            .unwrap_or(0)
     };
     let b_runtime = unsafe {
-        b_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks())).unwrap_or(0)
+        b_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks()))
+            .unwrap_or(0)
     };
     let idle_entries = unsafe { ptr::read_volatile(ptr::addr_of!(P4_6_IDLE_ENTRIES)) };
     let wake_count = unsafe { ptr::read_volatile(ptr::addr_of!(P4_6_WAKE_COUNT)) };
@@ -763,8 +812,10 @@ fn finish_idle_wakeup_test(target_reached: bool) -> ! {
     let b_base = unsafe { ptr::addr_of!(TASK_STACKS[1]) as u64 };
     let a_top = unsafe { ptr::read_volatile(ptr::addr_of!(TASK_STACK_TOPS[0])) };
     let b_top = unsafe { ptr::read_volatile(ptr::addr_of!(TASK_STACK_TOPS[1])) };
-    let local_ok = a_local >= a_base + PAGE_SIZE as u64 && a_local < a_top
-        && b_local >= b_base + PAGE_SIZE as u64 && b_local < b_top
+    let local_ok = a_local >= a_base + PAGE_SIZE as u64
+        && a_local < a_top
+        && b_local >= b_base + PAGE_SIZE as u64
+        && b_local < b_top
         && a_local != b_local;
     let all_finished = unsafe {
         (*scheduler).current().is_none()
@@ -787,8 +838,13 @@ fn finish_idle_wakeup_test(target_reached: bool) -> ! {
         && TASK_A_PROGRESS.load(Ordering::Relaxed) == 2
         && TASK_B_PROGRESS.load(Ordering::Relaxed) == 2
         && TASK_FAILURES.load(Ordering::Relaxed) == 0
-        && a_finished && b_finished && all_finished
-        && local_ok && xmm_ok && tss_cleared && irq0_masked;
+        && a_finished
+        && b_finished
+        && all_finished
+        && local_ok
+        && xmm_ok
+        && tss_cleared
+        && irq0_masked;
 
     serial::COM1.write(b"P4.6: elapsed PIT ticks=");
     serial::COM1.write_hex(elapsed);
@@ -807,9 +863,21 @@ fn finish_idle_wakeup_test(target_reached: bool) -> ! {
     serial::COM1.write(b" task B finished=");
     serial::COM1.write(if b_finished { b"yes" } else { b"no " });
     serial::COM1.write(b"\r\nP4.6: XMM state A=");
-    serial::COM1.write(if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_XMM_OK)) == 1 } { b"preserved" } else { b"failed   " });
+    serial::COM1.write(
+        if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_XMM_OK)) == 1 } {
+            b"preserved"
+        } else {
+            b"failed   "
+        },
+    );
     serial::COM1.write(b" B=");
-    serial::COM1.write(if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_XMM_OK)) == 1 } { b"preserved" } else { b"failed   " });
+    serial::COM1.write(
+        if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_XMM_OK)) == 1 } {
+            b"preserved"
+        } else {
+            b"failed   "
+        },
+    );
     serial::COM1.write(b" stacks distinct=");
     serial::COM1.write(if local_ok { b"yes" } else { b"no " });
     serial::COM1.write(b"\r\nP4.6: scheduler current=none Finished=");
@@ -829,7 +897,11 @@ fn finish_idle_wakeup_test(target_reached: bool) -> ! {
     unsafe {
         asm!("out dx, eax", in("dx") 0xF4u16, in("eax") exit, options(nomem, nostack, preserves_flags));
     }
-    loop { unsafe { asm!("cli", "hlt", options(nomem, nostack)); } }
+    loop {
+        unsafe {
+            asm!("cli", "hlt", options(nomem, nostack));
+        }
+    }
 }
 
 /// Runs the preemptive task-exit lifecycle test. Task A returns first and must
@@ -840,7 +912,10 @@ pub fn preemptive_task_exit_smoke_test() -> ! {
         asm!("cli", options(nomem, nostack, preserves_flags));
         ptr::write(ptr::addr_of_mut!(SCHEDULER), Scheduler::new());
         ptr::write(ptr::addr_of_mut!(TASK_STACK_TOPS), [0; TASK_COUNT]);
-        ptr::write(ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS), [0; TASK_COUNT]);
+        ptr::write(
+            ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS),
+            [0; TASK_COUNT],
+        );
         ptr::write(ptr::addr_of_mut!(PREEMPTION_TASK_A_ID), None);
         ptr::write(ptr::addr_of_mut!(PREEMPTION_TASK_B_ID), None);
         ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE), 0);
@@ -903,7 +978,10 @@ pub fn preemptive_task_exit_smoke_test() -> ! {
     unsafe {
         ptr::write_volatile(ptr::addr_of_mut!(PREEMPTION_TASK_A_ID), Some(first));
         ptr::write_volatile(ptr::addr_of_mut!(PREEMPTION_TASK_B_ID), Some(second));
-        ptr::write_volatile(ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS[0]), timer::ticks());
+        ptr::write_volatile(
+            ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS[0]),
+            timer::ticks(),
+        );
         ptr::write_volatile(
             ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE),
             ptr::addr_of_mut!(TASK_FX_STATES[0]) as usize,
@@ -980,24 +1058,24 @@ extern "sysv64" fn exhi_preemptive_task_finished() -> ! {
         (*scheduler)
             .current()
             .map(|task| task.id())
-            .unwrap_or_else(|| preemption_setup_failed(b"P4.5: task returned without a Running scheduler entry.\r\n"))
+            .unwrap_or_else(|| {
+                preemption_setup_failed(
+                    b"P4.5: task returned without a Running scheduler entry.\r\n",
+                )
+            })
     };
     let Some(current_index) = task_stack_index(current_id) else {
         preemption_setup_failed(b"P4.5: exiting task has no kernel stack.\r\n");
     };
-    let start = unsafe {
-        ptr::read_volatile(ptr::addr_of!(TASK_PREEMPTION_START_TICKS[current_index]))
-    };
-    if unsafe {
-        (*scheduler).account_current_ticks(timer::ticks().wrapping_sub(start))
-    }
-    .is_err()
-    {
+    let start =
+        unsafe { ptr::read_volatile(ptr::addr_of!(TASK_PREEMPTION_START_TICKS[current_index])) };
+    if unsafe { (*scheduler).account_current_ticks(timer::ticks().wrapping_sub(start)) }.is_err() {
         preemption_setup_failed(b"P4.5: could not account final task runtime.\r\n");
     }
 
-    let next = unsafe { (*scheduler).finish_current() }
-        .unwrap_or_else(|_| preemption_setup_failed(b"P4.5: scheduler could not finish the task.\r\n"));
+    let next = unsafe { (*scheduler).finish_current() }.unwrap_or_else(|_| {
+        preemption_setup_failed(b"P4.5: scheduler could not finish the task.\r\n")
+    });
     match next {
         Some(next_id) => {
             let Some(index) = task_stack_index(next_id) else {
@@ -1015,7 +1093,9 @@ extern "sysv64" fn exhi_preemptive_task_finished() -> ! {
                 || next_end.map_or(true, |end| end > next_top)
                 || !gdt::set_rsp0(next_top)
             {
-                preemption_setup_failed(b"P4.5: next task interrupt frame or TSS.RSP0 is invalid.\r\n");
+                preemption_setup_failed(
+                    b"P4.5: next task interrupt frame or TSS.RSP0 is invalid.\r\n",
+                );
             }
             unsafe {
                 ptr::write_volatile(
@@ -1039,15 +1119,21 @@ extern "sysv64" fn exhi_preemptive_task_finished() -> ! {
                     switch_to_idle_context();
                 }
                 if !gdt::set_rsp0(0) {
-                    preemption_setup_failed(b"P4.6: failed to clear TSS.RSP0 after final task.\r\n");
+                    preemption_setup_failed(
+                        b"P4.6: failed to clear TSS.RSP0 after final task.\r\n",
+                    );
                 }
-                unsafe { ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE), 0); }
+                unsafe {
+                    ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE), 0);
+                }
                 finish_idle_wakeup_test(true);
             }
             #[cfg(not(feature = "idle-wakeup-smoke-test"))]
             {
                 if !gdt::set_rsp0(0) {
-                    preemption_setup_failed(b"P4.5: failed to clear TSS.RSP0 after final task.\r\n");
+                    preemption_setup_failed(
+                        b"P4.5: failed to clear TSS.RSP0 after final task.\r\n",
+                    );
                 }
                 unsafe {
                     ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE), 0);
@@ -1099,18 +1185,26 @@ fn finish_preemptive_exit_test(target_reached: bool) -> ! {
         })
     };
     let a_runtime = unsafe {
-        a_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks())).unwrap_or(0)
+        a_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks()))
+            .unwrap_or(0)
     };
     let b_runtime = unsafe {
-        b_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks())).unwrap_or(0)
+        b_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks()))
+            .unwrap_or(0)
     };
     let b_rsp = unsafe {
-        b_id.and_then(|id| (*scheduler).get(id).map(|task| task.context().saved_stack_pointer())).unwrap_or(0)
+        b_id.and_then(|id| {
+            (*scheduler)
+                .get(id)
+                .map(|task| task.context().saved_stack_pointer())
+        })
+        .unwrap_or(0)
     };
     let a_local_ok = a_local >= a_base + PAGE_SIZE as u64 && a_local < a_top;
     let b_local_ok = b_local >= b_base + PAGE_SIZE as u64 && b_local < b_top;
     let b_frame_ok = b_rsp as u64 >= b_base + PAGE_SIZE as u64
-        && (b_rsp as u64).checked_add(size_of::<InterruptContext>() as u64)
+        && (b_rsp as u64)
+            .checked_add(size_of::<InterruptContext>() as u64)
             .is_some_and(|end| end <= b_top);
     let all_finished = unsafe {
         (*scheduler).current().is_none()
@@ -1119,9 +1213,8 @@ fn finish_preemptive_exit_test(target_reached: bool) -> ! {
             && (*scheduler).finished_count() == TASK_COUNT
     };
     let tss_cleared = gdt::read_rsp0() == 0;
-    let fx_state_cleared = unsafe {
-        ptr::read_volatile(ptr::addr_of!(EXHIOS_ACTIVE_FX_STATE)) == 0
-    };
+    let fx_state_cleared =
+        unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_ACTIVE_FX_STATE)) == 0 };
     let irq0_masked = pic_status.master_mask & 1 != 0 && pic_status.slave_mask == 0xFF;
 
     let passed = target_reached
@@ -1162,11 +1255,27 @@ fn finish_preemptive_exit_test(target_reached: bool) -> ! {
     serial::COM1.write(b" task B finished=");
     serial::COM1.write(if b_finished { b"yes" } else { b"no " });
     serial::COM1.write(b"\r\nP4.5: XMM state A=");
-    serial::COM1.write(if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_XMM_OK)) == 1 } { b"preserved" } else { b"failed   " });
+    serial::COM1.write(
+        if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_XMM_OK)) == 1 } {
+            b"preserved"
+        } else {
+            b"failed   "
+        },
+    );
     serial::COM1.write(b" B=");
-    serial::COM1.write(if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_XMM_OK)) == 1 } { b"preserved" } else { b"failed   " });
+    serial::COM1.write(
+        if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_XMM_OK)) == 1 } {
+            b"preserved"
+        } else {
+            b"failed   "
+        },
+    );
     serial::COM1.write(b" stacks distinct=");
-    serial::COM1.write(if a_local_ok && b_local_ok && a_local != b_local { b"yes" } else { b"no " });
+    serial::COM1.write(if a_local_ok && b_local_ok && a_local != b_local {
+        b"yes"
+    } else {
+        b"no "
+    });
     serial::COM1.write(b"\r\nP4.5: scheduler current=none Finished=");
     serial::COM1.write_hex(unsafe { (*scheduler).finished_count() as u64 });
     serial::COM1.write(b" TSS.RSP0 cleared=");
@@ -1190,7 +1299,9 @@ fn finish_preemptive_exit_test(target_reached: bool) -> ! {
         );
     }
     loop {
-        unsafe { asm!("cli", "hlt", options(nomem, nostack)); }
+        unsafe {
+            asm!("cli", "hlt", options(nomem, nostack));
+        }
     }
 }
 
@@ -1207,7 +1318,10 @@ pub fn timer_preemption_smoke_test() -> ! {
         asm!("cli", options(nomem, nostack, preserves_flags));
         ptr::write(ptr::addr_of_mut!(SCHEDULER), Scheduler::new());
         ptr::write(ptr::addr_of_mut!(TASK_STACK_TOPS), [0; TASK_COUNT]);
-        ptr::write(ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS), [0; TASK_COUNT]);
+        ptr::write(
+            ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS),
+            [0; TASK_COUNT],
+        );
         ptr::write(ptr::addr_of_mut!(PREEMPTION_TASK_A_ID), None);
         ptr::write(ptr::addr_of_mut!(PREEMPTION_TASK_B_ID), None);
         ptr::write_volatile(ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE), 0);
@@ -1232,7 +1346,8 @@ pub fn timer_preemption_smoke_test() -> ! {
     if !initialize_fx_contexts() {
         preemption_setup_failed(b"P4.4: CPU FXSR/SSE state initialization failed.\r\n");
     }
-    let Some((a_rsp, a_top)) = (unsafe { prepare_preemption_stack(0, exhi_preemptive_task_a) }) else {
+    let Some((a_rsp, a_top)) = (unsafe { prepare_preemption_stack(0, exhi_preemptive_task_a) })
+    else {
         preemption_setup_failed(b"P4.4: task A stack setup failed.\r\n");
     };
     let Some((b_rsp, _)) = (unsafe { prepare_preemption_stack(1, exhi_preemptive_task_b) }) else {
@@ -1241,14 +1356,18 @@ pub fn timer_preemption_smoke_test() -> ! {
 
     let scheduler = ptr::addr_of_mut!(SCHEDULER);
     let first = unsafe {
-        (*scheduler).spawn("preempt-A", TaskContext::new(a_rsp))
+        (*scheduler)
+            .spawn("preempt-A", TaskContext::new(a_rsp))
             .unwrap_or_else(|_| preemption_setup_failed(b"P4.4: task A registration failed.\r\n"))
     };
     let second = unsafe {
-        (*scheduler).spawn("preempt-B", TaskContext::new(b_rsp))
+        (*scheduler)
+            .spawn("preempt-B", TaskContext::new(b_rsp))
             .unwrap_or_else(|_| preemption_setup_failed(b"P4.4: task B registration failed.\r\n"))
     };
-    if first.get() != 1 || second.get() != 2 || unsafe { (*scheduler).start() } != Ok(first)
+    if first.get() != 1
+        || second.get() != 2
+        || unsafe { (*scheduler).start() } != Ok(first)
         || !gdt::set_rsp0(a_top)
     {
         preemption_setup_failed(b"P4.4: scheduler initialization failed.\r\n");
@@ -1262,13 +1381,17 @@ pub fn timer_preemption_smoke_test() -> ! {
     unsafe {
         ptr::write_volatile(ptr::addr_of_mut!(PREEMPTION_TASK_A_ID), Some(first));
         ptr::write_volatile(ptr::addr_of_mut!(PREEMPTION_TASK_B_ID), Some(second));
-        ptr::write_volatile(ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS[0]), timer::ticks());
+        ptr::write_volatile(
+            ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS[0]),
+            timer::ticks(),
+        );
         ptr::write_volatile(
             ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE),
             ptr::addr_of_mut!(TASK_FX_STATES[0]) as usize,
         );
     }
-    serial::COM1.write(b"P4.4: PIT 100 Hz ready; IRQ0 will preempt tasks with no cooperative yields.\r\n");
+    serial::COM1
+        .write(b"P4.4: PIT 100 Hz ready; IRQ0 will preempt tasks with no cooperative yields.\r\n");
     serial::COM1.write(b"P4.4: initial IRETQ enters task A with IF=1.\r\n");
     // SAFETY: IDT routes IRQ0 to the full-frame ISR; both guarded stacks and
     // FX states are initialized, and only IRQ0 is unmasked.
@@ -1290,7 +1413,9 @@ fn preemption_setup_failed(message: &'static [u8]) -> ! {
         );
     }
     loop {
-        unsafe { asm!("cli", "hlt", options(nomem, nostack)); }
+        unsafe {
+            asm!("cli", "hlt", options(nomem, nostack));
+        }
     }
 }
 
@@ -1310,12 +1435,18 @@ fn initialize_fx_contexts() -> bool {
         return false;
     }
     let mut cr0: u64;
-    unsafe { asm!("mov {}, cr0", out(reg) cr0, options(nomem, nostack, preserves_flags)); }
+    unsafe {
+        asm!("mov {}, cr0", out(reg) cr0, options(nomem, nostack, preserves_flags));
+    }
     cr0 = (cr0 | (1 << 1) | (1 << 5)) & !((1 << 2) | (1 << 3));
-    unsafe { asm!("mov cr0, {}", in(reg) cr0, options(nostack, preserves_flags)); }
+    unsafe {
+        asm!("mov cr0, {}", in(reg) cr0, options(nostack, preserves_flags));
+    }
 
     let mut cr4: u64;
-    unsafe { asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags)); }
+    unsafe {
+        asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags));
+    }
     if cr4 & (1 << 18) != 0 {
         // OSXSAVE may already be enabled by firmware. FXSAVE is still a
         // complete task-state format when XCR0 enables only x87 + SSE.
@@ -1373,7 +1504,9 @@ unsafe fn prepare_preemption_stack(
     index: usize,
     entry: unsafe extern "sysv64" fn() -> !,
 ) -> Option<(usize, u64)> {
-    if index >= TASK_COUNT { return None; }
+    if index >= TASK_COUNT {
+        return None;
+    }
     let base = unsafe { ptr::addr_of_mut!(TASK_STACKS[index]) as u64 };
     let top = base.checked_add(STACK_TOTAL_SIZE as u64)?;
     if base % PAGE_SIZE as u64 != 0 || top % 16 != 0 || top >= 0x1_0000_0000 {
@@ -1385,12 +1518,25 @@ unsafe fn prepare_preemption_stack(
         return None;
     }
     let rsp = (top as usize).checked_sub(size_of::<InterruptContext>())?;
-    if rsp % 16 != 0 { return None; }
+    if rsp % 16 != 0 {
+        return None;
+    }
     let frame = InterruptContext {
-        r15: 0, r14: 0, r13: 0, r12: entry as usize as u64,
-        r11: 0, r10: 0, r9: 0, r8: 0,
-        rdi: 0, rsi: 0, rbp: 0, rbx: 0,
-        rdx: 0, rcx: 0, rax: 0,
+        r15: 0,
+        r14: 0,
+        r13: 0,
+        r12: entry as usize as u64,
+        r11: 0,
+        r10: 0,
+        r9: 0,
+        r8: 0,
+        rdi: 0,
+        rsi: 0,
+        rbp: 0,
+        rbx: 0,
+        rdx: 0,
+        rcx: 0,
+        rax: 0,
         rip: exhi_preemptive_task_bootstrap as *const () as usize as u64,
         cs: u64::from(gdt::KERNEL_CODE_SELECTOR),
         rflags: 0x202,
@@ -1405,7 +1551,6 @@ unsafe fn prepare_preemption_stack(
     }
     Some((rsp, top))
 }
-
 
 #[cfg(feature = "idle-wakeup-smoke-test")]
 fn switch_to_idle_context() -> ! {
@@ -1433,14 +1578,20 @@ fn switch_to_idle_context() -> ! {
 
 #[cfg(feature = "idle-wakeup-smoke-test")]
 fn dispatch_task_from_idle(id: TaskId, now: u64) -> usize {
-    let Some(index) = task_stack_index(id) else { return 0; };
-    let Some(task) = (unsafe { (*ptr::addr_of_mut!(SCHEDULER)).get(id) }) else { return 0; };
+    let Some(index) = task_stack_index(id) else {
+        return 0;
+    };
+    let Some(task) = (unsafe { (*ptr::addr_of_mut!(SCHEDULER)).get(id) }) else {
+        return 0;
+    };
     let rsp = task.context().saved_stack_pointer();
     let top = unsafe { ptr::read_volatile(ptr::addr_of!(TASK_STACK_TOPS[index])) };
     let base = unsafe { ptr::addr_of!(TASK_STACKS[index]) as u64 };
     let end = (rsp as u64).checked_add(size_of::<InterruptContext>() as u64);
-    if rsp == 0 || (rsp as u64) < base + PAGE_SIZE as u64
-        || end.map_or(true, |value| value > top) || !gdt::set_rsp0(top)
+    if rsp == 0
+        || (rsp as u64) < base + PAGE_SIZE as u64
+        || end.map_or(true, |value| value > top)
+        || !gdt::set_rsp0(top)
     {
         return 0;
     }
@@ -1461,12 +1612,15 @@ fn handle_idle_timer_interrupt(frame_address: usize) -> usize {
     let idle_base = unsafe { ptr::addr_of!(IDLE_STACK) as u64 };
     let idle_top = unsafe { ptr::read_volatile(ptr::addr_of!(IDLE_STACK_TOP)) };
     let end = (frame_address as u64).checked_add(size_of::<InterruptContext>() as u64);
-    if frame_address == 0 || (frame_address as u64) < idle_base + PAGE_SIZE as u64
+    if frame_address == 0
+        || (frame_address as u64) < idle_base + PAGE_SIZE as u64
         || end.map_or(true, |value| value > idle_top)
     {
         return 0;
     }
-    unsafe { ptr::write_volatile(ptr::addr_of_mut!(IDLE_CONTEXT_RSP), frame_address); }
+    unsafe {
+        ptr::write_volatile(ptr::addr_of_mut!(IDLE_CONTEXT_RSP), frame_address);
+    }
     unsafe {
         let ticks = ptr::addr_of_mut!(P4_6_IDLE_TICKS);
         ptr::write_volatile(ticks, ptr::read_volatile(ticks).saturating_add(1));
@@ -1560,33 +1714,38 @@ extern "sysv64" fn exhi_preemption_handler(frame: *mut InterruptContext) -> usiz
         Ok(ScheduleDecision::Switch { to, .. }) => {
             let Some(i) = task_stack_index(to) else {
                 unsafe {
-            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
-            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
-        }
+                    let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+                    ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+                }
                 return 0;
             };
             let Some(next_task) = (unsafe { (*scheduler).get(to) }) else {
                 unsafe {
-            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
-            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
-        }
+                    let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+                    ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+                }
                 return 0;
             };
             let next_rsp = next_task.context().saved_stack_pointer();
             let next_top = unsafe { ptr::read_volatile(ptr::addr_of!(TASK_STACK_TOPS[i])) };
             let next_base = unsafe { ptr::addr_of!(TASK_STACKS[i]) as u64 };
             let next_end = (next_rsp as u64).checked_add(size_of::<InterruptContext>() as u64);
-            if next_rsp == 0 || (next_rsp as u64) < next_base + PAGE_SIZE as u64
-                || next_end.map_or(true, |v| v > next_top) || !gdt::set_rsp0(next_top)
+            if next_rsp == 0
+                || (next_rsp as u64) < next_base + PAGE_SIZE as u64
+                || next_end.map_or(true, |v| v > next_top)
+                || !gdt::set_rsp0(next_top)
             {
                 unsafe {
-            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
-            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
-        }
+                    let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+                    ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+                }
                 return 0;
             }
             unsafe {
-                ptr::write_volatile(ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS[i]), timer::ticks());
+                ptr::write_volatile(
+                    ptr::addr_of_mut!(TASK_PREEMPTION_START_TICKS[i]),
+                    timer::ticks(),
+                );
                 ptr::write_volatile(
                     ptr::addr_of_mut!(EXHIOS_ACTIVE_FX_STATE),
                     ptr::addr_of_mut!(TASK_FX_STATES[i]) as usize,
@@ -1600,9 +1759,9 @@ extern "sysv64" fn exhi_preemption_handler(frame: *mut InterruptContext) -> usiz
         }
         Err(_) => {
             unsafe {
-            let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
-            ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
-        }
+                let p = ptr::addr_of_mut!(EXHIOS_P4_4_FAILURES);
+                ptr::write_volatile(p, ptr::read_volatile(p).saturating_add(1));
+            }
             frame_address
         }
     }
@@ -1622,7 +1781,9 @@ extern "sysv64" fn exhi_preemption_test_fail() -> ! {
 
 #[cfg(feature = "timer-preemption-smoke-test")]
 fn finish_preemption_test(target_reached: bool) -> ! {
-    unsafe { asm!("cli", options(nomem, nostack, preserves_flags)); }
+    unsafe {
+        asm!("cli", options(nomem, nostack, preserves_flags));
+    }
     let pic_status = timer::mask_irq0();
     let elapsed = timer::ticks();
     let switches = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_SWITCHES)) };
@@ -1639,38 +1800,58 @@ fn finish_preemption_test(target_reached: bool) -> ! {
     let a_id = unsafe { ptr::read_volatile(ptr::addr_of!(PREEMPTION_TASK_A_ID)) };
     let b_id = unsafe { ptr::read_volatile(ptr::addr_of!(PREEMPTION_TASK_B_ID)) };
     let current_a = unsafe {
-        a_id.is_some_and(|id| (*scheduler).current().is_some_and(|task| {
-            task.id() == id && task.state() == exhi_task::TaskState::Running
-        }))
+        a_id.is_some_and(|id| {
+            (*scheduler).current().is_some_and(|task| {
+                task.id() == id && task.state() == exhi_task::TaskState::Running
+            })
+        })
     };
     let a_runtime = unsafe {
-        a_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks())).unwrap_or(0)
+        a_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks()))
+            .unwrap_or(0)
     };
     let b_runtime = unsafe {
-        b_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks())).unwrap_or(0)
+        b_id.and_then(|id| (*scheduler).get(id).map(|task| task.runtime_ticks()))
+            .unwrap_or(0)
     };
     let b_rsp = unsafe {
-        b_id.and_then(|id| (*scheduler).get(id).map(|task| task.context().saved_stack_pointer())).unwrap_or(0)
+        b_id.and_then(|id| {
+            (*scheduler)
+                .get(id)
+                .map(|task| task.context().saved_stack_pointer())
+        })
+        .unwrap_or(0)
     };
     let a_local_ok = a_local >= a_base + PAGE_SIZE as u64 && a_local < a_top;
     let b_local_ok = b_local >= b_base + PAGE_SIZE as u64 && b_local < b_top;
     let b_frame_ok = b_rsp as u64 >= b_base + PAGE_SIZE as u64
-        && (b_rsp as u64).checked_add(size_of::<InterruptContext>() as u64)
+        && (b_rsp as u64)
+            .checked_add(size_of::<InterruptContext>() as u64)
             .is_some_and(|end| end <= b_top);
     let fx_a = unsafe { ptr::addr_of!(TASK_FX_STATES[0]) as usize };
     let fx_a_active = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_ACTIVE_FX_STATE)) == fx_a };
     let tss_a = gdt::read_rsp0() == a_top;
     let irq0_masked = pic_status.master_mask & 1 != 0 && pic_status.slave_mask == 0xFF;
 
-    let passed = target_reached && elapsed >= 16 && switches >= 12
-        && a_runtime >= 6 && b_runtime >= 6
-        && a_progress > 0 && b_progress > 0 && failures == 0
-        && a_local_ok && b_local_ok && a_local != b_local && b_frame_ok
+    let passed = target_reached
+        && elapsed >= 16
+        && switches >= 12
+        && a_runtime >= 6
+        && b_runtime >= 6
+        && a_progress > 0
+        && b_progress > 0
+        && failures == 0
+        && a_local_ok
+        && b_local_ok
+        && a_local != b_local
+        && b_frame_ok
         && unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_XMM_OK)) == 1 }
         && unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_XMM_OK)) == 1 }
-        && fx_a_active && current_a
+        && fx_a_active
+        && current_a
         && unsafe { (*scheduler).ready_count() == 1 && (*scheduler).finished_count() == 0 }
-        && tss_a && irq0_masked;
+        && tss_a
+        && irq0_masked;
 
     serial::COM1.write(b"P4.4: elapsed PIT ticks=");
     serial::COM1.write_hex(elapsed);
@@ -1685,11 +1866,27 @@ fn finish_preemption_test(target_reached: bool) -> ! {
     serial::COM1.write(b" task B progress=");
     serial::COM1.write_hex(b_progress as u64);
     serial::COM1.write(b"\r\nP4.4: XMM state A=");
-    serial::COM1.write(if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_XMM_OK)) == 1 } { b"preserved" } else { b"failed   " });
+    serial::COM1.write(
+        if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_XMM_OK)) == 1 } {
+            b"preserved"
+        } else {
+            b"failed   "
+        },
+    );
     serial::COM1.write(b" B=");
-    serial::COM1.write(if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_XMM_OK)) == 1 } { b"preserved" } else { b"failed   " });
+    serial::COM1.write(
+        if unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_XMM_OK)) == 1 } {
+            b"preserved"
+        } else {
+            b"failed   "
+        },
+    );
     serial::COM1.write(b" stacks distinct=");
-    serial::COM1.write(if a_local_ok && b_local_ok && a_local != b_local { b"yes" } else { b"no " });
+    serial::COM1.write(if a_local_ok && b_local_ok && a_local != b_local {
+        b"yes"
+    } else {
+        b"no "
+    });
     serial::COM1.write(b"\r\nP4.4: scheduler current=A ready=1 TSS.RSP0 active=");
     serial::COM1.write(if tss_a { b"yes" } else { b"no " });
     serial::COM1.write(b" IRQ0 masked=");
@@ -1710,23 +1907,21 @@ fn finish_preemption_test(target_reached: bool) -> ! {
             options(nomem, nostack, preserves_flags)
         );
     }
-    loop { unsafe { asm!("cli", "hlt", options(nomem, nostack)); } }
+    loop {
+        unsafe {
+            asm!("cli", "hlt", options(nomem, nostack));
+        }
+    }
 }
 
-unsafe fn prepare_stack(
-    index: usize,
-    entry: extern "sysv64" fn(),
-) -> Option<(usize, u64)> {
+unsafe fn prepare_stack(index: usize, entry: extern "sysv64" fn()) -> Option<(usize, u64)> {
     if index >= TASK_COUNT {
         return None;
     }
 
     let stack_base = unsafe { ptr::addr_of_mut!(TASK_STACKS[index]) as u64 };
     let stack_top = stack_base.checked_add(STACK_TOTAL_SIZE as u64)?;
-    if stack_base % PAGE_SIZE as u64 != 0
-        || stack_top % 16 != 0
-        || stack_top >= 0x1_0000_0000
-    {
+    if stack_base % PAGE_SIZE as u64 != 0 || stack_top % 16 != 0 || stack_top >= 0x1_0000_0000 {
         return None;
     }
 
@@ -1770,9 +1965,8 @@ fn switch_between(from: TaskId, to: TaskId) {
             task_fatal(b"P4.2: next task is missing from scheduler.\r\n");
         };
         let new_rsp = new_task.context().saved_stack_pointer();
-        let index = task_stack_index(to).unwrap_or_else(|| {
-            task_fatal(b"P4.2: next task has no kernel stack.\r\n")
-        });
+        let index = task_stack_index(to)
+            .unwrap_or_else(|| task_fatal(b"P4.2: next task has no kernel stack.\r\n"));
         let stack_top = ptr::read(ptr::addr_of!(TASK_STACK_TOPS[index]));
         (old_rsp, new_rsp, stack_top)
     };
@@ -1783,9 +1977,8 @@ fn switch_between(from: TaskId, to: TaskId) {
 
     #[cfg(feature = "task-accounting-smoke-test")]
     unsafe {
-        let index = task_stack_index(to).unwrap_or_else(|| {
-            task_fatal(b"P4.3: next task has no accounting slot.\r\n")
-        });
+        let index = task_stack_index(to)
+            .unwrap_or_else(|| task_fatal(b"P4.3: next task has no accounting slot.\r\n"));
         ptr::write_volatile(
             ptr::addr_of_mut!(TASK_ACCOUNTING_START_TICKS[index]),
             timer::ticks(),
@@ -1811,9 +2004,7 @@ fn account_current_runtime() -> bool {
     let Some(index) = task_stack_index(current_id) else {
         return false;
     };
-    let start = unsafe {
-        ptr::read_volatile(ptr::addr_of!(TASK_ACCOUNTING_START_TICKS[index]))
-    };
+    let start = unsafe { ptr::read_volatile(ptr::addr_of!(TASK_ACCOUNTING_START_TICKS[index])) };
     let elapsed = timer::ticks().wrapping_sub(start);
     unsafe { (*scheduler).account_current_ticks(elapsed).is_ok() }
 }
@@ -1894,17 +2085,13 @@ pub extern "sysv64" fn exhi_task_finished() -> ! {
             // No task remains runnable. Save the finished task's last stack
             // pointer and restore the boot context that launched task A.
             unsafe {
-                exhi_context_switch(
-                    ptr::addr_of_mut!(FINISHED_STACK_POINTER),
-                    boot_rsp,
-                );
+                exhi_context_switch(ptr::addr_of_mut!(FINISHED_STACK_POINTER), boot_rsp);
             }
             task_fatal(b"P4.2: a Finished task was unexpectedly resumed.\r\n");
         }
         Err(_) => task_fatal(b"P4.2: scheduler could not finish the current task.\r\n"),
     }
 }
-
 
 #[cfg(feature = "task-accounting-smoke-test")]
 #[inline(never)]
@@ -1991,7 +2178,9 @@ extern "sysv64" fn task_b() {
 fn task_fatal(message: &'static [u8]) -> ! {
     serial::COM1.write(message);
     loop {
-        unsafe { asm!("cli", "hlt", options(nomem, nostack)); }
+        unsafe {
+            asm!("cli", "hlt", options(nomem, nostack));
+        }
     }
 }
 
@@ -2103,8 +2292,6 @@ exhi_idle_loop:
 
     "#
 );
-
-
 
 #[cfg(feature = "timer-preemption-smoke-test")]
 global_asm!(
