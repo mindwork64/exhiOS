@@ -7,6 +7,7 @@ use super::gdt::KERNEL_CODE_SELECTOR;
 const IDT_ENTRY_COUNT: usize = 256;
 const EXCEPTION_COUNT: usize = 32;
 const INTERRUPT_GATE_ATTRIBUTES: u8 = 0x8E;
+const BLOCK_SCHEDULER_VECTOR: usize = 0x30;
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
@@ -63,6 +64,7 @@ pub struct IdtStatus {
     pub double_fault_ist: u8,
     pub timer_irq_valid: bool,
     pub keyboard_irq_valid: bool,
+    pub block_scheduler_irq_valid: bool,
     pub valid: bool,
 }
 
@@ -143,6 +145,19 @@ pub fn initialize() -> IdtStatus {
         );
     }
 
+    #[cfg(feature = "idle-wakeup-smoke-test")]
+    let block_scheduler_handler = super::task::block_interrupt_stub_address();
+    #[cfg(not(feature = "idle-wakeup-smoke-test"))]
+    let block_scheduler_handler = 0u64;
+    if block_scheduler_handler != 0 {
+        unsafe {
+            ptr::write_volatile(
+                entries.add(BLOCK_SCHEDULER_VECTOR),
+                IdtEntry::interrupt_gate(block_scheduler_handler, 0),
+            );
+        }
+    }
+
     let expected_base = ptr::addr_of!(IDT) as u64;
     let expected_limit = (size_of::<InterruptDescriptorTable>() - 1) as u16;
     let descriptor = IdtRegister {
@@ -203,17 +218,32 @@ pub fn initialize() -> IdtStatus {
         && keyboard_irq_gate.ist & 0x7 == 0
         && keyboard_irq_gate.attributes == INTERRUPT_GATE_ATTRIBUTES;
 
+    let block_scheduler_irq_valid = if block_scheduler_handler == 0 {
+        true
+    } else {
+        let gate = unsafe { ptr::read_volatile(entries.add(BLOCK_SCHEDULER_VECTOR)) };
+        let address = u64::from(gate.offset_low)
+            | (u64::from(gate.offset_middle) << 16)
+            | (u64::from(gate.offset_high) << 32);
+        address == block_scheduler_handler
+            && gate.selector == KERNEL_CODE_SELECTOR
+            && gate.ist & 0x7 == 0
+            && gate.attributes == INTERRUPT_GATE_ATTRIBUTES
+    };
+
     IdtStatus {
         base: active_base,
         limit: active_limit,
         double_fault_ist,
         timer_irq_valid,
         keyboard_irq_valid,
+        block_scheduler_irq_valid,
         valid: active_base == expected_base
             && active_limit == expected_limit
             && double_fault_ist == 1
             && timer_irq_valid
-            && keyboard_irq_valid,
+            && keyboard_irq_valid
+            && block_scheduler_irq_valid,
     }
 }
 
