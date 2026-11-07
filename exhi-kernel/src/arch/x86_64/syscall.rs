@@ -226,10 +226,7 @@ pub(crate) fn update_smoke_test_task_context(kernel_stack_top: u64, fx_state: us
             ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top),
             kernel_stack_top,
         );
-        ptr::write_volatile(
-            ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.fx_state),
-            fx_state,
-        );
+        ptr::write_volatile(ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.fx_state), fx_state);
     }
     core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
     true
