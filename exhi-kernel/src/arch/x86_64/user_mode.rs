@@ -1634,14 +1634,17 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     // The reaper is now the running task on its own kernel stack and the
     // kernel address space is active, so the Finished user-task records can
     // finally be removed without invalidating a live execution context.
-    let reaped_ok = if cleanup_ok {
+    let (reap_a_ok, reap_b_ok) = if cleanup_ok {
         unsafe {
-            (*scheduler).reap(TaskId::from_raw(1)).is_ok()
-                && (*scheduler).reap(TaskId::from_raw(2)).is_ok()
+            (
+                (*scheduler).reap(TaskId::from_raw(1)).is_ok(),
+                (*scheduler).reap(TaskId::from_raw(2)).is_ok(),
+            )
         }
     } else {
-        false
+        (false, false)
     };
+    let reaped_ok = reap_a_ok && reap_b_ok;
     let scheduler_clean = unsafe {
         (*scheduler).current().map(|task| task.id()) == Some(TaskId::from_raw(3))
             && (*scheduler).len() == 1
