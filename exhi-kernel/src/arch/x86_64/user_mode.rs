@@ -858,6 +858,7 @@ exhi_syscall_entry:
 pub enum UserAccess {
     Read,
     Write,
+    #[cfg(feature = "user-pointer-range-smoke-test")]
     Execute,
 }
 
@@ -919,6 +920,7 @@ pub fn validate_user_range(
         let permitted = match access {
             UserAccess::Read => true,
             UserAccess::Write => mapping.writable,
+            #[cfg(feature = "user-pointer-range-smoke-test")]
             UserAccess::Execute => mapping.executable,
         };
         if !permitted {
