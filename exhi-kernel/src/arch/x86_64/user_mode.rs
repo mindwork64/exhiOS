@@ -1375,7 +1375,9 @@ fn user_task_stack_bounds(index: usize) -> Option<(u64, u64)> {
         return None;
     }
     let base = unsafe { ptr::addr_of!(USER_TASK_KERNEL_STACKS[index]) as u64 };
-    let top = unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_KERNEL_STACK_TOPS[index])) };
+    // The top is immutable geometry, not task state. Derive it from the
+    // static stack object rather than trusting a separately mutable copy.
+    let top = base.checked_add(STACK_TOTAL_SIZE as u64)?;
     Some((base, top))
 }
 
@@ -1588,8 +1590,8 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
         && user_task_space_a_root() != user_task_space_b_root()
         && a_code != b_code
         && a_stack != b_stack;
-    let tss_valid = gdt::read_rsp0()
-        == unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_KERNEL_STACK_TOPS[2])) };
+    let tss_valid = user_task_stack_bounds(2)
+        .is_some_and(|(_, reaper_top)| gdt::read_rsp0() == reaper_top);
     let saved_a_ok = user_task_saved_context_matches(TaskId::from_raw(1));
     let saved_b_ok = user_task_saved_context_matches(TaskId::from_raw(2));
     report_user_task_saved_context(TaskId::from_raw(1), b"A");
@@ -1681,6 +1683,10 @@ fn report_user_task_saved_context(id: TaskId, label: &'static [u8]) {
             serial::COM1.write_hex(min);
             serial::COM1.write(b" top=0x");
             serial::COM1.write_hex(top);
+            serial::COM1.write(b" cached-top=0x");
+            serial::COM1.write_hex(unsafe {
+                ptr::read_volatile(ptr::addr_of!(USER_TASK_KERNEL_STACK_TOPS[index]))
+            });
             serial::COM1.write(b" end=0x");
             serial::COM1.write_hex(end.unwrap_or(0));
             serial::COM1.write(b" stack=");
