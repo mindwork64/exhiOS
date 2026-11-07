@@ -29,17 +29,11 @@ fn user_tasks_finish_into_idle_then_reaper_runs_and_reclaims_them() {
     assert_eq!(scheduler.start(), Ok(user_a));
     assert_eq!(
         scheduler.yield_current(),
-        Ok(ScheduleDecision::Switch {
-            from: user_a,
-            to: user_b,
-        })
+        Ok(ScheduleDecision::Switch { from: user_a, to: user_b })
     );
     assert_eq!(
         scheduler.yield_current(),
-        Ok(ScheduleDecision::Switch {
-            from: user_b,
-            to: user_a,
-        })
+        Ok(ScheduleDecision::Switch { from: user_b, to: user_a })
     );
 
     // The first exit hands off to the other user task. The second exit must
@@ -76,13 +70,15 @@ fn scheduler_never_reaps_a_running_task_or_a_non_finished_task() {
     assert_eq!(scheduler.len(), 2);
     assert_eq!(scheduler.start(), Ok(first));
     assert!(scheduler.reap(first).is_err());
-    assert_eq!(scheduler.yield_current(), Ok(ScheduleDecision::Switch {
-        from: first,
-        to: second,
-    }));
+    assert_eq!(
+        scheduler.yield_current(),
+        Ok(ScheduleDecision::Switch { from: first, to: second })
+    );
     assert_eq!(scheduler.finish_current(), Ok(Some(first)));
+
+    // The finished task can be reclaimed, but the newly running task cannot.
+    assert!(scheduler.reap(first).is_ok());
     assert!(scheduler.reap(second).is_err());
-    scheduler.reap(second).unwrap_err();
-    assert_eq!(scheduler.get(first).map(|task| task.state()), Some(TaskState::Finished));
-    assert_eq!(scheduler.get(second), None);
+    assert_eq!(scheduler.get(first), None);
+    assert_eq!(scheduler.get(second).map(|task| task.state()), Some(TaskState::Running));
 }
