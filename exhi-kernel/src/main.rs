@@ -733,6 +733,12 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         halt_forever();
     }
 
+    #[cfg(feature = "ring3-smoke-test")]
+    {
+        kernel_console.write(b"P5.1: starting the Ring 3 entry and exception-return smoke test.\r\n");
+        arch::x86_64::user_mode::ring3_smoke_test();
+    }
+
     #[cfg(feature = "idle-wakeup-smoke-test")]
     {
         kernel_console.write(b"P4.6: starting idle-context and timed task wake-up smoke test.\r\n");
@@ -745,7 +751,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         arch::x86_64::task::preemptive_task_exit_smoke_test();
     }
 
-    #[cfg(all(feature = "timer-preemption-smoke-test", not(any(feature = "preemptive-task-exit-smoke-test", feature = "idle-wakeup-smoke-test"))))]
+    #[cfg(all(feature = "timer-preemption-smoke-test", not(any(feature = "preemptive-task-exit-smoke-test", feature = "idle-wakeup-smoke-test", feature = "ring3-smoke-test"))))]
     {
         kernel_console.write(b"P4.4: starting timer-driven task preemption smoke test.\r\n");
         arch::x86_64::task::timer_preemption_smoke_test();
@@ -806,6 +812,18 @@ pub extern "sysv64" fn exhi_exception_handler(
     serial::COM1.write(b"\r\nRFLAGS: 0x");
     serial::COM1.write_hex(flags);
     serial::COM1.write(b"\r\n");
+
+    #[cfg(feature = "ring3-smoke-test")]
+    if code_selector & 3 == 3 {
+        arch::x86_64::user_mode::handle_user_exception(
+            vector,
+            error_code,
+            instruction_pointer,
+            code_selector,
+            flags,
+            exception_stack_pointer,
+        );
+    }
 
     // A fatal exception in the opt-in P4.4 QEMU test must terminate the guest
     // with the failure debug-exit value instead of leaving CI stuck in HLT.
