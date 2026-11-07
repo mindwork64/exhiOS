@@ -1178,7 +1178,7 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
 }
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
-fn USER_TASK_SPACE_A_ROOT() -> u64 {
+fn user_task_space_a_root() -> u64 {
     unsafe {
         (&*ptr::addr_of!(USER_TASK_SPACE_A))
             .as_ref()
@@ -1316,7 +1316,7 @@ fn prepare_user_task_initial_frame(
         rdx: 0, rcx: 0, rax: 0,
         rip: USER_CODE_ADDRESS,
         cs: u64::from(gdt::USER_CODE_SELECTOR),
-        rflags: 0x202,
+        rflags: 0x2,
         rsp: USER_STACK_POINTER,
         ss: u64::from(gdt::USER_DATA_SELECTOR),
     };
@@ -1378,8 +1378,8 @@ fn user_task_select_context(id: TaskId) -> usize {
 
     if let Some(metadata) = current.user_metadata() {
         let expected_root = match index {
-            0 => USER_TASK_SPACE_A_ROOT(),
-            1 => USER_TASK_SPACE_B_ROOT(),
+            0 => user_task_space_a_root(),
+            1 => user_task_space_b_root(),
             _ => 0,
         };
         if expected_root == 0
@@ -1559,9 +1559,9 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
         ptr::read_volatile((b_stack + PAGE_SIZE - 16) as *const u64) == 0xB11C_E001
             && ptr::read_volatile((b_stack + PAGE_SIZE - 24) as *const u64) == 0xB11C_E002
     };
-    let roots_private = USER_TASK_SPACE_A_ROOT() != 0
-        && USER_TASK_SPACE_B_ROOT() != 0
-        && USER_TASK_SPACE_A_ROOT() != USER_TASK_SPACE_B_ROOT()
+    let roots_private = user_task_space_a_root() != 0
+        && user_task_space_b_root() != 0
+        && user_task_space_a_root() != user_task_space_b_root()
         && a_code != b_code
         && a_stack != b_stack;
     let tss_valid = gdt::read_rsp0()
@@ -1573,6 +1573,8 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
         && switch_count == 6
         && roots_private
         && a_markers_ok && b_markers_ok
+        && user_task_saved_context_matches(TaskId::from_raw(1))
+        && user_task_saved_context_matches(TaskId::from_raw(2))
         && tss_valid;
     serial::COM1.write(b"P5.6: syscalls=");
     serial::COM1.write_hex(syscall_count);
@@ -1604,6 +1606,41 @@ extern "sysv64" fn exhi_user_task_finish() -> ! {
     let exit = if passed && cleanup_ok && rsp0_cleared { 0x10u32 } else { 0x11u32 };
     unsafe { asm!("out dx, eax", in("dx") 0xF4u16, in("eax") exit, options(nomem, nostack, preserves_flags)); }
     loop { unsafe { asm!("cli", "hlt", options(nomem, nostack)); } }
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+fn user_task_saved_context_matches(id: TaskId) -> bool {
+    let scheduler = ptr::addr_of!(USER_TASK_SCHEDULER);
+    let Some(task) = (unsafe { (&*scheduler).get(id) }) else {
+        return false;
+    };
+    let Some(metadata) = task.user_metadata() else {
+        return false;
+    };
+    let frame_address = task.context().saved_stack_pointer();
+    let index = usize::try_from(id.get())
+        .ok()
+        .and_then(|raw| raw.checked_sub(1));
+    let Some(index) = index.filter(|index| *index < 2) else {
+        return false;
+    };
+    let Some((base, top)) = user_task_stack_bounds(index) else {
+        return false;
+    };
+    let end = (frame_address as u64).checked_add(size_of::<UserTaskInterruptFrame>() as u64);
+    if frame_address == 0
+        || (frame_address as u64) < base + PAGE_SIZE
+        || end.map_or(true, |value| value > top)
+    {
+        return false;
+    }
+    let frame = unsafe { &*(frame_address as *const UserTaskInterruptFrame) };
+    frame.cs == u64::from(gdt::USER_CODE_SELECTOR)
+        && frame.ss == u64::from(gdt::USER_DATA_SELECTOR)
+        && frame.rflags & (1 << 9) == 0
+        && frame.rsp == metadata.user_stack_pointer()
+        && (USER_CODE_ADDRESS..USER_CODE_ADDRESS + PAGE_SIZE).contains(&frame.rip)
+        && metadata.address_space_root() != 0
 }
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
