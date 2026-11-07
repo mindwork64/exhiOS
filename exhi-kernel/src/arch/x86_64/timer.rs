@@ -104,7 +104,10 @@ pub fn ticks() -> u64 {
 }
 
 /// Returns elapsed ticks with wrapping subtraction, valid across counter wrap.
-#[cfg(feature = "timer-smoke-test")]
+#[cfg(any(
+    feature = "timer-smoke-test",
+    feature = "task-accounting-smoke-test"
+))]
 #[inline]
 pub fn elapsed_ticks(start: u64) -> u64 {
     ticks().wrapping_sub(start)
