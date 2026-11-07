@@ -1264,28 +1264,26 @@ fn build_user_task_program(
 ) -> ([u8; 64], usize) {
     let mut code = [0u8; 64];
     let mut position = 0;
-    code[position..position + 10].copy_from_slice(&[
+    code[position..position + 9].copy_from_slice(&[
         0x48, 0xC7, 0x44, 0x24, 0xF8,
         initial_marker as u8,
         (initial_marker >> 8) as u8,
         (initial_marker >> 16) as u8,
         (initial_marker >> 24) as u8,
-        0,
     ]);
-    position += 10;
+    position += 9;
     code[position..position + 5].copy_from_slice(&[0xB8, 1, 0, 0, 0]); // SYS_YIELD
     position += 5;
     code[position..position + 2].copy_from_slice(&[0x0F, 0x05]);
     position += 2;
-    code[position..position + 10].copy_from_slice(&[
+    code[position..position + 9].copy_from_slice(&[
         0x48, 0xC7, 0x44, 0x24, 0xF0,
         resumed_marker as u8,
         (resumed_marker >> 8) as u8,
         (resumed_marker >> 16) as u8,
         (resumed_marker >> 24) as u8,
-        0,
     ]);
-    position += 10;
+    position += 9;
     code[position..position + 5].copy_from_slice(&[0xB8, 1, 0, 0, 0]); // SYS_YIELD
     position += 5;
     code[position..position + 2].copy_from_slice(&[0x0F, 0x05]);
