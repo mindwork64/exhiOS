@@ -4,7 +4,7 @@
 //! exception return to a TSS RSP0 stack. It does not implement syscalls,
 //! process scheduling, or a userspace ABI.
 
-use core::arch::asm;
+use core::arch::{asm, global_asm};
 use core::mem::size_of;
 use core::ptr;
 
@@ -27,6 +27,7 @@ const USER_CODE_LENGTH: u64 = 10;
 enum Ring3TestMode {
     Breakpoint = 1,
     SupervisorFault = 2,
+    Syscall = 3,
 }
 
 static RING3_SUPERVISOR_PROBE: u64 = 0x4558_4849_4F53_5046;
@@ -36,6 +37,9 @@ static mut RING3_EXPECTED_ERROR_MASK: u64 = u64::MAX;
 static mut RING3_EXPECTED_ERROR_VALUE: u64 = 0;
 static mut RING3_EXPECTED_RIP: u64 = 0;
 static mut RING3_EXPECTED_FAULT_ADDRESS: u64 = 0;
+static mut RING3_USER_RSP: u64 = 0;
+static mut RING3_SYSCALL_CALLS: u64 = 0;
+static mut RING3_SYSCALL_VALID: u64 = 0;
 
 #[repr(C, align(4096))]
 struct KernelStack([u8; STACK_TOTAL_SIZE]);
@@ -74,10 +78,16 @@ static mut RING3_STACK_FRAME: u64 = 0;
 
 unsafe extern "sysv64" {
     fn exhi_interrupt_context_start(initial_rsp: usize, fx_state: usize) -> !;
+    fn exhi_syscall_entry();
 }
 
 pub fn ring3_smoke_test() -> ! {
     run_ring3_test(Ring3TestMode::Breakpoint)
+}
+
+#[cfg(feature = "ring3-syscall-smoke-test")]
+pub fn ring3_syscall_smoke_test() -> ! {
+    run_ring3_test(Ring3TestMode::Syscall)
 }
 
 #[cfg(feature = "ring3-supervisor-fault-smoke-test")]
@@ -98,11 +108,15 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_ERROR_VALUE), 0);
         ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_RIP), 0);
         ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_FAULT_ADDRESS), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_USER_RSP), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_SYSCALL_CALLS), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_SYSCALL_VALID), 0);
     }
 
     serial::COM1.write(match mode {
         Ring3TestMode::Breakpoint => b"P5.1: preparing isolated Ring 3 address space.\r\n",
         Ring3TestMode::SupervisorFault => b"P5.2: preparing Ring 3 supervisor-isolation test.\r\n",
+        Ring3TestMode::Syscall => b"P5.3: preparing Ring 3 SYSCALL/SYSRET test.\r\n",
     });
 
     let Some(fx_state) = task::initialize_fx_state_for_user_mode() else {
@@ -226,8 +240,13 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
     serial::COM1.write(match mode {
         Ring3TestMode::Breakpoint => b"P5.1: user code mapped RX; user stack mapped RW+NX.\r\n",
         Ring3TestMode::SupervisorFault => b"P5.2: user RX code and RW+NX stack mapped; kernel probe is supervisor-only.\r\n",
+        Ring3TestMode::Syscall => b"P5.3: user RX code and RW+NX stack mapped; syscall MSRs will be verified.\r\n",
     });
     serial::COM1.write(b"Ring 3: IRETQ enters CPL3; the expected CPU exception returns through TSS.RSP0.\r\n");
+
+    if mode == Ring3TestMode::Syscall && !initialize_syscall_msrs() {
+        setup_failed(b"P5.3: syscall MSR configuration or read-back failed.\r\n");
+    }
 
     let mut frame = UserEntryFrame {
         r15: 0,
@@ -287,6 +306,28 @@ fn build_user_code(
             code[23] = 0xCC; // Should be unreachable if supervisor protection works.
             (code, 24, 14, 0x7, 0x5, 20, address)
         }
+        Ring3TestMode::Syscall => {
+            let mut position = 10;
+            code[position..position + 5].copy_from_slice(&[0xB8, 1, 0, 0, 0]); // mov eax, 1
+            position += 5;
+            code[position..position + 5].copy_from_slice(&[0xBF, 0x11, 0, 0, 0]); // mov edi, 0x11
+            position += 5;
+            code[position..position + 5].copy_from_slice(&[0xBE, 0x22, 0, 0, 0]); // mov esi, 0x22
+            position += 5;
+            code[position..position + 5].copy_from_slice(&[0xBA, 0x33, 0, 0, 0]); // mov edx, 0x33
+            position += 5;
+            code[position..position + 6].copy_from_slice(&[0x49, 0xC7, 0xC2, 0x44, 0, 0]); // mov r10, 0x44
+            position += 6;
+            code[position..position + 6].copy_from_slice(&[0x49, 0xC7, 0xC0, 0x55, 0, 0]); // mov r8, 0x55
+            position += 6;
+            code[position..position + 2].copy_from_slice(&[0x0F, 0x05]); // syscall
+            position += 2;
+            code[position..position + 5].copy_from_slice(&[0x48, 0x89, 0x44, 0x24, 0xF0]); // store result at RSP-16
+            position += 5;
+            code[position] = 0xCC;
+            position += 1;
+            (code, position, 3, u64::MAX, 0, position as u64, 0)
+        }
     }
 }
 
@@ -310,6 +351,7 @@ pub fn handle_user_exception(
     serial::COM1.write(match mode {
         Ring3TestMode::Breakpoint => b"P5.1: exception returned from user mode; vector=",
         Ring3TestMode::SupervisorFault => b"P5.2: exception returned from user mode; vector=",
+        Ring3TestMode::Syscall => b"P5.3: exception returned from user mode after SYSCALL; vector=",
     });
     serial::COM1.write_hex(vector);
     serial::COM1.write(b" CPL=");
@@ -393,6 +435,18 @@ pub fn handle_user_exception(
                 as *const u64,
         ) == USER_STACK_SENTINEL
     };
+    let syscall_result_valid = if mode == Ring3TestMode::Syscall {
+        unsafe {
+            ptr::read_volatile(
+                (ptr::read_volatile(ptr::addr_of!(RING3_STACK_FRAME)) + PAGE_SIZE - 24)
+                    as *const u64,
+            ) == 0xC0DE_CAFE_F00D_BEEFu64
+                && ptr::read_volatile(ptr::addr_of!(RING3_SYSCALL_VALID)) == 1
+                && ptr::read_volatile(ptr::addr_of!(RING3_SYSCALL_CALLS)) == 1
+        }
+    } else {
+        true
+    };
 
     let passed = vector == expected_vector
         && error_code & expected_error_mask == expected_error_value
@@ -406,11 +460,13 @@ pub fn handle_user_exception(
         && saved_user_ss == u64::from(gdt::USER_DATA_SELECTOR)
         && mapping_checks
         && user_stack_write_valid
+        && syscall_result_valid
         && fault_address_valid;
 
     serial::COM1.write(match mode {
         Ring3TestMode::Breakpoint => b"P5.1: saved user state RIP/RSP/SS verified.\r\n",
         Ring3TestMode::SupervisorFault => b"P5.2: user supervisor-access fault RIP/RSP/SS verified.\r\n",
+        Ring3TestMode::Syscall => b"P5.3: syscall returned to CPL3; return value and user frame verified.\r\n",
     });
     serial::COM1.write(b"Ring 3: CR2=0x");
     serial::COM1.write_hex(fault_address);
@@ -422,6 +478,142 @@ pub fn handle_user_exception(
     let rsp0_cleared = gdt::set_rsp0(0) && gdt::read_rsp0() == 0;
     finish(passed && cleanup_ok && rsp0_cleared)
 }
+
+
+fn initialize_syscall_msrs() -> bool {
+    const EFER: u32 = 0xC000_0080;
+    const STAR: u32 = 0xC000_0081;
+    const LSTAR: u32 = 0xC000_0082;
+    const FMASK: u32 = 0xC000_0084;
+    const EFER_SCE: u64 = 1;
+    const KERNEL_CS: u64 = u64::from(gdt::KERNEL_CODE_SELECTOR);
+    // SYSRETQ computes SS = STAR[63:48] + 8 and CS = STAR[63:48] + 16.
+    // The base value itself intentionally denotes no descriptor.
+    const USER_STAR_BASE: u64 = 0x23;
+    const FMASK_BITS: u64 = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 18);
+
+    let max_extended = unsafe { core::arch::x86_64::__cpuid(0x8000_0000) };
+    if max_extended.eax < 0x8000_0001 {
+        return false;
+    }
+    let features = unsafe { core::arch::x86_64::__cpuid(0x8000_0001) };
+    if features.edx & (1 << 11) == 0 {
+        return false;
+    }
+
+    let mut efer = read_msr(EFER);
+    efer |= EFER_SCE;
+    let star = (USER_STAR_BASE << 48) | (KERNEL_CS << 32);
+    let lstar = exhi_syscall_entry as *const () as u64;
+    write_msr(EFER, efer);
+    write_msr(STAR, star);
+    write_msr(LSTAR, lstar);
+    write_msr(FMASK, FMASK_BITS);
+
+    read_msr(EFER) & EFER_SCE != 0
+        && read_msr(STAR) == star
+        && read_msr(LSTAR) == lstar
+        && read_msr(FMASK) == FMASK_BITS
+}
+
+unsafe fn read_msr(msr: u32) -> u64 {
+    let low: u32;
+    let high: u32;
+    unsafe {
+        asm!(
+            "rdmsr",
+            in("ecx") msr,
+            out("eax") low,
+            out("edx") high,
+            options(nostack, preserves_flags)
+        );
+    }
+    (u64::from(high) << 32) | u64::from(low)
+}
+
+unsafe fn write_msr(msr: u32, value: u64) {
+    unsafe {
+        asm!(
+            "wrmsr",
+            in("ecx") msr,
+            in("eax") value as u32,
+            in("edx") (value >> 32) as u32,
+            options(nostack, preserves_flags)
+        );
+    }
+}
+
+#[no_mangle]
+extern "sysv64" fn exhi_syscall_handler(
+    number: u64,
+    arg1: u64,
+    arg2: u64,
+    arg3: u64,
+    arg4: u64,
+    arg5: u64,
+) -> u64 {
+    let valid = number == 1
+        && arg1 == 0x11
+        && arg2 == 0x22
+        && arg3 == 0x33
+        && arg4 == 0x44
+        && arg5 == 0x55;
+    unsafe {
+        let calls = ptr::addr_of_mut!(RING3_SYSCALL_CALLS);
+        ptr::write_volatile(calls, ptr::read_volatile(calls).saturating_add(1));
+        ptr::write_volatile(ptr::addr_of_mut!(RING3_SYSCALL_VALID), u64::from(valid));
+    }
+    if valid { 0xC0DE_CAFE_F00D_BEEFu64 } else { 0xBAD0_BAD0_BAD0_BAD0u64 }
+}
+
+global_asm!(
+    r#"
+    .section .text
+    .global exhi_syscall_entry
+    .type exhi_syscall_entry, @function
+exhi_syscall_entry:
+    # SYSCALL leaves RSP on the untrusted user stack. Save it to kernel data
+    # before switching to the dedicated TSS.RSP0 stack top.
+    mov qword ptr [rip + RING3_USER_RSP], rsp
+    mov rsp, qword ptr [rip + RING3_KERNEL_STACK_TOP]
+
+    # Save the SYSCALL-clobbered state and all user argument registers.
+    # Ten pushes preserve 16-byte alignment before the Rust call.
+    push qword ptr [rip + RING3_USER_RSP]
+    push r11
+    push rcx
+    push r8
+    push r10
+    push rdx
+    push rsi
+    push rdi
+    push rax
+    push r9
+    # Stack now: r9, rax(number), rdi, rsi, rdx, r10, r8, rcx, r11, user_rsp.
+    # The syscall handler's sixth argument is in R9.
+    mov rdi, qword ptr [rsp + 8]
+    mov rsi, qword ptr [rsp + 16]
+    mov rdx, qword ptr [rsp + 24]
+    mov rcx, qword ptr [rsp + 32]
+    mov r8,  qword ptr [rsp + 40]
+    mov r9,  qword ptr [rsp]
+    cld
+    call exhi_syscall_handler
+
+    # Keep returned RAX, discard saved user R9 and original syscall number,
+    # restore all remaining user GPRs, then return with SYSRETQ.
+    add rsp, 16
+    pop rdi
+    pop rsi
+    pop rdx
+    pop r10
+    pop r8
+    pop rcx
+    pop r11
+    pop rsp
+    sysretq
+"#
+);
 
 fn reclaim_user_address_space() -> bool {
     if address_space::restore_kernel().is_err() {
@@ -486,6 +678,8 @@ fn finish(passed: bool) -> ! {
         (1, false) => b"P5.1: ring3 entry and exception-return smoke test failed.\r\n",
         (2, true) => b"P5.2: supervisor-only mapping fault test passed.\r\n",
         (2, false) => b"P5.2: supervisor-only mapping fault test failed.\r\n",
+        (3, true) => b"P5.3: syscall entry/return smoke test passed.\r\n",
+        (3, false) => b"P5.3: syscall entry/return smoke test failed.\r\n",
         (_, true) => b"Ring 3 runtime smoke test passed.\r\n",
         (_, false) => b"Ring 3 runtime smoke test failed.\r\n",
     };
