@@ -410,6 +410,13 @@ impl AddressSpace {
         translate_from_root(self.root_frame, virtual_address)
     }
 
+    /// Returns whether this address space is the active CR3 root.
+    pub fn is_active(&self) -> Result<bool, AddressSpaceError> {
+        ensure_initialized()?;
+        self.ensure_live()?;
+        Ok(is_active(self.root_frame))
+    }
+
     /// Switches CR3 to this address space. The caller must restore the kernel
     /// root before destroying the space or returning to code without shared maps.
     pub fn activate(&self) -> Result<(), AddressSpaceError> {
