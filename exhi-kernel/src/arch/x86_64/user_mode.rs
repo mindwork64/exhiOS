@@ -29,6 +29,7 @@ enum Ring3TestMode {
     SupervisorFault = 2,
     Syscall = 3,
     PointerValidation = 4,
+    UserCopy = 5,
 }
 
 static RING3_SUPERVISOR_PROBE: u64 = 0x4558_4849_4F53_5046;
@@ -100,6 +101,11 @@ pub fn user_pointer_validation_smoke_test() -> ! {
     run_ring3_test(Ring3TestMode::PointerValidation)
 }
 
+#[cfg(feature = "user-copy-smoke-test")]
+pub fn user_copy_smoke_test() -> ! {
+    run_ring3_test(Ring3TestMode::UserCopy)
+}
+
 #[cfg(feature = "ring3-supervisor-fault-smoke-test")]
 pub fn ring3_supervisor_fault_smoke_test() -> ! {
     run_ring3_test(Ring3TestMode::SupervisorFault)
@@ -129,6 +135,7 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         Ring3TestMode::SupervisorFault => b"P5.2: preparing Ring 3 supervisor-isolation test.\r\n",
         Ring3TestMode::Syscall => b"P5.3: preparing Ring 3 SYSCALL/SYSRET test.\r\n",
         Ring3TestMode::PointerValidation => b"P5.4: preparing user-pointer range validation test.\r\n",
+        Ring3TestMode::UserCopy => b"P5.5: preparing safe user-copy runtime test.\r\n",
     });
 
     let Some(fx_state) = task::initialize_fx_state_for_user_mode() else {
@@ -254,6 +261,7 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         Ring3TestMode::SupervisorFault => b"P5.2: user RX code and RW+NX stack mapped; kernel probe is supervisor-only.\r\n",
         Ring3TestMode::Syscall => b"P5.3: user RX code and RW+NX stack mapped; syscall MSRs will be verified.\r\n",
         Ring3TestMode::PointerValidation => b"P5.4: user RX code, guard and RW+NX stack pages prepared.\r\n",
+        Ring3TestMode::UserCopy => b"P5.5: user RW+NX buffer and guard mappings prepared.\r\n",
     });
     serial::COM1.write(b"Ring 3: IRETQ enters CPL3; the expected CPU exception returns through TSS.RSP0.\r\n");
 
@@ -262,29 +270,41 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         let range_checks = space_slot
             .as_ref()
             .is_some_and(validate_user_pointer_ranges);
+        let cleanup_ok = reclaim_user_address_space();
+        let rsp0_cleared = gdt::set_rsp0(0) && gdt::read_rsp0() == 0;
+        serial::COM1.write(if range_checks {
+            b"P5.4: user/read/write/execute/guard/overflow range checks passed.\r\n"
+        } else {
+            b"P5.4: user-pointer range validation failed.\r\n"
+        });
+        finish(range_checks && cleanup_ok && rsp0_cleared);
+    }
+
+    if mode == Ring3TestMode::UserCopy {
+        let space_slot = unsafe { &*ptr::addr_of!(RING3_ADDRESS_SPACE) };
+        let inactive_rejected = space_slot.as_ref().is_some_and(|space| {
+            let mut byte = [0u8; 1];
+            copy_from_user(space, USER_STACK_ADDRESS, &mut byte)
+                == Err(UserRangeError::AddressSpaceNotActive)
+        });
         let copy_checks = if let Some(space) = space_slot.as_ref() {
-            if space.activate().is_ok() {
-                validate_user_copy_runtime(space)
-            } else {
-                false
-            }
+            space.activate().is_ok() && validate_user_copy_runtime(space)
         } else {
             false
         };
         let cleanup_ok = reclaim_user_address_space();
         let rsp0_cleared = gdt::set_rsp0(0) && gdt::read_rsp0() == 0;
-        let pointers_valid = range_checks && copy_checks;
-        serial::COM1.write(if range_checks {
-            b"P5.4: user/read/write/execute/guard/overflow range checks passed.\r\n"
+        serial::COM1.write(if inactive_rejected {
+            b"P5.5: inactive address-space copy rejected.\r\n"
         } else {
-            b"P5.4: user-pointer range validation failed.\r\n"
+            b"P5.5: inactive address-space copy was not rejected.\r\n"
         });
         serial::COM1.write(if copy_checks {
             b"P5.5: copy_from_user/copy_to_user round-trip and atomic rejection passed.\r\n"
         } else {
             b"P5.5: user-copy runtime test failed.\r\n"
         });
-        finish(pointers_valid && cleanup_ok && rsp0_cleared);
+        finish(inactive_rejected && copy_checks && cleanup_ok && rsp0_cleared);
     }
 
     #[cfg(feature = "ring3-syscall-smoke-test")]
@@ -354,7 +374,7 @@ fn build_user_code(
             code[23] = 0xCC; // Should be unreachable if supervisor protection works.
             (code, 24, 14, 0x7, 0x5, 20, address)
         }
-        Ring3TestMode::PointerValidation => {
+        Ring3TestMode::PointerValidation | Ring3TestMode::UserCopy => {
             code[9] = 0xCC;
             (code, 10, 3, u64::MAX, 0, USER_CODE_LENGTH, 0)
         }
@@ -406,6 +426,7 @@ pub fn handle_user_exception(
         Ring3TestMode::SupervisorFault => b"P5.2: exception returned from user mode; vector=",
         Ring3TestMode::Syscall => b"P5.3: exception returned from user mode after SYSCALL; vector=",
         Ring3TestMode::PointerValidation => b"P5.4: unexpected exception during pointer validation; vector=",
+        Ring3TestMode::UserCopy => b"P5.5: unexpected exception during user-copy test; vector=",
     });
     serial::COM1.write_hex(vector);
     serial::COM1.write(b" CPL=");
@@ -522,6 +543,7 @@ pub fn handle_user_exception(
         Ring3TestMode::SupervisorFault => b"P5.2: user supervisor-access fault RIP/RSP/SS verified.\r\n",
         Ring3TestMode::Syscall => b"P5.3: syscall returned to CPL3; return value and user frame verified.\r\n",
         Ring3TestMode::PointerValidation => b"P5.4: pointer-range verification completed.\r\n",
+        Ring3TestMode::UserCopy => b"P5.5: user-copy round-trip verified.\r\n",
     });
     serial::COM1.write(b"Ring 3: CR2=0x");
     serial::COM1.write_hex(fault_address);
@@ -975,6 +997,8 @@ fn finish(passed: bool) -> ! {
         (3, false) => b"P5.3: syscall entry/return smoke test failed.\r\n",
         (4, true) => b"P5.4: user-pointer range validation smoke test passed.\r\n",
         (4, false) => b"P5.4: user-pointer range validation smoke test failed.\r\n",
+        (5, true) => b"P5.5: safe user-copy smoke test passed.\r\n",
+        (5, false) => b"P5.5: safe user-copy smoke test failed.\r\n",
         (_, true) => b"Ring 3 runtime smoke test passed.\r\n",
         (_, false) => b"Ring 3 runtime smoke test failed.\r\n",
     };
