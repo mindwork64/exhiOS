@@ -733,6 +733,12 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         halt_forever();
     }
 
+    #[cfg(feature = "user-pointer-range-smoke-test")]
+    {
+        kernel_console.write(b"P5.4: starting the user-pointer range validation test.\r\n");
+        arch::x86_64::user_mode::user_pointer_validation_smoke_test();
+    }
+
     #[cfg(feature = "ring3-syscall-smoke-test")]
     {
         kernel_console.write(b"P5.3: starting the Ring 3 SYSCALL/SYSRET round-trip test.\r\n");
