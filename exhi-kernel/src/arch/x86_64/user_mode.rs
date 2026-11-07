@@ -20,11 +20,11 @@ use exhi_syscall::{dispatch as dispatch_syscall, DispatchOutcome, SyscallService
 use exhi_task::{Capability, CapabilitySet, Scheduler, TaskContext, TaskId, UserTaskMetadata};
 
 use super::address_space::{self, AddressSpace, UserPageFlags};
-use super::{gdt, serial, task, vmm};
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 use super::syscall;
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 use super::syscall::UserTaskSyscallFrame as UserTaskInterruptFrame;
+use super::{gdt, serial, task, vmm};
 use crate::memory;
 
 const PAGE_SIZE: u64 = 4096;
