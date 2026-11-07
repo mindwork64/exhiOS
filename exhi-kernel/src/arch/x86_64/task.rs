@@ -202,8 +202,8 @@ pub fn context_switch_smoke_test() -> bool {
             && (*scheduler).finished_count() == TASK_COUNT
     };
 
-    let a_local = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_A_LOCAL)) as u64 };
-    let b_local = unsafe { ptr::read_volatile(ptr::addr_of!(EXHIOS_P4_4_B_LOCAL)) as u64 };
+    let a_local = TASK_A_LOCAL_ADDRESS.load(Ordering::Relaxed) as u64;
+    let b_local = TASK_B_LOCAL_ADDRESS.load(Ordering::Relaxed) as u64;
     let a_stack_base = unsafe { ptr::addr_of!(TASK_STACKS[0]) as u64 };
     let b_stack_base = unsafe { ptr::addr_of!(TASK_STACKS[1]) as u64 };
     let a_local_valid = a_local >= a_stack_base + PAGE_SIZE as u64 && a_local < a_top;
