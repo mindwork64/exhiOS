@@ -1021,9 +1021,6 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
         ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_CODE_FRAMES), [0; 2]);
         ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_STACK_FRAMES), [0; 2]);
         ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_KERNEL_STACK_TOPS), [0; 3]);
-        ptr::write_volatile(ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_USER_RSP), 0);
-        ptr::write_volatile(ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_KERNEL_STACK_TOP), 0);
-        ptr::write_volatile(ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_FX_STATE), 0);
         ptr::write_volatile(
             ptr::addr_of_mut!(USER_TASK_COUNTERS),
             UserTaskCounters {
@@ -1163,18 +1160,12 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
         user_task_setup_failed(b"P5.6: scheduler did not select user task A first.\r\n");
     }
 
-    if !super::syscall::initialize(exhi_user_task_syscall_entry as *const () as u64).is_ok() {
-        user_task_setup_failed(b"P5.6: syscall entry MSR setup failed.\r\n");
+    let initial_fx_state = ptr::addr_of!(USER_TASK_FX_STATES[0]) as usize;
+    if !syscall::initialize_smoke_test_cpu_local(kernel_tops[0], initial_fx_state) {
+        user_task_setup_failed(b"P5.6: boot CPU syscall-local setup failed.\r\n");
     }
-    unsafe {
-        ptr::write_volatile(
-            ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_KERNEL_STACK_TOP),
-            kernel_tops[0],
-        );
-        ptr::write_volatile(
-            ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_FX_STATE),
-            ptr::addr_of!(USER_TASK_FX_STATES[0]) as usize,
-        );
+    if !syscall::initialize(exhi_user_task_syscall_entry as *const () as u64).is_ok() {
+        user_task_setup_failed(b"P5.6: syscall entry MSR setup failed.\r\n");
     }
     let space_slot = unsafe { &*ptr::addr_of!(USER_TASK_SPACE_A) };
     if !space_slot
@@ -1555,22 +1546,19 @@ fn user_task_select_context(id: TaskId) -> usize {
                 b"P5.6: failed to activate the selected user address space.\r\n",
             );
         }
-        unsafe {
-            ptr::write_volatile(ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_KERNEL_STACK_TOP), top);
-            ptr::write_volatile(
-                ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_FX_STATE),
-                metadata.fx_state_pointer(),
+        if !syscall::update_smoke_test_task_context(top, metadata.fx_state_pointer()) {
+            user_task_runtime_failed(
+                b"P5.6: failed to publish the selected task syscall context.\r\n",
             );
         }
     } else {
         if index != 2 || address_space::restore_kernel().is_err() || !gdt::set_rsp0(top) {
             user_task_runtime_failed(b"P5.6: failed to switch to the kernel reaper context.\r\n");
         }
-        unsafe {
-            ptr::write_volatile(ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_KERNEL_STACK_TOP), top);
-            ptr::write_volatile(
-                ptr::addr_of_mut!(syscall::USER_TASK_SYSCALL_FX_STATE),
-                ptr::addr_of!(USER_TASK_FX_STATES[2]) as usize,
+        let reaper_fx_state = ptr::addr_of!(USER_TASK_FX_STATES[2]) as usize;
+        if !syscall::update_smoke_test_task_context(top, reaper_fx_state) {
+            user_task_runtime_failed(
+                b"P5.6: failed to publish the kernel reaper syscall context.\r\n",
             );
         }
     }
