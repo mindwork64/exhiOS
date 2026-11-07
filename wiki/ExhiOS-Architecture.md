@@ -225,4 +225,15 @@ A separate opt-in path extends the P4.4 interrupt scheduler with an actual task-
 - When the last task finishes, the scheduler has no current task. The test clears TSS.RSP0 and the active FX-state pointer, masks IRQ0 and terminates QEMU using the controlled debug-exit device.
 - This stage does not yet reap or free finished task stacks. They remain static and valid for diagnostics; safe stack reclamation is a later lifecycle stage.
 - Task A returns first after a preempted interval; task B resumes and runs alone until it returns. Self-hosted CI [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555) passed build and the full QEMU regression suite. P4.5 serial: 0x18 elapsed PIT ticks, 0x10 timer switches, runtime A=0x8/B=0xA, both Finished, XMM preserved, stacks distinct, scheduler current=none/Finished=2, TSS.RSP0 cleared, IRQ0 masked, pass marker and debug-exit 33.
-- Local Linux Mint/QEMU acceptance is pending. This path remains single-CPU Ring 0 with legacy PIT/PIC; blocked-task wake-up and idle-context dispatch are not implemented yet.
+- User-local Linux Mint/QEMU (2026-11-07) confirms elapsed=0x18, switches=0x10, runtime A/B=0x8/0x10, both tasks Finished, XMM preserved, distinct stacks, current=none/Finished=2, TSS.RSP0 cleared, IRQ0 masked, pass marker and debug-exit 33. P4.5 is closed locally and in self-hosted CI. This path remains single-CPU Ring 0 with legacy PIT/PIC; blocked-task wake-up and idle-context dispatch are not yet implemented.
+
+
+## P4.6 — Idle context and blocked-task wake-up (planned)
+
+- Add an explicit scheduler idle state when no task is Running but one or more tasks are Blocked. Idle is an architecture-owned execution context, not a user task record and not a fake `Running` task.
+- Prepare a guarded idle stack with the same 20-qword interrupt frame used by the P4.4/P4.5 IRETQ path. Keep task contexts, idle context and cooperative P4.2 saved-RSP frames type-distinct at their call sites.
+- A task blocks through a dedicated kernel scheduling interrupt. The common interrupt save path records the task's full GPR/FXSAVE/IRETQ state before selecting another Ready task or the idle context.
+- Idle executes `sti; hlt`. PIT IRQ0 records the idle interrupt frame, wakes eligible Blocked tasks and dispatches a task through its saved interrupt context, updating TSS.RSP0 and the active FX state.
+- A returning task with only Blocked peers must enter idle rather than terminating the runtime or leaving no path to wake those peers.
+- Acceptance: host scheduler tests for idle entry/exit and invalid wake transitions; QEMU runtime proof that all runnable tasks can block, CPU reaches idle, timer wakes each task, each resumes its saved context and finishes; P4.4/P4.5 regression modes stay green.
+- Scope remains Ring 0, single CPU, PIT/legacy PIC and static guarded stacks. Safe stack reclamation is a separate later step.

@@ -435,3 +435,11 @@ Implementation:
 - Code commits: [dd10f58](https://github.com/mindwork64/exhiOS/commit/dd10f5882ddb3085595b4d6eef45474b0649e56d), [377e73c](https://github.com/mindwork64/exhiOS/commit/377e73c20e2928116d04cd3141ddbc36db9df89a). The second commit fixes linker visibility of the task-exit trampolines in the timer-preemption test build.
 - Self-hosted CI [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555) passed all host tests/build variants and the complete QEMU runtime suite, including prior P4.4. P4.5 serial: elapsed=0x18 PIT ticks, switches=0x10, runtime A=0x8/B=0xA; both tasks Finished; XMM preserved; stacks distinct; scheduler current=none/Finished=2; TSS.RSP0 cleared; IRQ0 masked; P4.5 pass marker; debug-exit 33.
 - Local Linux Mint/QEMU acceptance is pending. Idle-context dispatch, blocked-task wake-up and stack reclamation are not yet part of this slice.
+
+## 2026-11-07 — P4.5 local Linux Mint/QEMU acceptance
+
+- User supplied the complete local QEMU serial log for `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PREEMPTIVE_TASK_EXIT_TEST=1 ./scripts/run-qemu.sh`.
+- Runtime values: elapsed PIT ticks=0x18, preemption switches=0x10, task A runtime=0x8, task B runtime=0x10. Both tasks reported Finished=yes; XMM state A/B=preserved; task stacks distinct=yes.
+- Scheduler state: current=none, Finished=2; TSS.RSP0 cleared=yes; IRQ0 masked=yes. The P4.5 pass marker appeared and QEMU debug-exit was confirmed with status 33.
+- P4.5 is now accepted both locally and in self-hosted CI [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555). Static task stacks are still intentionally unreclaimed.
+- Next stage: P4.6 idle-context dispatch and timer-driven wake-up of blocked tasks, with a separate interrupt-format idle frame and no mixing with cooperative P4.2 contexts.

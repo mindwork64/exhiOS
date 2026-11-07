@@ -195,13 +195,23 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] Локальный Linux Mint/QEMU (2026-11-07): elapsed=0x12 ticks, switches=0x12, runtime A=0x9/B=0x9, XMM preserved, stacks distinct=yes, TSS.RSP0 active=yes, IRQ0 masked=yes, pass marker и debug-exit 33.
 
 ### P4.5 — Preemptive task termination
-**Реализация и self-hosted CI runtime завершены; ожидается локальная Linux Mint/QEMU приёмка.**
+**Завершено; local Linux Mint/QEMU и self-hosted CI приняты 2026-11-07.**
 - [x] Отдельный feature/test mode `preemptive-task-exit-smoke-test` / `EXHIOS_PREEMPTIVE_TASK_EXIT_TEST=1`; P4.4 runtime test оставлен отдельной регрессией.
 - [x] Returning task entry вызывает terminal trampoline на собственном стеке. Он запрещает interrupts, начисляет финальный runtime, переводит current task в Finished через `Scheduler::finish_current()`, выбирает Ready peer и восстанавливает его interrupt frame через IRETQ.
 - [x] Последняя завершившаяся задача оставляет scheduler без current task; test очищает TSS.RSP0 и active FX-state pointer, маскирует IRQ0 и выполняет controlled debug-exit. Память стеков пока статическая и не освобождается.
 - [x] Проверены две задачи без cooperative yield: A завершилась первой; B продолжила работу и затем тоже вернулась. Проверяются оба Finished state, отсутствие current/Ready/Blocked задач, runtime, frame bounds, XMM, отдельные stacks, очищенный TSS.RSP0 и IRQ0 mask.
 - [x] Self-hosted CI [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555): build и все QEMU regression modes прошли. P4.5 serial: elapsed=0x18 ticks, switches=0x10, runtime A=0x8/B=0xA, A finished=yes, B finished=yes, XMM preserved, stacks distinct=yes, current=none, Finished=2, TSS.RSP0 cleared=yes, IRQ0 masked=yes, pass marker, debug-exit 33.
-- [ ] Локальный Linux Mint/QEMU: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PREEMPTIVE_TASK_EXIT_TEST=1 ./scripts/run-qemu.sh`; требуется пользовательский serial log для приёмки.
+- [x] Локальный Linux Mint/QEMU (2026-11-07): elapsed=0x18, switches=0x10, runtime A/B=0x8/0x10, A/B Finished, XMM preserved, stacks distinct, current=none/Finished=2, TSS.RSP0 cleared, IRQ0 masked, pass marker и debug-exit 33.
+
+### P4.6 — Idle context and blocked-task wake-up
+**Следующий этап; реализация ещё не начата.**
+- [ ] Явное idle-состояние scheduler при отсутствии Ready tasks и наличии Blocked tasks; idle не является фиктивной пользовательской Task.
+- [ ] Отдельный guarded idle stack + 20-qword long-mode interrupt frame. Cooperative P4.2 RSP contexts не смешивать с IRETQ contexts.
+- [ ] Dedicated kernel scheduling interrupt для блокировки current task и переключения на Ready peer или idle context.
+- [ ] Idle loop `sti; hlt`; PIT IRQ0 сохраняет idle frame, будит Blocked task и dispatches её сохранённый interrupt context с обновлением TSS.RSP0 и FXSAVE.
+- [ ] Возврат задачи при наличии только Blocked peers переключает в idle, а не завершает runtime.
+- [ ] Host tests для idle entry/exit и QEMU runtime test: обе задачи блокируются, CPU входит в idle, timer будит каждую задачу, обе продолжают с сохранённого контекста и завершаются.
+- [ ] Сохранить P4.4 и P4.5 отдельными регрессионными режимами. Ring 0, single CPU, PIT/legacy PIC; освобождение стеков — отдельный этап.
 
 ## P5 — User-mode isolation
 - [ ] Ring 3, per-process address spaces, syscalls, user-pointer validation, capabilities.

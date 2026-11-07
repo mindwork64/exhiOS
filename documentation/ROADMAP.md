@@ -123,8 +123,8 @@
 - [x] CPU context save/restore for cooperative Ring 0 tasks.
 - [x] Cooperative round-robin scheduler.
 - [x] Timer-driven preemption for Ring 0 tasks (local Linux Mint/QEMU + self-hosted CI accepted).
-- [ ] Preemptive task termination and Finished-state handoff (self-hosted CI runtime passed; local Linux Mint/QEMU acceptance pending).
-- [ ] Idle-context dispatch and wake-up of blocked tasks.
+- [x] Preemptive task termination and Finished-state handoff (local Linux Mint/QEMU + self-hosted CI accepted 2026-11-07).
+- [ ] Idle-context dispatch and wake-up of blocked tasks: dedicated idle interrupt frame/stack, block syscall path, PIT wake-up and dispatch from idle; keep cooperative and interrupt contexts separate.
 
 ## P5 — User-mode isolation
 

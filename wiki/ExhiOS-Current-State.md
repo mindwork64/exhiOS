@@ -3,7 +3,7 @@
 Снимок: **2026-11-07**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: P3.5, P4.1, P4.2, P4.3 и P4.4 закрыты локально + CI. P4.4 принят пользователем на Linux Mint/QEMU 2026-11-07. P4.5 preemptive task termination реализован и прошёл self-hosted CI [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555); локальная Linux Mint/QEMU-приёмка P4.5 ожидается. Текущие commits: [dd10f58](https://github.com/mindwork64/exhiOS/commit/dd10f5882ddb3085595b4d6eef45474b0649e56d), [377e73c](https://github.com/mindwork64/exhiOS/commit/377e73c20e2928116d04cd3141ddbc36db9df89a).
+Кодовый checkpoint: P3.5 и P4.1–P4.5 закрыты локально + self-hosted CI. P4.5 принят пользователем на Linux Mint/QEMU 2026-11-07: elapsed=0x18, switches=0x10, runtime A/B=0x8/0x10, обе задачи Finished, XMM сохранены, стеки различаются, scheduler current=none/Finished=2, TSS.RSP0 очищен, IRQ0 замаскирован, pass marker и debug-exit 33. Код P4.5: [dd10f58](https://github.com/mindwork64/exhiOS/commit/dd10f5882ddb3085595b4d6eef45474b0649e56d), [377e73c](https://github.com/mindwork64/exhiOS/commit/377e73c20e2928116d04cd3141ddbc36db9df89a). Следующий этап — P4.6: idle context и пробуждение заблокированных задач.
 
 ## Закрыто и проверено в QEMU
 
@@ -305,11 +305,18 @@ Implementation:
 - Two Ring 0 tasks busy-loop without cooperative yields. Self-hosted CI [run 42334341610](https://github.com/mindwork64/exhiOS/actions/runs/42334341610) and regression workflow [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555) passed all build and QEMU jobs: 18 PIT ticks, 18 preemption switches, A/B runtime=9/9, XMM state preserved for both, distinct task stacks, active TSS.RSP0, IRQ0 masked, P4.4 pass marker and debug-exit 33.
 - User-local Linux Mint/QEMU (2026-11-07): elapsed=0x12, switches=0x12, runtime A/B=0x9/0x9, XMM preserved, stacks distinct, TSS.RSP0 active, IRQ0 masked, pass marker and debug-exit 33. P4.4 is closed. Scope remains Ring 0, single CPU and PIT/legacy PIC; Ring 3 and syscalls remain in P5.
 
-## P4.5 — Preemptive task termination (CI runtime passed; local pending)
+## P4.5 — Preemptive task termination (local + self-hosted CI accepted)
 
 - New feature alias: `preemptive-task-exit-smoke-test`; runtime command: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PREEMPTIVE_TASK_EXIT_TEST=1 ./scripts/run-qemu.sh`.
 - The dedicated assembly bootstrap calls `exhi_preemptive_task_finished` when a preemptive task entry returns. The Rust path disables interrupts, accounts the final PIT runtime interval, calls `Scheduler::finish_current()` and either dispatches the next task's saved interrupt frame through IRETQ or shuts down the last-task test.
 - On dispatch it validates the next task frame and stack bounds, updates TSS.RSP0, updates the active FXSAVE area and restores the next task with the common interrupt-context entry. When no Ready tasks remain, it clears TSS.RSP0 and active FX-state pointer, masks IRQ0 and requests controlled QEMU debug-exit.
 - Task stacks are static and are not yet reaped or freed. Idle-context dispatch and blocked-task wake-up remain future work.
 - Self-hosted CI [run 42335136555](https://github.com/mindwork64/exhiOS/actions/runs/42335136555) passed build and all QEMU regressions. Serial: elapsed=0x18, switches=0x10, runtime A=0x8/B=0xA, both tasks Finished, XMM preserved, stacks distinct, current=none, Finished=2, TSS.RSP0 cleared, IRQ0 masked, P4.5 pass marker and debug-exit 33.
-- Local Linux Mint/QEMU acceptance is pending.
+- Local Linux Mint/QEMU (2026-11-07): user serial log confirms elapsed=0x18, switches=0x10, runtime A/B=0x8/0x10; both tasks Finished; XMM state preserved; stacks distinct; current=none/Finished=2; TSS.RSP0 cleared; IRQ0 masked; P4.5 pass marker and debug-exit 33. P4.5 is closed locally and in CI.
+
+## Следующий этап — P4.6: idle context and blocked-task wake-up
+
+- Introduce an explicit idle execution context distinct from schedulable task records. When the last runnable task blocks, the scheduler must enter idle instead of returning `NoRunnableTask` or leaving a blocked task marked Running.
+- Use a dedicated interrupt-format context frame for idle, matching the existing 20-qword long-mode IRETQ frame; do not pass cooperative saved-RSP frames to the IRQ restore path.
+- While idle, `sti; hlt` waits for timer interrupts. IRQ0 can wake blocked tasks and dispatch their saved interrupt frames, restoring the selected task's TSS.RSP0 and FXSAVE state.
+- Preserve P4.4/P4.5 as separate regression modes. Keep Ring 0, one CPU, PIT/legacy PIC, static stacks; stack reclamation remains separate.
