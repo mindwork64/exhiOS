@@ -94,6 +94,7 @@ pub struct Scheduler<const CAPACITY: usize> {
     task_count: usize,
     next_id: u64,
     current_index: Option<usize>,
+    idle_active: bool,
 }
 
 impl<const CAPACITY: usize> Scheduler<CAPACITY> {
@@ -103,6 +104,7 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
             task_count: 0,
             next_id: 1,
             current_index: None,
+            idle_active: false,
         }
     }
 
@@ -137,7 +139,7 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
 
     /// Starts the first Ready task.
     pub fn start(&mut self) -> Result<TaskId, SchedulerError> {
-        if self.current_index.is_some() {
+        if self.current_index.is_some() || self.idle_active {
             return Err(SchedulerError::AlreadyStarted);
         }
         let index = self.find_ready_from(0).ok_or(SchedulerError::NoRunnableTask)?;
@@ -214,6 +216,68 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
         self.slots[next].as_mut().expect("ready slot exists").state = TaskState::Running;
         self.current_index = Some(next);
         Ok(next_id)
+    }
+
+    /// Blocks the current task and enters the architecture-owned idle state
+    /// when no Ready peer exists. A None result means the caller must switch
+    /// to its separate idle CPU context rather than restore a task.
+    pub fn block_current_or_idle(&mut self) -> Result<Option<TaskId>, SchedulerError> {
+        let current = self.current_index.ok_or(SchedulerError::NotStarted)?;
+        let running = self.slots[current].as_ref().ok_or(SchedulerError::NotFound)?;
+        if running.state != TaskState::Running {
+            return Err(SchedulerError::InvalidStateTransition);
+        }
+
+        let next = self.find_next_ready(current);
+        self.slots[current].as_mut().expect("running slot exists").state = TaskState::Blocked;
+        if let Some(index) = next {
+            let task = self.slots[index].as_mut().expect("ready slot exists");
+            task.state = TaskState::Running;
+            let id = task.id;
+            self.current_index = Some(index);
+            self.idle_active = false;
+            Ok(Some(id))
+        } else {
+            self.current_index = None;
+            self.idle_active = true;
+            Ok(None)
+        }
+    }
+
+    /// Enters idle after a running task finishes while peers remain Blocked.
+    /// There must be no current or Ready task; at least one task must be Blocked.
+    pub fn enter_idle(&mut self) -> Result<(), SchedulerError> {
+        if self.current_index.is_some()
+            || self.idle_active
+            || self.ready_count() != 0
+            || self.blocked_count() == 0
+        {
+            return Err(SchedulerError::InvalidStateTransition);
+        }
+        self.idle_active = true;
+        Ok(())
+    }
+
+    /// Selects the next Ready task after an interrupt wakes the CPU from idle.
+    /// Returns Ok(None) when no task is Ready and the CPU must remain idle.
+    pub fn schedule_from_idle(&mut self) -> Result<Option<TaskId>, SchedulerError> {
+        if !self.idle_active || self.current_index.is_some() {
+            return Err(SchedulerError::InvalidStateTransition);
+        }
+        let Some(index) = self.find_ready_from(0) else {
+            return Ok(None);
+        };
+        let task = self.slots[index].as_mut().expect("ready slot exists");
+        task.state = TaskState::Running;
+        let id = task.id;
+        self.current_index = Some(index);
+        self.idle_active = false;
+        Ok(Some(id))
+    }
+
+    /// True while the CPU is executing the architecture-owned idle context.
+    pub const fn is_idle(&self) -> bool {
+        self.idle_active
     }
 
     /// Wakes a Blocked task, making it Ready.
@@ -388,6 +452,56 @@ mod tests {
         scheduler.block_current().unwrap();
         scheduler.finish_current().unwrap();
         assert_eq!(scheduler.wake(first), Ok(()));
+    }
+
+    #[test]
+    fn last_runnable_task_blocks_into_idle_and_resumes_after_wake() {
+        let mut scheduler = Scheduler::<1>::new();
+        let only = scheduler.spawn("only", context(0x1000)).unwrap();
+        assert_eq!(scheduler.start(), Ok(only));
+        assert_eq!(scheduler.block_current_or_idle(), Ok(None));
+        assert!(scheduler.is_idle());
+        assert_eq!(scheduler.current(), None);
+        assert_eq!(scheduler.blocked_count(), 1);
+        assert_eq!(scheduler.schedule_from_idle(), Ok(None));
+        assert_eq!(scheduler.wake(only), Ok(()));
+        assert_eq!(scheduler.schedule_from_idle(), Ok(Some(only)));
+        assert!(!scheduler.is_idle());
+        assert_eq!(scheduler.current().map(Task::id), Some(only));
+        assert_eq!(scheduler.get(only).map(Task::state), Some(TaskState::Running));
+    }
+
+    #[test]
+    fn finishing_last_running_task_can_enter_idle_for_blocked_peer() {
+        let mut scheduler = Scheduler::<2>::new();
+        let first = scheduler.spawn("first", context(0x1000)).unwrap();
+        let second = scheduler.spawn("second", context(0x2000)).unwrap();
+        assert_eq!(scheduler.start(), Ok(first));
+        assert_eq!(scheduler.block_current_or_idle(), Ok(Some(second)));
+        assert_eq!(scheduler.finish_current(), Ok(None));
+        assert_eq!(scheduler.current(), None);
+        assert_eq!(scheduler.blocked_count(), 1);
+        assert_eq!(scheduler.enter_idle(), Ok(()));
+        assert!(scheduler.is_idle());
+        assert_eq!(scheduler.wake(first), Err(SchedulerError::InvalidStateTransition));
+        assert_eq!(scheduler.wake(second), Ok(()));
+        assert_eq!(scheduler.schedule_from_idle(), Ok(Some(second)));
+        assert_eq!(scheduler.current().map(Task::id), Some(second));
+    }
+
+    #[test]
+    fn idle_state_rejects_invalid_entry_and_dispatch() {
+        let mut scheduler = Scheduler::<2>::new();
+        assert_eq!(scheduler.enter_idle(), Err(SchedulerError::InvalidStateTransition));
+        assert_eq!(scheduler.schedule_from_idle(), Err(SchedulerError::InvalidStateTransition));
+        let first = scheduler.spawn("first", context(0x1000)).unwrap();
+        scheduler.start().unwrap();
+        assert_eq!(scheduler.enter_idle(), Err(SchedulerError::InvalidStateTransition));
+        assert_eq!(scheduler.block_current_or_idle(), Ok(None));
+        assert_eq!(scheduler.block_current_or_idle(), Err(SchedulerError::NotStarted));
+        assert_eq!(scheduler.enter_idle(), Err(SchedulerError::InvalidStateTransition));
+        assert_eq!(scheduler.wake(first), Ok(()));
+        assert_eq!(scheduler.schedule_from_idle(), Ok(Some(first)));
     }
 
     #[test]
