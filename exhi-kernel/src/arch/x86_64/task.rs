@@ -86,9 +86,13 @@ struct InterruptContext {
     rdi: u64, rsi: u64, rbp: u64, rbx: u64,
     rdx: u64, rcx: u64, rax: u64,
     rip: u64, cs: u64, rflags: u64,
+    // In 64-bit mode the CPU always saves and IRETQ always restores RSP:SS,
+    // including interrupts and returns that remain at CPL0.
+    rsp: u64,
+    ss: u64,
 }
 #[cfg(feature = "timer-preemption-smoke-test")]
-const _: [(); 18 * size_of::<u64>()] = [(); size_of::<InterruptContext>()];
+const _: [(); 20 * size_of::<u64>()] = [(); size_of::<InterruptContext>()];
 
 static mut SCHEDULER: Scheduler<TASK_COUNT> = Scheduler::new();
 static mut BOOT_STACK_POINTER: usize = 0;
@@ -569,6 +573,10 @@ unsafe fn prepare_preemption_stack(
         rip: exhi_preemptive_task_bootstrap as *const () as usize as u64,
         cs: u64::from(gdt::KERNEL_CODE_SELECTOR),
         rflags: 0x202,
+        // IRETQ in 64-bit mode consumes all five architectural return slots.
+        // The task begins at the top of its private Ring 0 stack.
+        rsp: top,
+        ss: u64::from(gdt::KERNEL_DATA_SELECTOR),
     };
     unsafe {
         ptr::write(rsp as *mut InterruptContext, frame);

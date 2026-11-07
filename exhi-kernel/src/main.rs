@@ -795,6 +795,22 @@ pub extern "sysv64" fn exhi_exception_handler(
     serial::COM1.write_hex(flags);
     serial::COM1.write(b"\r\n");
 
+    // A fatal exception in the opt-in P4.4 QEMU test must terminate the guest
+    // with the failure debug-exit value instead of leaving CI stuck in HLT.
+    #[cfg(feature = "timer-preemption-smoke-test")]
+    {
+        serial::COM1.write(b"P4.4: fatal CPU exception; aborting preemption smoke test.\r\n");
+        unsafe {
+            asm!(
+                "out dx, eax",
+                in("dx") QEMU_DEBUG_EXIT_PORT,
+                in("eax") (QEMU_DEBUG_EXIT_VALUE + 1),
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+        serial::COM1.write(b"P4.4: QEMU debug-exit device did not terminate the guest.\r\n");
+    }
+
     if vector == 8 {
         serial::COM1.write(b"Exception stack pointer: 0x");
         serial::COM1.write_hex(exception_stack_pointer);
