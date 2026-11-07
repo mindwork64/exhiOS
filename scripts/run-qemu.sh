@@ -76,7 +76,7 @@ fi
 
 "$ROOT_DIR/scripts/build.sh"
 
-for tool in qemu-system-x86_64 sgdisk mformat mmd mcopy; do
+for tool in qemu-system-x86_64 sgdisk mformat mmd mcopy timeout; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "Missing required tool: $tool" >&2
         echo "On Debian/Ubuntu install: qemu-system-x86 ovmf gdisk mtools dosfstools" >&2
@@ -193,7 +193,11 @@ fi
 echo "EFI application and kernel ELF are on the same GPT EFI System Partition."
 
 set +e
-qemu-system-x86_64 "${QEMU_ARGS[@]}"
+if [[ "$TIMER_PREEMPTION_TEST" == "1" ]]; then
+    timeout --foreground 15s qemu-system-x86_64 "${QEMU_ARGS[@]}"
+else
+    qemu-system-x86_64 "${QEMU_ARGS[@]}"
+fi
 QEMU_STATUS=$?
 set -e
 
