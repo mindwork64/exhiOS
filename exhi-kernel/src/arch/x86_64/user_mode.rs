@@ -1671,9 +1671,18 @@ fn report_user_task_saved_context(id: TaskId, label: &'static [u8]) {
         if let Some((base, top)) = user_task_stack_bounds(index) {
             let end = (frame_address as u64)
                 .checked_add(size_of::<UserTaskInterruptFrame>() as u64);
+            let min = base + PAGE_SIZE;
             let in_bounds = frame_address != 0
-                && (frame_address as u64) >= base + PAGE_SIZE
+                && (frame_address as u64) >= min
                 && end.map_or(false, |value| value <= top);
+            serial::COM1.write(b" base=0x");
+            serial::COM1.write_hex(base);
+            serial::COM1.write(b" min=0x");
+            serial::COM1.write_hex(min);
+            serial::COM1.write(b" top=0x");
+            serial::COM1.write_hex(top);
+            serial::COM1.write(b" end=0x");
+            serial::COM1.write_hex(end.unwrap_or(0));
             serial::COM1.write(b" stack=");
             serial::COM1.write(if in_bounds { b"in" } else { b"out" });
             if in_bounds {
