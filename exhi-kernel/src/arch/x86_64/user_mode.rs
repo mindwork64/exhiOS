@@ -28,6 +28,7 @@ enum Ring3TestMode {
     Breakpoint = 1,
     SupervisorFault = 2,
     Syscall = 3,
+    PointerValidation = 4,
 }
 
 static RING3_SUPERVISOR_PROBE: u64 = 0x4558_4849_4F53_5046;
@@ -94,6 +95,11 @@ pub fn ring3_syscall_smoke_test() -> ! {
     run_ring3_test(Ring3TestMode::Syscall)
 }
 
+#[cfg(feature = "user-pointer-range-smoke-test")]
+pub fn user_pointer_validation_smoke_test() -> ! {
+    run_ring3_test(Ring3TestMode::PointerValidation)
+}
+
 #[cfg(feature = "ring3-supervisor-fault-smoke-test")]
 pub fn ring3_supervisor_fault_smoke_test() -> ! {
     run_ring3_test(Ring3TestMode::SupervisorFault)
@@ -122,6 +128,7 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         Ring3TestMode::Breakpoint => b"P5.1: preparing isolated Ring 3 address space.\r\n",
         Ring3TestMode::SupervisorFault => b"P5.2: preparing Ring 3 supervisor-isolation test.\r\n",
         Ring3TestMode::Syscall => b"P5.3: preparing Ring 3 SYSCALL/SYSRET test.\r\n",
+        Ring3TestMode::PointerValidation => b"P5.4: preparing user-pointer range validation test.\r\n",
     });
 
     let Some(fx_state) = task::initialize_fx_state_for_user_mode() else {
@@ -246,8 +253,24 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         Ring3TestMode::Breakpoint => b"P5.1: user code mapped RX; user stack mapped RW+NX.\r\n",
         Ring3TestMode::SupervisorFault => b"P5.2: user RX code and RW+NX stack mapped; kernel probe is supervisor-only.\r\n",
         Ring3TestMode::Syscall => b"P5.3: user RX code and RW+NX stack mapped; syscall MSRs will be verified.\r\n",
+        Ring3TestMode::PointerValidation => b"P5.4: user RX code, guard and RW+NX stack pages prepared.\r\n",
     });
     serial::COM1.write(b"Ring 3: IRETQ enters CPL3; the expected CPU exception returns through TSS.RSP0.\r\n");
+
+    if mode == Ring3TestMode::PointerValidation {
+        let space_slot = unsafe { &*ptr::addr_of!(RING3_ADDRESS_SPACE) };
+        let pointers_valid = space_slot
+            .as_ref()
+            .is_some_and(validate_user_pointer_ranges);
+        let cleanup_ok = reclaim_user_address_space();
+        let rsp0_cleared = gdt::set_rsp0(0) && gdt::read_rsp0() == 0;
+        serial::COM1.write(if pointers_valid {
+            b"P5.4: user/read/write/execute/guard/overflow range checks passed.\r\n"
+        } else {
+            b"P5.4: user-pointer range validation failed.\r\n"
+        });
+        finish(pointers_valid && cleanup_ok && rsp0_cleared);
+    }
 
     #[cfg(feature = "ring3-syscall-smoke-test")]
     if mode == Ring3TestMode::Syscall {
@@ -315,6 +338,10 @@ fn build_user_code(
             code[20..23].copy_from_slice(&[0x48, 0x8B, 0x00]); // mov rax, [rax]
             code[23] = 0xCC; // Should be unreachable if supervisor protection works.
             (code, 24, 14, 0x7, 0x5, 20, address)
+        }
+        Ring3TestMode::PointerValidation => {
+            code[9] = 0xCC;
+            (code, 10, 3, u64::MAX, 0, USER_CODE_LENGTH, 0)
         }
         Ring3TestMode::Syscall => {
             let mut position = 10;
@@ -647,6 +674,124 @@ exhi_syscall_entry:
     jmp .Lsyscall_halt
 "#
 );
+
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UserAccess {
+    Read,
+    Write,
+    Execute,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UserRangeError {
+    AddressOverflow,
+    RangeTooLarge,
+    NotUserMemory,
+    PermissionDenied,
+    AddressSpace(address_space::AddressSpaceError),
+}
+
+const MAX_USER_POINTER_RANGE: u64 = 16 * 1024 * 1024;
+
+/// Validates every page touched by a user buffer before a syscall accesses it.
+/// Zero-length buffers are accepted without dereferencing their pointer.
+pub fn validate_user_range(
+    space: &AddressSpace,
+    address: u64,
+    length: usize,
+    access: UserAccess,
+) -> Result<(), UserRangeError> {
+    if length == 0 {
+        return Ok(());
+    }
+    let length = u64::try_from(length).map_err(|_| UserRangeError::RangeTooLarge)?;
+    if length > MAX_USER_POINTER_RANGE {
+        return Err(UserRangeError::RangeTooLarge);
+    }
+    let last = address
+        .checked_add(length - 1)
+        .ok_or(UserRangeError::AddressOverflow)?;
+    let mut page = address & !(PAGE_SIZE - 1);
+    let last_page = last & !(PAGE_SIZE - 1);
+
+    loop {
+        let mapping = space
+            .translate(page)
+            .map_err(UserRangeError::AddressSpace)?;
+        if !mapping.user {
+            return Err(UserRangeError::NotUserMemory);
+        }
+        let permitted = match access {
+            UserAccess::Read => true,
+            UserAccess::Write => mapping.writable,
+            UserAccess::Execute => mapping.executable,
+        };
+        if !permitted {
+            return Err(UserRangeError::PermissionDenied);
+        }
+        if page == last_page {
+            break;
+        }
+        page = page
+            .checked_add(PAGE_SIZE)
+            .ok_or(UserRangeError::AddressOverflow)?;
+    }
+    Ok(())
+}
+
+fn validate_user_pointer_ranges(space: &AddressSpace) -> bool {
+    let code_read = validate_user_range(space, USER_CODE_ADDRESS, 10, UserAccess::Read).is_ok();
+    let code_execute = validate_user_range(space, USER_CODE_ADDRESS, 10, UserAccess::Execute).is_ok();
+    let code_write = validate_user_range(space, USER_CODE_ADDRESS, 1, UserAccess::Write)
+        == Err(UserRangeError::PermissionDenied);
+    let stack_read = validate_user_range(space, USER_STACK_ADDRESS, 32, UserAccess::Read).is_ok();
+    let stack_write = validate_user_range(space, USER_STACK_TOP - 32, 32, UserAccess::Write).is_ok();
+    let stack_execute = validate_user_range(space, USER_STACK_ADDRESS, 1, UserAccess::Execute)
+        == Err(UserRangeError::PermissionDenied);
+    let guard_rejected = matches!(
+        validate_user_range(
+            space,
+            USER_CODE_ADDRESS + PAGE_SIZE,
+            1,
+            UserAccess::Read,
+        ),
+        Err(UserRangeError::AddressSpace(_))
+    );
+    let crossing_guard_rejected = matches!(
+        validate_user_range(
+            space,
+            USER_CODE_ADDRESS + PAGE_SIZE - 8,
+            16,
+            UserAccess::Read,
+        ),
+        Err(UserRangeError::AddressSpace(_))
+    );
+    let supervisor_rejected = validate_user_range(
+        space,
+        ptr::addr_of!(RING3_SUPERVISOR_PROBE) as u64,
+        size_of::<u64>(),
+        UserAccess::Read,
+    ) == Err(UserRangeError::NotUserMemory);
+    let zero_length = validate_user_range(space, 0, 0, UserAccess::Read).is_ok();
+    let overflow = validate_user_range(
+        space,
+        u64::MAX - 3,
+        8,
+        UserAccess::Read,
+    ) == Err(UserRangeError::AddressOverflow);
+    let too_large = validate_user_range(
+        space,
+        USER_STACK_ADDRESS,
+        (MAX_USER_POINTER_RANGE + 1) as usize,
+        UserAccess::Read,
+    ) == Err(UserRangeError::RangeTooLarge);
+
+    code_read && code_execute && code_write
+        && stack_read && stack_write && stack_execute
+        && guard_rejected && crossing_guard_rejected
+        && supervisor_rejected && zero_length && overflow && too_large
+}
 
 fn reclaim_user_address_space() -> bool {
     if address_space::restore_kernel().is_err() {
