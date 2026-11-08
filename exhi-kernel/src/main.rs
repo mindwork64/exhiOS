@@ -313,7 +313,11 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial::COM1.write(b"\r\n");
 
             let invalid_unaligned_virtual = matches!(
-                vmm::map_page(0x4000_0001, 0x1000, vmm::PageFlags::kernel_data()),
+                vmm::map_page(
+                    0x4000_0001,
+                    0x1000,
+                    vmm::PageFlags::kernel_data(),
+                ),
                 Err(vmm::VmmError::UnalignedAddress)
             );
             let invalid_virtual_limit = matches!(
@@ -336,7 +340,9 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 serial::COM1.write(b"P2.2: invalid page-range rejection checks failed.\r\n");
                 halt_forever();
             }
-            serial::COM1.write(b"P2.2: unaligned, out-of-window virtual and out-of-range physical mappings rejected.\r\n");
+            serial::COM1.write(
+                b"P2.2: unaligned, out-of-window virtual and out-of-range physical mappings rejected.\r\n",
+            );
 
             if let Err(error) = stack_guard::install(stack_guard_reservation) {
                 serial::COM1.write(b"P2.6: failed to install kernel stack guard page: ");

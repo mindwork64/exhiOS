@@ -88,7 +88,9 @@ impl PagingError {
             Self::Cr3Mismatch => b"CR3 readback does not match the new PML4 address",
             Self::NotMapped => b"virtual address is not mapped",
             Self::IdentityMappingVerificationFailed => b"identity mapping verification failed",
-            Self::RollbackSmokeTestTriggered => b"paging rollback smoke test requested a controlled rollback",
+            Self::RollbackSmokeTestTriggered => {
+                b"paging rollback smoke test requested a controlled rollback"
+            }
         }
     }
 }
