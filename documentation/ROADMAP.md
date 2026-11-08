@@ -111,11 +111,13 @@
 
 ## P3 — Basic devices
 
-- [ ] Serial output.
-- [ ] Framebuffer output through the handoff data.
-- [ ] Timer source.
-- [ ] Keyboard input.
-- [ ] Initial driver registration model.
+- [x] Serial output: COM1 polling 16550 driver is initialized during boot and used for kernel diagnostics.
+- [x] Framebuffer output through the handoff data: GOP format and stride are validated and the unified COM1/framebuffer writer is initialized.
+- [x] Timer source: PIT channel 0 runs at 100 Hz; QEMU verifies monotonic tick advancement and clean IRQ0 masking.
+- [x] Keyboard input: i8042/PS/2 IRQ1 is initialized; headless QEMU receives actual A, Shift+B and Ctrl+D transitions over QMP, verifies eight decoded events, zero dropped scancodes and masks IRQ1 on exit.
+- [x] Initial driver registration model: UART, PIT and PS/2 keyboard are registered; the runtime registry smoke test verifies initialization state and zero failures.
+
+  - Runtime evidence: [CI run 384](https://github.com/mindwork64/exhiOS/actions/runs/42432439209) completed successfully. Its QEMU runtime job passed all device and system smoke scenarios, including automated keyboard input injection. The keyboard log reports events=8, dropped-scancodes=0, IRQ1-mask=0xFF and confirms A, Shift+B and Ctrl+D were observed.
 
 ## P4 — Tasks and scheduling
 
