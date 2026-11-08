@@ -98,13 +98,16 @@
 
 ### P2.2 — Bootstrap page tables
 
-- [ ] Review and integrate the initial four-level page-table builder.
-- [ ] Build a 0–4 GiB identity map using 2 MiB pages.
-- [ ] Switch CR3 and verify kernel, stack and page-table translations in QEMU.
-- [ ] Add controlled failure/rollback checks.
-- [ ] Integrate the virtual memory manager.
-- [ ] Integrate the kernel heap allocator.
-- [ ] Add tests for allocation, release, reuse, and invalid ranges.
+- [x] Review and integrate the initial four-level page-table builder.
+- [x] Build a 0–4 GiB identity map using 2 MiB pages.
+- [x] Switch CR3 and verify kernel, stack and page-table translations in QEMU.
+- [x] Add controlled failure/rollback checks; CI verifies a post-CR3 failure restores the exact original root and leaves initialization retryable.
+- [x] Integrate the virtual memory manager.
+- [x] Integrate the kernel heap allocator.
+- [x] Add tests for allocation, release, reuse, and invalid ranges.
+  
+  - Runtime evidence: the self-hosted QEMU run verifies the six-page bootstrap hierarchy, CR3 read-back, kernel/stack/table identity translations, rejection of unaligned and out-of-window mappings, VMM split/map/unmap/TLB invalidation, heap growth/free/reuse, and address-space frame reclamation. A separate controlled rollback run confirms restoration of the original CR3 after a simulated post-switch failure.
+  - CI: [run 380](https://github.com/mindwork64/exhiOS/actions/runs/42432075760) completed successfully, including the rollback scenario.
 
 ## P3 — Basic devices
 
