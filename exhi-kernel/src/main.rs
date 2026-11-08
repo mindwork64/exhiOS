@@ -313,27 +313,15 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial::COM1.write(b"\r\n");
 
             let invalid_unaligned_virtual = matches!(
-                vmm::map_page(
-                    0x4000_0001,
-                    0x1000,
-                    vmm::PageFlags::kernel_data(),
-                ),
+                vmm::map_page(0x4000_0001, 0x1000, vmm::PageFlags::kernel_data(),),
                 Err(vmm::VmmError::UnalignedAddress)
             );
             let invalid_virtual_limit = matches!(
-                vmm::map_page(
-                    0x0000_0080_0000_0000,
-                    0x1000,
-                    vmm::PageFlags::kernel_data(),
-                ),
+                vmm::map_page(0x0000_0080_0000_0000, 0x1000, vmm::PageFlags::kernel_data(),),
                 Err(vmm::VmmError::AddressOutOfRange)
             );
             let invalid_physical_limit = matches!(
-                vmm::map_page(
-                    0x4000_0000,
-                    0x1_0000_0000,
-                    vmm::PageFlags::kernel_data(),
-                ),
+                vmm::map_page(0x4000_0000, 0x1_0000_0000, vmm::PageFlags::kernel_data(),),
                 Err(vmm::VmmError::AddressOutOfRange)
             );
             if !(invalid_unaligned_virtual && invalid_virtual_limit && invalid_physical_limit) {
