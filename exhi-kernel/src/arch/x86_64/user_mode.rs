@@ -26,7 +26,9 @@ use super::syscall;
 use super::syscall::UserTaskSyscallFrame as UserTaskInterruptFrame;
 #[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
 use super::user;
-pub use super::user::{copy_from_user, copy_to_user, validate_user_range, UserAccess, UserRangeError};
+pub use super::user {
+    copy_from_user, copy_to_user, validate_user_range, UserAccess, UserRangeError,
+};
 use super::{gdt, serial, task, vmm};
 use crate::memory;
 

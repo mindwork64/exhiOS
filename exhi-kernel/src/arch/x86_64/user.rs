@@ -319,7 +319,6 @@ pub fn capture_exception(
     })
 }
 
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UserAccess {
     Read,
@@ -443,10 +442,7 @@ fn ensure_user_copy_context(space: &AddressSpace) -> Result<(), UserRangeError> 
     if interrupts_enabled() {
         return Err(UserRangeError::InterruptsEnabled);
     }
-    if !space
-        .is_active()
-        .map_err(UserRangeError::AddressSpace)?
-    {
+    if !space.is_active().map_err(UserRangeError::AddressSpace)? {
         return Err(UserRangeError::AddressSpaceNotActive);
     }
     Ok(())
