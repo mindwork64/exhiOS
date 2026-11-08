@@ -24,7 +24,9 @@ use super::address_space::{self, AddressSpace, UserPageFlags};
 use super::syscall;
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 use super::syscall::UserTaskSyscallFrame as UserTaskInterruptFrame;
-use super::{gdt, serial, task, user, vmm};
+#[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
+use super::user;
+use super::{gdt, serial, task, vmm};
 use crate::memory;
 
 const PAGE_SIZE: u64 = 4096;
@@ -121,6 +123,10 @@ static mut RING3_KERNEL_STACK_TOP: u64 = 0;
 static mut RING3_ADDRESS_SPACE: Option<AddressSpace> = None;
 static mut RING3_CODE_FRAME: u64 = 0;
 static mut RING3_STACK_FRAME: u64 = 0;
+
+unsafe extern "sysv64" {
+    fn exhi_interrupt_context_start(initial_rsp: usize, fx_state: usize) -> !;
+}
 
 #[cfg(feature = "ring3-syscall-smoke-test")]
 unsafe extern "sysv64" {
@@ -399,7 +405,7 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
     )
     .unwrap_or_else(|_| setup_failed(b"P5.1: production user-entry validation failed.\r\n"));
     match user::enter_user(&frame, fx_state) {
-        Ok(never) => match never {},
+        Ok(()) => setup_failed(b"P5.1: user-entry assembly unexpectedly returned.\r\n"),
         Err(_) => setup_failed(b"P5.1: production user-entry handoff failed validation.\r\n"),
     }
 }

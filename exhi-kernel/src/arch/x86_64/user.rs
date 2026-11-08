@@ -6,7 +6,7 @@
 //! fault scheduling are separate milestones.
 
 use core::arch::{asm, global_asm};
-use core::convert::Infallible;
+
 use core::mem::size_of;
 use core::ptr;
 
@@ -38,7 +38,7 @@ impl FxState {
         if interrupts_enabled() {
             return Err(UserEntryError::InterruptsEnabled);
         }
-        let features = unsafe { core::arch::x86_64::__cpuid(1) };
+        let features = core::arch::x86_64::__cpuid(1);
         const REQUIRED_FEATURES: u32 = (1 << 24) | (1 << 25) | (1 << 26);
         if features.edx & REQUIRED_FEATURES != REQUIRED_FEATURES {
             return Err(UserEntryError::FxStateUnsupported);
@@ -241,7 +241,7 @@ pub fn prepare_entry(
 pub fn enter_user(
     frame: &UserEntryFrame,
     fx_state: &FxState,
-) -> Result<Infallible, UserEntryError> {
+) -> Result<(), UserEntryError> {
     let frame_pointer = frame as *const UserEntryFrame as u64;
     let fx_pointer = fx_state as *const FxState as u64;
     if frame_pointer & 0xF != 0 || !is_kernel_canonical(frame_pointer) {
@@ -260,7 +260,7 @@ pub fn enter_user(
 
     // SAFETY: prepare_entry made the TSS stack active; both objects are
     // supervisor RW+NX mappings shared by the active address space.
-    Ok(unsafe { exhi_user_iret_entry(frame, fx_state) })
+    unsafe { exhi_user_iret_entry(frame, fx_state) }
 }
 
 /// Validates the full seven-qword hardware privilege-return frame before
