@@ -23,6 +23,7 @@ user-pointer-range-smoke-test = ["ring3-smoke-test"]
 user-copy-smoke-test = ["ring3-smoke-test"]
 user-task-lifecycle-smoke-test = ["ring3-smoke-test"]
 paging-rollback-smoke-test = ["qemu-debug-exit-smoke-test"]
+vfs-smoke-test = ["qemu-debug-exit-smoke-test"]
 
 [[bin]]
 name = "exhi-kernel"
@@ -39,3 +40,4 @@ exhi-input.workspace = true
 exhi-driver.workspace = true
 exhi-task.workspace = true
 exhi-syscall.workspace = true
+exhi-vfs.workspace = true

@@ -23,6 +23,7 @@ USER_TASK_LIFECYCLE_TEST="${EXHIOS_USER_TASK_LIFECYCLE_TEST:-0}"
 CONTEXT_SWITCH_TEST="${EXHIOS_CONTEXT_SWITCH_TEST:-0}"
 SERIAL_RX_TEST="${EXHIOS_SERIAL_RX_TEST:-0}"
 PAGING_ROLLBACK_TEST="${EXHIOS_PAGING_ROLLBACK_TEST:-0}"
+VFS_TEST="${EXHIOS_VFS_TEST:-0}"
 QMP_SOCKET="$ROOT_DIR/target/exhios-keyboard-qmp.sock"
 
 if [[ "$EXCEPTION_TEST" == "1" && "$QEMU_EXIT_TEST" == "1" ]]; then
@@ -30,6 +31,10 @@ if [[ "$EXCEPTION_TEST" == "1" && "$QEMU_EXIT_TEST" == "1" ]]; then
     exit 1
 fi
 
+if [[ "$VFS_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
+    echo "EXHIOS_VFS_TEST requires EXHIOS_QEMU_EXIT_TEST=1 for controlled QEMU shutdown." >&2
+    exit 1
+fi
 if [[ "$PAGING_ROLLBACK_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
     echo "EXHIOS_PAGING_ROLLBACK_TEST requires EXHIOS_QEMU_EXIT_TEST=1 for controlled QEMU shutdown." >&2
     exit 1
@@ -254,7 +259,10 @@ if [[ "$KEYBOARD_TEST" == "1" ]]; then
     QEMU_ARGS+=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
 fi
 
-if [[ "$PAGING_ROLLBACK_TEST" == "1" ]]; then
+if [[ "$VFS_TEST" == "1" ]]; then
+    echo "Starting ExhiOS VFS/RAMFS runtime smoke test."
+    QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
+elif [[ "$PAGING_ROLLBACK_TEST" == "1" ]]; then
     echo "Starting ExhiOS controlled page-table CR3 rollback smoke test."
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
 elif [[ "$USER_TASK_LIFECYCLE_TEST" == "1" ]]; then

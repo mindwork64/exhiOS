@@ -71,6 +71,9 @@ jobs:
       - name: Test syscall dispatcher
         run: cargo test -p exhi-syscall
 
+      - name: Test VFS and RAMFS
+        run: cargo test -p exhi-vfs
+
       - name: Build UEFI application
         run: cargo build -p exhi-boot --target x86_64-unknown-uefi
 
@@ -79,6 +82,9 @@ jobs:
 
       - name: Build kernel exception smoke-test variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features exception-smoke-test
+
+      - name: Build kernel VFS/RAMFS smoke-test variant
+        run: cargo build -p exhi-kernel --target x86_64-unknown-none --features vfs-smoke-test
 
       - name: Build kernel QEMU debug-exit variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features qemu-debug-exit-smoke-test
@@ -157,6 +163,9 @@ jobs:
 
       - name: Run headless UEFI and kernel smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run headless VFS/RAMFS file and directory smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_VFS_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
 
       - name: Run headless page-table CR3 rollback smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PAGING_ROLLBACK_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh

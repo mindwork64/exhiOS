@@ -334,6 +334,15 @@ if [[ "${EXHIOS_DRIVER_REGISTRY_TEST:-0}" == "1" ]]; then
     echo "Building the kernel with the driver registry runtime smoke test."
 fi
 
+if [[ "${EXHIOS_VFS_TEST:-0}" == "1" ]]; then
+    if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]]; then
+        echo "EXHIOS_VFS_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2
+        exit 1
+    fi
+    KERNEL_FEATURES+=(vfs-smoke-test)
+    echo "Building the kernel with the VFS/RAMFS runtime smoke test."
+fi
+
 if [[ "${EXHIOS_PAGING_ROLLBACK_TEST:-0}" == "1" ]]; then
     if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]]; then
         echo "EXHIOS_PAGING_ROLLBACK_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2

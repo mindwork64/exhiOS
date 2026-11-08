@@ -646,6 +646,29 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         ));
     }
 
+    #[cfg(feature = "vfs-smoke-test")]
+    {
+        let result = vfs_storage_smoke_test();
+        match result {
+            Ok(()) => kernel_console.write(b"P6: VFS/RAMFS runtime smoke test passed.\r\n"),
+            Err(error) => {
+                kernel_console.write(b"P6: VFS/RAMFS runtime smoke test failed: ");
+                kernel_console.write(error.as_str().as_bytes());
+                kernel_console.write(b"\r\n");
+            }
+        }
+        let exit_value = if result.is_ok() { 0x10u32 } else { 0x11u32 };
+        unsafe {
+            asm!(
+                "out dx, eax",
+                in("dx") 0xF4u16,
+                in("eax") exit_value,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+        halt_forever();
+    }
+
     #[cfg(feature = "timer-smoke-test")]
     {
         let timer_status = timer::initialize();
@@ -915,6 +938,67 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
 
 /// Fatal CPU-exception entry called by the assembly stubs.
 /// Arguments follow the x86-64 System V ABI.
+#[cfg(feature = "vfs-smoke-test")]
+fn vfs_storage_smoke_test() -> Result<(), exhi_vfs::VfsError> {
+    use exhi_vfs::{
+        create_directory_path, create_file_path, resolve_path, DirectoryEntry, FileSystem,
+        NodeKind, RamFs, VfsError,
+    };
+
+    let mut filesystem = RamFs::<8, 256>::new()?;
+    let root = filesystem.root();
+    let etc = create_directory_path(&mut filesystem, root, "/etc")?;
+    let config = create_file_path(&mut filesystem, root, "/etc/exhi.conf")?;
+    let data = b"boot.mode=ramfs\\nconsole=serial\\n";
+    if filesystem.write(config, 0, data)? != data.len() {
+        return Err(VfsError::FileTooLarge);
+    }
+    if resolve_path(&filesystem, root, "/etc//./exhi.conf")? != config
+        || resolve_path(&filesystem, etc, "../etc/exhi.conf")? != config
+    {
+        return Err(VfsError::NotFound);
+    }
+
+    let mut readback = [0u8; 64];
+    let count = filesystem.read(config, 0, &mut readback)?;
+    if count != data.len() || &readback[..count] != data {
+        return Err(VfsError::NotFound);
+    }
+
+    let placeholder = DirectoryEntry {
+        id: root,
+        name: filesystem.metadata(root)?.name,
+        kind: NodeKind::Directory,
+        size: 0,
+    };
+    let mut entries = [placeholder; 2];
+    let mut cursor = 0;
+    let first = filesystem.read_directory(etc, &mut cursor, &mut entries)?;
+    if first != 1 || entries[0].id != config || entries[0].kind != NodeKind::File {
+        return Err(VfsError::NotFound);
+    }
+
+    if filesystem.write(config, 250, b"too large") != Err(VfsError::FileTooLarge) {
+        return Err(VfsError::FileTooLarge);
+    }
+    if filesystem.remove(etc) != Err(VfsError::DirectoryNotEmpty) {
+        return Err(VfsError::DirectoryNotEmpty);
+    }
+    filesystem.remove(config)?;
+    filesystem.remove(etc)?;
+
+    let stale = filesystem.create_file(root, "stale")?;
+    filesystem.remove(stale)?;
+    let fresh = filesystem.create_file(root, "fresh")?;
+    if stale.slot() != fresh.slot()
+        || stale.generation() == fresh.generation()
+        || filesystem.metadata(stale) != Err(VfsError::StaleNode)
+    {
+        return Err(VfsError::StaleNode);
+    }
+    Ok(())
+}
+
 #[no_mangle]
 pub extern "sysv64" fn exhi_exception_handler(
     vector: u64,
