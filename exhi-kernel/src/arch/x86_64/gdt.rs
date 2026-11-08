@@ -1,11 +1,6 @@
 use core::arch::{asm, global_asm};
 use core::mem::size_of;
 use core::ptr;
-#[cfg(any(
-    feature = "context-switch-smoke-test",
-    feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
-))]
 use core::sync::atomic::{compiler_fence, Ordering};
 
 pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
@@ -247,14 +242,10 @@ exhi_load_gdt:
 /// Updates the TSS RSP0 field for the currently active kernel task.
 ///
 /// Zero clears the field for the early boot context. Non-zero values must be
-/// 16-byte aligned and remain inside the mapped kernel physical range.
-#[cfg(any(
-    feature = "context-switch-smoke-test",
-    feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
-))]
+/// canonical and 16-byte aligned; the caller must ensure the complete kernel
+/// stack is mapped in every address space that can enter through this CPU.
 pub fn set_rsp0(stack_top: u64) -> bool {
-    if stack_top != 0 && (stack_top % 16 != 0 || stack_top >= PHYSICAL_LIMIT) {
+    if stack_top != 0 && (stack_top & 0xF != 0 || !is_canonical_address(stack_top)) {
         return false;
     }
 
@@ -274,12 +265,7 @@ pub fn set_rsp0(stack_top: u64) -> bool {
     unsafe { ptr::read_unaligned(rsp0_pointer) == stack_top }
 }
 
-/// Reads the current TSS RSP0 value for boot-time diagnostics and tests.
-#[cfg(any(
-    feature = "context-switch-smoke-test",
-    feature = "task-accounting-smoke-test",
-    feature = "timer-preemption-smoke-test"
-))]
+/// Reads the current TSS RSP0 value for boot diagnostics and user-entry setup.
 pub fn read_rsp0() -> u64 {
     let rsp0_pointer = unsafe {
         ptr::addr_of!(TSS.0)
@@ -290,3 +276,8 @@ pub fn read_rsp0() -> u64 {
     compiler_fence(Ordering::SeqCst);
     unsafe { ptr::read_unaligned(rsp0_pointer) }
 }
+
+const fn is_canonical_address(address: u64) -> bool {
+    address >> 47 == 0 || address >> 47 == 0x1_FFFF
+}
+

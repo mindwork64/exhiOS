@@ -131,7 +131,7 @@ pub fn initialize() -> IdtStatus {
             // Vector 8 (double fault) is the only initial exception gate that
             // uses IST. Its stack is prepared and loaded in the TSS by GDT init.
             let ist_index = if index == 8 { 1 } else { 0 };
-            let gate = if index == 3 && cfg!(feature = "ring3-smoke-test") {
+            let gate = if index == 3 {
                 // INT3 is a software-generated exception, so the processor
                 // checks this gate's DPL when CPL3 executes opcode CC. Keep
                 // every other exception gate supervisor-only.
@@ -219,11 +219,7 @@ pub fn initialize() -> IdtStatus {
     let breakpoint_gate_address = u64::from(breakpoint_gate.offset_low)
         | (u64::from(breakpoint_gate.offset_middle) << 16)
         | (u64::from(breakpoint_gate.offset_high) << 32);
-    let expected_breakpoint_attributes = if cfg!(feature = "ring3-smoke-test") {
-        USER_CALLABLE_INTERRUPT_GATE_ATTRIBUTES
-    } else {
-        INTERRUPT_GATE_ATTRIBUTES
-    };
+    let expected_breakpoint_attributes = USER_CALLABLE_INTERRUPT_GATE_ATTRIBUTES;
     let breakpoint_gate_valid = breakpoint_gate_address == handlers[3]
         && breakpoint_gate.selector == KERNEL_CODE_SELECTOR
         && breakpoint_gate.ist & 0x7 == 0
