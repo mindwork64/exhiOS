@@ -8,12 +8,8 @@
 //! tasks until CPU-local state, kernel stacks, and production dispatch are
 //! initialized for every online CPU.
 
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
-use core::arch::global_asm;
-use core::arch::{asm, x86_64::__cpuid};
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
+use core::arch::{asm, global_asm, x86_64::__cpuid};
 use core::mem::{offset_of, size_of};
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
 use core::ptr;
 
 use super::gdt::{
@@ -24,9 +20,7 @@ const IA32_EFER: u32 = 0xC000_0080;
 const IA32_STAR: u32 = 0xC000_0081;
 const IA32_LSTAR: u32 = 0xC000_0082;
 const IA32_FMASK: u32 = 0xC000_0084;
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
 const IA32_GS_BASE: u32 = 0xC000_0101;
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
 const IA32_KERNEL_GS_BASE: u32 = 0xC000_0102;
 const EFER_SCE: u64 = 1;
 const FMASK_BITS: u64 = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 18);
@@ -37,6 +31,7 @@ pub enum SyscallInitError {
     UnsupportedCpu,
     InvalidSegmentSelectors,
     ReadbackMismatch,
+    CpuLocalNotInitialized,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -58,6 +53,9 @@ pub fn initialize(entry: u64) -> Result<SyscallMsrState, SyscallInitError> {
     }
     if !segment_selectors_are_valid() {
         return Err(SyscallInitError::InvalidSegmentSelectors);
+    }
+    if !boot_cpu_context_is_ready() {
+        return Err(SyscallInitError::CpuLocalNotInitialized);
     }
 
     let max_extended = __cpuid(0x8000_0000);
@@ -146,95 +144,96 @@ unsafe fn write_msr(msr: u32, value: u64) {
     }
 }
 
-/// Boot-CPU syscall entry data used only by the Ring 3 lifecycle smoke test.
+/// Boot-CPU syscall entry data for the current single-CPU kernel.
 ///
-/// The layout is consumed directly by the entry stub through GS-relative
-/// offsets. This is a single-CPU test adapter, not an AP-ready per-CPU allocator.
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
+/// The structure is 64-byte aligned and accessed by fixed GS-relative offsets.
+/// An AP must receive its own instance before SYSCALL is enabled on that CPU.
 #[repr(C, align(64))]
 struct SyscallCpuLocal {
     user_rsp: u64,
     kernel_stack_top: u64,
     fx_state: usize,
+    dispatcher: usize,
 }
 
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
 static mut BOOT_CPU_SYSCALL_LOCAL: SyscallCpuLocal = SyscallCpuLocal {
     user_rsp: 0,
     kernel_stack_top: 0,
     fx_state: 0,
+    dispatcher: 0,
 };
 
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
 const _: [(); 0] = [(); offset_of!(SyscallCpuLocal, user_rsp)];
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
 const _: [(); 8] = [(); offset_of!(SyscallCpuLocal, kernel_stack_top)];
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
 const _: [(); 16] = [(); offset_of!(SyscallCpuLocal, fx_state)];
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
+const _: [(); 24] = [(); offset_of!(SyscallCpuLocal, dispatcher)];
 const _: [(); 64] = [(); size_of::<SyscallCpuLocal>()];
 
-/// Installs the smoke-test boot CPU's kernel GS base before enabling SYSCALL.
-///
-/// User GS starts at zero in this harness. SYSCALL swaps to the trusted kernel
-/// GS base before reading any entry state. Exception handlers must not assume
-/// GS is kernel-owned: an NMI can arrive on either side of SWAPGS.
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
-pub(crate) fn initialize_smoke_test_cpu_local(kernel_stack_top: u64, fx_state: usize) -> bool {
-    if !valid_entry_context(kernel_stack_top, fx_state) {
+/// Stable register image and IRETQ privilege-return tail.
+#[repr(C, align(16))]
+pub(crate) struct UserTaskSyscallFrame {
+    pub r15: u64, pub r14: u64, pub r13: u64, pub r12: u64, pub r11: u64,
+    pub r10: u64, pub r9: u64, pub r8: u64, pub rdi: u64, pub rsi: u64,
+    pub rbp: u64, pub rbx: u64, pub rdx: u64, pub rcx: u64, pub rax: u64,
+    pub rip: u64, pub cs: u64, pub rflags: u64, pub rsp: u64, pub ss: u64,
+}
+const _: [(); 20 * size_of::<u64>()] = [(); size_of::<UserTaskSyscallFrame>()];
+
+/// Installs the boot CPU context and trusted dispatcher before enabling SCE.
+/// User GS is zero until the TLS ABI is implemented. This BSP-only state must
+/// be replaced by an AP-local allocation before bringing up additional CPUs.
+pub fn initialize_cpu_local(kernel_stack_top: u64, fx_state: usize, dispatcher: usize) -> bool {
+    if !valid_entry_context(kernel_stack_top, fx_state)
+        || dispatcher == 0
+        || !is_canonical_address(dispatcher as u64)
+    {
         return false;
     }
-
     let local = ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL) as u64;
     if !is_canonical_address(local) || local & 0x3F != 0 {
         return false;
     }
-
     unsafe {
-        ptr::write_volatile(
-            ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top),
-            kernel_stack_top,
-        );
+        ptr::write_volatile(ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top), kernel_stack_top);
         ptr::write_volatile(ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.fx_state), fx_state);
+        ptr::write_volatile(ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.dispatcher), dispatcher);
     }
-
-    let previous_gs = unsafe { read_msr(IA32_GS_BASE) };
-    let previous_kernel_gs = unsafe { read_msr(IA32_KERNEL_GS_BASE) };
+    let old_gs = unsafe { read_msr(IA32_GS_BASE) };
+    let old_kernel_gs = unsafe { read_msr(IA32_KERNEL_GS_BASE) };
     unsafe {
         write_msr(IA32_GS_BASE, 0);
         write_msr(IA32_KERNEL_GS_BASE, local);
     }
     core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
-
-    let valid = unsafe { read_msr(IA32_GS_BASE) == 0 && read_msr(IA32_KERNEL_GS_BASE) == local };
+    let valid = unsafe {
+        read_msr(IA32_GS_BASE) == 0
+            && read_msr(IA32_KERNEL_GS_BASE) == local
+            && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top)) == kernel_stack_top
+            && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.fx_state)) == fx_state
+            && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.dispatcher)) == dispatcher
+    };
     if !valid {
         unsafe {
-            write_msr(IA32_GS_BASE, previous_gs);
-            write_msr(IA32_KERNEL_GS_BASE, previous_kernel_gs);
+            write_msr(IA32_GS_BASE, old_gs);
+            write_msr(IA32_KERNEL_GS_BASE, old_kernel_gs);
         }
     }
     valid
 }
 
-/// Publishes the next task's trusted syscall stack and FX-state pointer.
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
-pub(crate) fn update_smoke_test_task_context(kernel_stack_top: u64, fx_state: usize) -> bool {
-    if !valid_entry_context(kernel_stack_top, fx_state) {
+/// Updates trusted entry state before returning to another scheduled task.
+pub fn update_current_task_context(kernel_stack_top: u64, fx_state: usize) -> bool {
+    if !valid_entry_context(kernel_stack_top, fx_state) || !boot_cpu_context_is_ready() {
         return false;
     }
-
     unsafe {
-        ptr::write_volatile(
-            ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top),
-            kernel_stack_top,
-        );
+        ptr::write_volatile(ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top), kernel_stack_top);
         ptr::write_volatile(ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.fx_state), fx_state);
     }
     core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
     true
 }
 
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
 fn valid_entry_context(kernel_stack_top: u64, fx_state: usize) -> bool {
     kernel_stack_top != 0
         && kernel_stack_top & 0xF == 0
@@ -244,55 +243,55 @@ fn valid_entry_context(kernel_stack_top: u64, fx_state: usize) -> bool {
         && is_canonical_address(fx_state as u64)
 }
 
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
-#[repr(C, align(16))]
-pub(crate) struct UserTaskSyscallFrame {
-    pub r15: u64,
-    pub r14: u64,
-    pub r13: u64,
-    pub r12: u64,
-    pub r11: u64,
-    pub r10: u64,
-    pub r9: u64,
-    pub r8: u64,
-    pub rdi: u64,
-    pub rsi: u64,
-    pub rbp: u64,
-    pub rbx: u64,
-    pub rdx: u64,
-    pub rcx: u64,
-    pub rax: u64,
-    pub rip: u64,
-    pub cs: u64,
-    pub rflags: u64,
-    pub rsp: u64,
-    pub ss: u64,
+fn boot_cpu_context_is_ready() -> bool {
+    let local = ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL) as u64;
+    unsafe {
+        is_canonical_address(local)
+            && local & 0x3F == 0
+            && read_msr(IA32_GS_BASE) == 0
+            && read_msr(IA32_KERNEL_GS_BASE) == local
+            && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top)) != 0
+            && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.fx_state)) != 0
+            && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.dispatcher)) != 0
+    }
 }
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
-const _: [(); 20 * core::mem::size_of::<u64>()] =
-    [(); core::mem::size_of::<UserTaskSyscallFrame>()];
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
+pub(crate) fn initialize_smoke_test_cpu_local(kernel_stack_top: u64, fx_state: usize) -> bool {
+    unsafe extern "sysv64" {
+        fn exhi_user_task_syscall_handler(frame: *mut UserTaskSyscallFrame) -> usize;
+    }
+    initialize_cpu_local(kernel_stack_top, fx_state, exhi_user_task_syscall_handler as *const () as usize)
+}
+
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
+pub(crate) fn update_smoke_test_task_context(kernel_stack_top: u64, fx_state: usize) -> bool {
+    update_current_task_context(kernel_stack_top, fx_state)
+}
+
+/// Address to install in IA32_LSTAR.
+pub fn entry_address() -> u64 {
+    exhi_syscall_entry as *const () as u64
+}
+
+unsafe extern "sysv64" {
+    fn exhi_syscall_entry();
+}
+
 global_asm!(
     r#"
     .section .text
-    .global exhi_user_task_syscall_entry
-    .type exhi_user_task_syscall_entry, @function
-exhi_user_task_syscall_entry:
-    # SYSCALL leaves RSP on the untrusted user stack. SWAPGS selects the
-    # trusted boot-CPU entry context before touching memory or changing stacks.
+    .global exhi_syscall_entry
+    .type exhi_syscall_entry, @function
+exhi_syscall_entry:
     swapgs
     mov qword ptr gs:[0], rsp
     mov rsp, qword ptr gs:[8]
-
-    # First lay down the five-word privilege-return tail. The subsequent
-    # GPR pushes place r15..rax before this tail, matching InterruptContext.
     push 0x2B
     push qword ptr gs:[0]
     push r11
     push 0x33
     push rcx
-
     push rax
     push rcx
     push rdx
@@ -308,25 +307,22 @@ exhi_user_task_syscall_entry:
     push r13
     push r14
     push r15
-
     mov rax, qword ptr gs:[16]
     test rax, rax
-    jz .Luser_task_syscall_fatal
+    jz .Lexhi_syscall_fatal
     fxsave64 [rax]
-
     mov rdi, rsp
     and rsp, -16
     cld
-    call exhi_user_task_syscall_handler
+    mov rax, qword ptr gs:[24]
     test rax, rax
-    jz .Luser_task_syscall_fatal
-
-    # The scheduler handler selected the next task and updated CR3, TSS.RSP0,
-    # kernel-stack top and FX-state pointer before returning its saved frame.
+    jz .Lexhi_syscall_fatal
+    call rax
+    test rax, rax
+    jz .Lexhi_syscall_fatal
     mov rcx, qword ptr gs:[16]
     fxrstor64 [rcx]
     mov rsp, rax
-
     pop r15
     pop r14
     pop r13
@@ -342,18 +338,15 @@ exhi_user_task_syscall_entry:
     pop rdx
     pop rcx
     pop rax
-    # Restore the user GS base before IRETQ. The kernel GS base remains in
-    # IA32_KERNEL_GS_BASE for the next entry.
     swapgs
     iretq
-
-.Luser_task_syscall_fatal:
+.Lexhi_syscall_fatal:
     mov dx, 0xF4
     mov eax, 0x11
     out dx, eax
     cli
-.Luser_task_syscall_halt:
+.Lexhi_syscall_halt:
     hlt
-    jmp .Luser_task_syscall_halt
+    jmp .Lexhi_syscall_halt
     "#
 );
