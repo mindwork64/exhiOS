@@ -181,6 +181,21 @@ impl UserTaskMetadata {
         self.capabilities
     }
 
+    /// Replaces the grant set from trusted kernel process-management code.
+    pub fn set_capabilities(&mut self, capabilities: CapabilitySet) {
+        self.capabilities = capabilities;
+    }
+
+    /// Adds one explicitly approved capability to this process.
+    pub fn grant(&mut self, capability: Capability) {
+        self.capabilities = self.capabilities.with(capability);
+    }
+
+    /// Revokes one capability immediately at the next syscall boundary.
+    pub fn revoke(&mut self, capability: Capability) {
+        self.capabilities = self.capabilities.without(capability);
+    }
+
     pub const fn address_space_root(self) -> u64 {
         self.address_space_root
     }
@@ -273,6 +288,7 @@ pub enum SchedulerError {
     Full,
     InvalidContext,
     InvalidUserMetadata,
+    NotUserTask,
     CapabilityDenied,
     AlreadyStarted,
     NotStarted,
@@ -629,6 +645,27 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
             .and_then(|index| self.slots[index].as_ref())
     }
 
+    /// Returns the currently running process grants. Missing/kernel tasks get
+    /// the empty set, so callers cannot accidentally inherit kernel privileges.
+    pub fn current_capabilities(&self) -> CapabilitySet {
+        self.current()
+            .map(Task::capabilities)
+            .unwrap_or(CapabilitySet::EMPTY)
+    }
+
+    /// Replaces a user process grant set from trusted kernel process-management
+    /// code. Kernel tasks can never acquire user-service capabilities.
+    pub fn set_capabilities(
+        &mut self,
+        id: TaskId,
+        capabilities: CapabilitySet,
+    ) -> Result<(), SchedulerError> {
+        let task = self.get_mut(id).ok_or(SchedulerError::NotFound)?;
+        let metadata = task.user_metadata_mut().ok_or(SchedulerError::NotUserTask)?;
+        metadata.set_capabilities(capabilities);
+        Ok(())
+    }
+
     /// Checks the currently running task before a kernel service is entered.
     /// No current task, a kernel task, and an ungranted user task all deny.
     pub fn authorize_current(&self, capability: Capability) -> Result<(), SchedulerError> {
@@ -817,6 +854,37 @@ mod tests {
                 Err(SchedulerError::InvalidUserMetadata)
             );
         }
+    }
+
+    #[test]
+    fn capability_grants_are_empty_by_default_and_kernel_managed() {
+        let mut scheduler = Scheduler::<2>::new();
+        let metadata = UserTaskMetadata::new(0x2000, 0x2FF8, 0x4000, 0x5000);
+        let user = scheduler.spawn_user("user", context(0x3000), metadata).unwrap();
+        let kernel = scheduler.spawn("kernel", context(0x6000)).unwrap();
+
+        assert_eq!(scheduler.current_capabilities(), CapabilitySet::EMPTY);
+        assert_eq!(scheduler.set_capabilities(kernel, CapabilitySet::EMPTY.with(Capability::ConsoleWrite)), Err(SchedulerError::NotUserTask));
+        assert_eq!(scheduler.get(user).unwrap().capabilities(), CapabilitySet::EMPTY);
+        assert_eq!(CapabilitySet::from_bits(1 << 63), Err(CapabilitySetError::UnknownBits));
+
+        let grants = CapabilitySet::EMPTY
+            .with(Capability::TaskYield)
+            .with(Capability::ConsoleWrite);
+        scheduler.set_capabilities(user, grants).unwrap();
+        assert_eq!(scheduler.start(), Ok(user));
+        assert_eq!(scheduler.current_capabilities(), grants);
+        assert_eq!(scheduler.authorize_current(Capability::ConsoleWrite), Ok(()));
+        assert_eq!(scheduler.authorize_current(Capability::ConsoleRead), Err(SchedulerError::CapabilityDenied));
+
+        scheduler
+            .get_mut(user)
+            .unwrap()
+            .user_metadata_mut()
+            .unwrap()
+            .revoke(Capability::ConsoleWrite);
+        assert_eq!(scheduler.authorize_current(Capability::ConsoleWrite), Err(SchedulerError::CapabilityDenied));
+        assert!(scheduler.authorize_current(Capability::TaskYield).is_ok());
     }
 
     #[test]

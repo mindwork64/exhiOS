@@ -1408,13 +1408,13 @@ struct UserTaskSyscallServices {
 impl SyscallServices for UserTaskSyscallServices {
     type SwitchTarget = TaskId;
 
-    fn authorize(&self, capability: Capability) -> bool {
+    fn current_capabilities(&self) -> CapabilitySet {
         if self.scheduler.is_null() {
-            return false;
+            return CapabilitySet::EMPTY;
         }
         // SAFETY: The adapter is constructed only inside the syscall entry
         // with a pointer to the static scheduler; interrupts remain disabled.
-        unsafe { (*self.scheduler).authorize_current(capability).is_ok() }
+        unsafe { (*self.scheduler).current_capabilities() }
     }
 
     fn yield_current(&mut self) -> Result<Option<Self::SwitchTarget>, SyscallError> {

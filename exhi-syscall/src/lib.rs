@@ -8,7 +8,7 @@
 //! copying user memory before touching a service buffer.
 
 use exhi_abi::{SyscallError, SyscallNumber, SyscallRequest};
-use exhi_task::Capability;
+use exhi_task::{Capability, CapabilitySet};
 
 /// Result of dispatching a syscall. A switch target is opaque to this crate
 /// and is interpreted only by the architecture-specific context-switch code.
@@ -28,8 +28,9 @@ pub enum DispatchOutcome<T> {
 pub trait SyscallServices {
     type SwitchTarget;
 
-    /// Returns true only when the currently running task owns this grant.
-    fn authorize(&self, capability: Capability) -> bool;
+    /// Returns the effective grants of the currently running process.
+    /// A kernel task or missing current task must return CapabilitySet::EMPTY.
+    fn current_capabilities(&self) -> CapabilitySet;
 
     /// Yields the current task. None means the scheduler kept it running.
     fn yield_current(&mut self) -> Result<Option<Self::SwitchTarget>, SyscallError>;
@@ -65,7 +66,11 @@ pub fn dispatch<S: SyscallServices>(
         SyscallNumber::Exit => Capability::TaskExit,
         SyscallNumber::ConsoleWrite => Capability::ConsoleWrite,
     };
-    if !services.authorize(required_capability) {
+    if services
+        .current_capabilities()
+        .authorize(required_capability)
+        .is_err()
+    {
         return DispatchOutcome::Return(SyscallError::AccessDenied.as_return_value());
     }
 
@@ -123,8 +128,8 @@ mod tests {
     impl SyscallServices for MockServices {
         type SwitchTarget = u64;
 
-        fn authorize(&self, capability: Capability) -> bool {
-            self.capabilities.authorize(capability).is_ok()
+        fn current_capabilities(&self) -> CapabilitySet {
+            self.capabilities
         }
 
         fn yield_current(&mut self) -> Result<Option<Self::SwitchTarget>, SyscallError> {
