@@ -20,9 +20,15 @@ use exhi_syscall::{dispatch as dispatch_syscall, DispatchOutcome, SyscallService
 use exhi_task::{Capability, CapabilitySet, Scheduler, TaskContext, TaskId, UserTaskMetadata};
 
 use super::address_space::{self, AddressSpace, UserPageFlags};
-#[cfg(any(feature = "ring3-syscall-smoke-test", feature = "user-task-lifecycle-smoke-test"))]
+#[cfg(any(
+    feature = "ring3-syscall-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
+))]
 use super::syscall;
-#[cfg(any(feature = "ring3-syscall-smoke-test", feature = "user-task-lifecycle-smoke-test"))]
+#[cfg(any(
+    feature = "ring3-syscall-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
+))]
 use super::syscall::UserTaskSyscallFrame as UserTaskInterruptFrame;
 #[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
 use super::user;
@@ -685,9 +691,7 @@ pub fn handle_user_exception(
 
 #[cfg(feature = "ring3-syscall-smoke-test")]
 fn initialize_syscall_msrs() -> bool {
-    let kernel_stack_top = unsafe {
-        ptr::read_volatile(ptr::addr_of!(RING3_KERNEL_STACK_TOP))
-    };
+    let kernel_stack_top = unsafe { ptr::read_volatile(ptr::addr_of!(RING3_KERNEL_STACK_TOP)) };
     let fx_state = unsafe { ptr::read_volatile(ptr::addr_of!(RING3_FX_STATE)) };
     syscall::initialize_cpu_local(
         kernel_stack_top,
