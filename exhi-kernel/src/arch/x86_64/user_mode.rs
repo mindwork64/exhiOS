@@ -1853,9 +1853,8 @@ fn user_task_saved_context_matches(id: TaskId) -> bool {
     let Some((base, top)) = user_task_stack_bounds(index) else {
         return false;
     };
-    let cached_top = unsafe {
-        ptr::read_volatile(ptr::addr_of!(USER_TASK_KERNEL_STACK_TOPS[index]))
-    };
+    let cached_top =
+        unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_KERNEL_STACK_TOPS[index])) };
     if cached_top != top {
         return false;
     }
