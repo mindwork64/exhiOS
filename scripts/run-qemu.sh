@@ -333,8 +333,10 @@ if [[ "$KEYBOARD_TEST" == "1" ]]; then
     fi
 elif [[ "$TIMER_PREEMPTION_TEST" == "1" || "$PREEMPTIVE_TASK_EXIT_TEST" == "1" || "$IDLE_WAKEUP_TEST" == "1" || "$RING3_TEST" == "1" || "$RING3_SUPERVISOR_FAULT_TEST" == "1" || "$RING3_SYSCALL_TEST" == "1" || "$USER_POINTER_TEST" == "1" || "$USER_COPY_TEST" == "1" || "$USER_TASK_LIFECYCLE_TEST" == "1" ]]; then
     timeout --foreground 15s qemu-system-x86_64 "${QEMU_ARGS[@]}"
+    QEMU_STATUS=$?
 else
     qemu-system-x86_64 "${QEMU_ARGS[@]}"
+    QEMU_STATUS=$?
 fi
 set -e
 
