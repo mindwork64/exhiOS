@@ -172,7 +172,7 @@ const _: [(); 8] = [(); offset_of!(SyscallCpuLocal, kernel_stack_top)];
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 const _: [(); 16] = [(); offset_of!(SyscallCpuLocal, fx_state)];
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
-const _: [(); 24] = [(); size_of::<SyscallCpuLocal>()];
+const _: [(); 64] = [(); size_of::<SyscallCpuLocal>()];
 
 /// Installs the smoke-test boot CPU's kernel GS base before enabling SYSCALL.
 ///
