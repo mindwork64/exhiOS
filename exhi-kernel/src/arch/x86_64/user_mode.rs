@@ -26,9 +26,21 @@ use super::syscall;
 use super::syscall::UserTaskSyscallFrame as UserTaskInterruptFrame;
 #[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
 use super::user;
-pub use super::user::{
-    copy_from_user, copy_to_user, validate_user_range, UserAccess, UserRangeError,
-};
+#[cfg(feature = "user-pointer-range-smoke-test")]
+pub use super::user::{validate_user_range, UserAccess};
+#[cfg(any(
+    feature = "user-pointer-range-smoke-test",
+    feature = "user-copy-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
+))]
+pub use super::user::UserRangeError;
+#[cfg(any(
+    feature = "user-copy-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
+))]
+pub use super::user::copy_from_user;
+#[cfg(feature = "user-copy-smoke-test")]
+pub use super::user::copy_to_user;
 use super::{gdt, serial, task, vmm};
 use crate::memory;
 
@@ -773,6 +785,9 @@ exhi_syscall_entry:
     jmp .Lsyscall_halt
 "#
 );
+
+#[cfg(feature = "user-pointer-range-smoke-test")]
+const MAX_USER_POINTER_RANGE: u64 = 16 * 1024 * 1024;
 
 #[cfg(feature = "user-pointer-range-smoke-test")]
 fn validate_user_pointer_ranges(space: &AddressSpace) -> bool {
