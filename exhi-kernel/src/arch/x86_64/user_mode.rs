@@ -1160,7 +1160,7 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
         user_task_setup_failed(b"P5.6: scheduler did not select user task A first.\r\n");
     }
 
-    let initial_fx_state = ptr::addr_of!(USER_TASK_FX_STATES[0]) as usize;
+    let initial_fx_state = unsafe { ptr::addr_of!(USER_TASK_FX_STATES[0]) as usize };
     if !syscall::initialize_smoke_test_cpu_local(kernel_tops[0], initial_fx_state) {
         user_task_setup_failed(b"P5.6: boot CPU syscall-local setup failed.\r\n");
     }
@@ -1555,7 +1555,7 @@ fn user_task_select_context(id: TaskId) -> usize {
         if index != 2 || address_space::restore_kernel().is_err() || !gdt::set_rsp0(top) {
             user_task_runtime_failed(b"P5.6: failed to switch to the kernel reaper context.\r\n");
         }
-        let reaper_fx_state = ptr::addr_of!(USER_TASK_FX_STATES[2]) as usize;
+        let reaper_fx_state = unsafe { ptr::addr_of!(USER_TASK_FX_STATES[2]) as usize };
         if !syscall::update_smoke_test_task_context(top, reaper_fx_state) {
             user_task_runtime_failed(
                 b"P5.6: failed to publish the kernel reaper syscall context.\r\n",
