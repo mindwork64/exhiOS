@@ -1096,12 +1096,18 @@ fn keyboard_smoke_test(console: &mut KernelConsole, drivers: &mut DriverRegistry
         "P3.4: PS/2 keyboard ready; i8042 config=0x{:02X}, IRQ1 unmasked.\r\n",
         status.controller_config
     ));
-    console.write(b"P3.4: press keys; hold Ctrl and press D to finish this test.\r\n");
+    console.write(b"P3.4: waiting for injected A, Shift+B and Ctrl+D key transitions.\r\n");
 
     let mut event_count = 0u64;
+    let mut saw_a_press = false;
+    let mut saw_shift_b_press = false;
     loop {
         while let Some(event) = keyboard::try_read_event() {
             event_count = event_count.saturating_add(1);
+            saw_a_press |= event.pressed && event.key == exhi_input::KeyCode::A;
+            saw_shift_b_press |= event.pressed
+                && event.key == exhi_input::KeyCode::B
+                && event.modifiers.shift;
             console.write_fmt(format_args!(
                 "P3.4: {} key=0x{:02X} shift={} ctrl={} alt={} meta={} caps={} num={} scroll={}\r\n",
                 if event.pressed { "DOWN" } else { "UP" },
@@ -1124,8 +1130,13 @@ fn keyboard_smoke_test(console: &mut KernelConsole, drivers: &mut DriverRegistry
                     "P3.4: events={} dropped-scancodes={} IRQ1-mask=0x{:02X}\r\n",
                     event_count, dropped, pic_status.master_mask
                 ));
-                if dropped == 0 && pic_status.master_mask & 0x02 != 0 {
-                    console.write(b"P3.4: PS/2 IRQ1 keyboard runtime smoke test passed.\r\n");
+                if dropped == 0
+                    && event_count >= 6
+                    && saw_a_press
+                    && saw_shift_b_press
+                    && pic_status.master_mask & 0x02 != 0
+                {
+                    console.write(b"P3.4: A, Shift+B and Ctrl+D events verified; IRQ1 masked cleanly.\r\n");
                 } else {
                     console.write(b"P3.4: keyboard queue or PIC mask verification failed.\r\n");
                     halt_forever();

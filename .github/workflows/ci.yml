@@ -148,7 +148,7 @@ jobs:
 
       - name: Validate self-hosted QEMU dependencies
         run: |
-          for tool in rustup cargo readelf qemu-system-x86_64 sgdisk mformat mmd mcopy; do
+          for tool in rustup cargo readelf qemu-system-x86_64 sgdisk mformat mmd mcopy python3; do
             if ! command -v "$tool" >/dev/null 2>&1; then
               echo "Missing required self-hosted runner tool: $tool" >&2
               exit 1
@@ -163,6 +163,9 @@ jobs:
 
       - name: Run headless PIT IRQ0 timer smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run headless PS/2 keyboard IRQ1 input smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_KEYBOARD_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
 
       - name: Run headless driver registry smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_DRIVER_REGISTRY_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
