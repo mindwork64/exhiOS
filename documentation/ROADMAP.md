@@ -130,13 +130,13 @@
 
 ## P5 — User-mode isolation
 
-The implementation and dedicated headless QEMU smoke-test paths now exist for P5.1–P5.6. Keep these milestones open until the self-hosted QEMU runtime results have been reviewed and accepted.
+P5.1, P5.2, P5.4 and P5.5 have production architecture APIs and dedicated headless QEMU evidence. P5.3, P5.6 and P5.7 remain open until the common syscall entry, task lifecycle integration and service-boundary capability enforcement are verified.
 
-- [ ] **P5.1 — Ring 3 entry and CPL3 exception return:** user selectors, TSS.RSP0, isolated address space, and processor-originated exception return.
-- [ ] **P5.2 — Supervisor isolation:** verify that CPL3 cannot read supervisor-only kernel mappings.
+- [x] **P5.1 — Ring 3 entry and CPL3 exception return:** user selectors, TSS.RSP0, isolated address space, and processor-originated exception return.
+- [x] **P5.2 — Supervisor isolation:** verify that CPL3 cannot read supervisor-only kernel mappings.
 - [ ] **P5.3 — System-call entry/return:** configure SYSCALL MSRs, switch to a dedicated kernel stack, validate the return frame, and return to CPL3.
-- [ ] **P5.4 — User-pointer validation:** validate canonical ranges, mapped pages, and read/write/execute permissions before dereferencing.
-- [ ] **P5.5 — Safe user copies:** validate the complete range before copying and reject cross-boundary copies without partial writes.
+- [x] **P5.4 — User-pointer validation:** validate canonical ranges, mapped pages, and read/write/execute permissions before dereferencing.
+- [x] **P5.5 — Safe user copies:** validate the complete range before copying and reject cross-boundary copies without partial writes.
 - [ ] **P5.6 — User-task lifecycle:** run two isolated Ring 3 tasks with private CR3 roots and stacks; exercise SYSCALL yield/exit, idle dispatch, kernel reaping, address-space/frame reclamation, and removal of Finished scheduler records. Host scheduler lifecycle tests cover the exit-to-idle-to-reaper transition and safe task-record reclamation.
 - [ ] **P5.7 — Capabilities and default-deny access rules:** define process capabilities and enforce access checks at kernel service boundaries.
 
@@ -147,6 +147,9 @@ The implementation and dedicated headless QEMU smoke-test paths now exist for P5
   - Architecture progress (2026-11-07): x86-64 SYSCALL MSR programming has been extracted into the always-available `arch::x86_64::syscall` module. It validates the entry address, CPU SYSCALL support, GDT selector relationship, writes STAR/LSTAR/FMASK, enables EFER.SCE last, and rolls SCE back if read-back verification fails. Both P5.3 and P5.6 smoke paths now use this shared setup. This still does not provide a production entry stub, per-task kernel-stack selection, or process startup.
   - Entry-stub progress (2026-11-07): the P5.6 assembly entry, its normalized 20-qword syscall frame, and the assembly-visible user-RSP/kernel-stack/FX-state slots now live in `arch::x86_64::syscall`, rather than the general `user_mode` smoke harness. The scheduler-specific Rust handler remains in the smoke harness and is called through a narrow symbol boundary. The stub remains feature-gated and still uses smoke-runtime state; production per-CPU entry state, safe task-stack provisioning, and production dispatch integration are not complete.
   - GS-entry progress (2026-11-07): the lifecycle smoke adapter now stores its entry context in a 64-byte-aligned GS-relative boot-CPU structure. Initialization sets `IA32_GS_BASE` to the smoke harness's user-GS baseline and `IA32_KERNEL_GS_BASE` to the trusted context; the entry executes `SWAPGS` before reading the user RSP or switching stacks, and task selection updates the active kernel-stack/FX-state fields. This removes the previous assembly-visible global slots from the entry path, but it is still single-CPU test scaffolding: there is no per-AP allocation/installation, production GS-base policy, or fully SWAPGS-aware NMI/exception infrastructure. P5.7 and production Ring 3 remain open.
+  - Production-entry progress (2026-11-08): `arch::x86_64::user` now exposes the common IRETQ entry, validates the active address space, RX user code, RW+NX user stack, supervisor kernel stack, TSS.RSP0, FXSAVE state and the full processor exception frame. The P5.1 QEMU test explicitly rejects inactive address spaces, writable/non-executable code, non-writable user stacks and malformed kernel-stack bounds before confirming a successful INT3 exception return.
+  - Production user-memory progress (2026-11-08): `validate_user_range`, `copy_from_user` and `copy_to_user` now live in the always-built `arch::x86_64::user` module. They require IF=0 and the target address space active, validate every page and permission before dereferencing, cap non-zero buffers at 16 MiB, and reject invalid cross-boundary copies without partial writes.
+  - Runtime evidence for P5.1/P5.2/P5.4/P5.5: [CI run 396](https://github.com/mindwork64/exhiOS/actions/runs/42433321881) completed successfully. QEMU verified Ring 3 entry/exception return, supervisor-only page fault, pointer permission/guard/overflow checks, inactive-address-space rejection, copy round-trip, and atomic rejection of an invalid destination range. This implementation is currently BSP/single-CPU and does not claim SMP readiness.
 
 ## P6 — Storage
 
