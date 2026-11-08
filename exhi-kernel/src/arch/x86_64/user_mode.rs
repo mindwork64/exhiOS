@@ -26,14 +26,6 @@ use super::syscall;
 use super::syscall::UserTaskSyscallFrame as UserTaskInterruptFrame;
 #[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
 use super::user;
-#[cfg(feature = "user-pointer-range-smoke-test")]
-pub use super::user::{validate_user_range, UserAccess};
-#[cfg(any(
-    feature = "user-pointer-range-smoke-test",
-    feature = "user-copy-smoke-test",
-    feature = "user-task-lifecycle-smoke-test"
-))]
-pub use super::user::UserRangeError;
 #[cfg(any(
     feature = "user-copy-smoke-test",
     feature = "user-task-lifecycle-smoke-test"
@@ -41,6 +33,14 @@ pub use super::user::UserRangeError;
 pub use super::user::copy_from_user;
 #[cfg(feature = "user-copy-smoke-test")]
 pub use super::user::copy_to_user;
+#[cfg(any(
+    feature = "user-pointer-range-smoke-test",
+    feature = "user-copy-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
+))]
+pub use super::user::UserRangeError;
+#[cfg(feature = "user-pointer-range-smoke-test")]
+pub use super::user::{validate_user_range, UserAccess};
 use super::{gdt, serial, task, vmm};
 use crate::memory;
 
