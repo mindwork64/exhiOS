@@ -148,10 +148,8 @@ unsafe extern "sysv64" {
     fn exhi_interrupt_context_start(initial_rsp: usize, fx_state: usize) -> !;
 }
 
-
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 unsafe extern "sysv64" {
-    fn exhi_user_task_syscall_entry();
     fn exhi_user_task_kernel_entry() -> !;
 }
 
