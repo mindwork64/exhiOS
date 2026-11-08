@@ -20,9 +20,9 @@ use exhi_syscall::{dispatch as dispatch_syscall, DispatchOutcome, SyscallService
 use exhi_task::{Capability, CapabilitySet, Scheduler, TaskContext, TaskId, UserTaskMetadata};
 
 use super::address_space::{self, AddressSpace, UserPageFlags};
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
+#[cfg(any(feature = "ring3-syscall-smoke-test", feature = "user-task-lifecycle-smoke-test"))]
 use super::syscall;
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
+#[cfg(any(feature = "ring3-syscall-smoke-test", feature = "user-task-lifecycle-smoke-test"))]
 use super::syscall::UserTaskSyscallFrame as UserTaskInterruptFrame;
 #[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
 use super::user;
@@ -76,7 +76,6 @@ static mut RING3_EXPECTED_ERROR_VALUE: u64 = 0;
 static mut RING3_EXPECTED_RIP: u64 = 0;
 static mut RING3_EXPECTED_FAULT_ADDRESS: u64 = 0;
 #[no_mangle]
-static mut RING3_USER_RSP: u64 = 0;
 #[no_mangle]
 static mut RING3_FX_STATE: usize = 0;
 static mut RING3_SYSCALL_CALLS: u64 = 0;
@@ -143,10 +142,6 @@ unsafe extern "sysv64" {
     fn exhi_interrupt_context_start(initial_rsp: usize, fx_state: usize) -> !;
 }
 
-#[cfg(feature = "ring3-syscall-smoke-test")]
-unsafe extern "sysv64" {
-    fn exhi_syscall_entry();
-}
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 unsafe extern "sysv64" {
@@ -202,7 +197,6 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_ERROR_VALUE), 0);
         ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_RIP), 0);
         ptr::write_volatile(ptr::addr_of_mut!(RING3_EXPECTED_FAULT_ADDRESS), 0);
-        ptr::write_volatile(ptr::addr_of_mut!(RING3_USER_RSP), 0);
         ptr::write_volatile(ptr::addr_of_mut!(RING3_FX_STATE), 0);
         ptr::write_volatile(ptr::addr_of_mut!(RING3_SYSCALL_CALLS), 0);
         ptr::write_volatile(ptr::addr_of_mut!(RING3_SYSCALL_VALID), 0);
@@ -691,7 +685,15 @@ pub fn handle_user_exception(
 
 #[cfg(feature = "ring3-syscall-smoke-test")]
 fn initialize_syscall_msrs() -> bool {
-    super::syscall::initialize(exhi_syscall_entry as *const () as u64).is_ok()
+    let kernel_stack_top = unsafe {
+        ptr::read_volatile(ptr::addr_of!(RING3_KERNEL_STACK_TOP))
+    };
+    let fx_state = unsafe { ptr::read_volatile(ptr::addr_of!(RING3_FX_STATE)) };
+    syscall::initialize_cpu_local(
+        kernel_stack_top,
+        fx_state,
+        exhi_syscall_smoke_dispatch as *const () as usize,
+    ) && syscall::initialize(syscall::entry_address()).is_ok()
 }
 
 #[cfg(feature = "ring3-syscall-smoke-test")]
@@ -719,72 +721,23 @@ extern "sysv64" fn exhi_syscall_handler(
 }
 
 #[cfg(feature = "ring3-syscall-smoke-test")]
-global_asm!(
-    r#"
-    .section .text
-    .global exhi_syscall_entry
-    .type exhi_syscall_entry, @function
-exhi_syscall_entry:
-    # SYSCALL leaves RSP on the untrusted user stack. Switch immediately to
-    # the dedicated kernel stack; interrupts are disabled by IA32_FMASK.
-    mov qword ptr [rip + RING3_USER_RSP], rsp
-    mov rsp, qword ptr [rip + RING3_KERNEL_STACK_TOP]
-
-    # Ten pushes keep the stack 16-byte aligned before calling the Rust ABI.
-    push qword ptr [rip + RING3_USER_RSP]
-    push r11
-    push rcx
-    push r9
-    push r8
-    push r10
-    push rdx
-    push rsi
-    push rdi
-    push rax
-
-    # Preserve user x87/SSE state around the kernel Rust handler.
-    mov rax, qword ptr [rip + RING3_FX_STATE]
-    test rax, rax
-    jz .Lsyscall_fatal
-    fxsave64 [rax]
-
-    # Stack now: number, arg1, arg2, arg3, arg4(R10), arg5(R8),
-    # saved user R9, RCX, R11, user RSP.
-    mov rdi, qword ptr [rsp]
-    mov rsi, qword ptr [rsp + 8]
-    mov rdx, qword ptr [rsp + 16]
-    mov rcx, qword ptr [rsp + 24]
-    mov r8,  qword ptr [rsp + 32]
-    mov r9,  qword ptr [rsp + 40]
-    cld
-    call exhi_syscall_handler
-
-    mov rcx, qword ptr [rip + RING3_FX_STATE]
-    fxrstor64 [rcx]
-
-    # Discard saved syscall number, preserve RAX as the return value.
-    add rsp, 8
-    pop rdi
-    pop rsi
-    pop rdx
-    pop r10
-    pop r8
-    pop r9
-    pop rcx
-    pop r11
-    pop rsp
-    sysretq
-
-.Lsyscall_fatal:
-    mov dx, 0xF4
-    mov eax, 0x11
-    out dx, eax
-    cli
-.Lsyscall_halt:
-    hlt
-    jmp .Lsyscall_halt
-"#
-);
+#[no_mangle]
+extern "sysv64" fn exhi_syscall_smoke_dispatch(frame: *mut UserTaskInterruptFrame) -> usize {
+    if frame.is_null() {
+        return 0;
+    }
+    let number = unsafe { ptr::read_volatile(ptr::addr_of!((*frame).rax)) };
+    let arg1 = unsafe { ptr::read_volatile(ptr::addr_of!((*frame).rdi)) };
+    let arg2 = unsafe { ptr::read_volatile(ptr::addr_of!((*frame).rsi)) };
+    let arg3 = unsafe { ptr::read_volatile(ptr::addr_of!((*frame).rdx)) };
+    let arg4 = unsafe { ptr::read_volatile(ptr::addr_of!((*frame).r10)) };
+    let arg5 = unsafe { ptr::read_volatile(ptr::addr_of!((*frame).r8)) };
+    let result = exhi_syscall_handler(number, arg1, arg2, arg3, arg4, arg5);
+    unsafe {
+        ptr::write_volatile(ptr::addr_of_mut!((*frame).rax), result);
+    }
+    frame as usize
+}
 
 #[cfg(feature = "user-pointer-range-smoke-test")]
 const MAX_USER_POINTER_RANGE: u64 = 16 * 1024 * 1024;
@@ -1037,7 +990,7 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
     if !syscall::initialize_smoke_test_cpu_local(kernel_tops[0], initial_fx_state) {
         user_task_setup_failed(b"P5.6: boot CPU syscall-local setup failed.\r\n");
     }
-    if !syscall::initialize(exhi_user_task_syscall_entry as *const () as u64).is_ok() {
+    if !syscall::initialize(syscall::entry_address()).is_ok() {
         user_task_setup_failed(b"P5.6: syscall entry MSR setup failed.\r\n");
     }
     let space_slot = unsafe { &*ptr::addr_of!(USER_TASK_SPACE_A) };
