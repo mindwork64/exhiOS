@@ -1105,9 +1105,8 @@ fn keyboard_smoke_test(console: &mut KernelConsole, drivers: &mut DriverRegistry
         while let Some(event) = keyboard::try_read_event() {
             event_count = event_count.saturating_add(1);
             saw_a_press |= event.pressed && event.key == exhi_input::KeyCode::A;
-            saw_shift_b_press |= event.pressed
-                && event.key == exhi_input::KeyCode::B
-                && event.modifiers.shift;
+            saw_shift_b_press |=
+                event.pressed && event.key == exhi_input::KeyCode::B && event.modifiers.shift;
             console.write_fmt(format_args!(
                 "P3.4: {} key=0x{:02X} shift={} ctrl={} alt={} meta={} caps={} num={} scroll={}\r\n",
                 if event.pressed { "DOWN" } else { "UP" },
@@ -1136,7 +1135,9 @@ fn keyboard_smoke_test(console: &mut KernelConsole, drivers: &mut DriverRegistry
                     && saw_shift_b_press
                     && pic_status.master_mask & 0x02 != 0
                 {
-                    console.write(b"P3.4: A, Shift+B and Ctrl+D events verified; IRQ1 masked cleanly.\r\n");
+                    console.write(
+                        b"P3.4: A, Shift+B and Ctrl+D events verified; IRQ1 masked cleanly.\r\n",
+                    );
                 } else {
                     console.write(b"P3.4: keyboard queue or PIC mask verification failed.\r\n");
                     halt_forever();
