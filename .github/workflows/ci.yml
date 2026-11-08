@@ -107,6 +107,9 @@ jobs:
       - name: Build kernel preemptive task-exit smoke-test variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features preemptive-task-exit-smoke-test
 
+      - name: Build kernel paging rollback smoke-test variant
+        run: cargo build -p exhi-kernel --target x86_64-unknown-none --features paging-rollback-smoke-test
+
       - name: Build kernel Ring 3 smoke-test variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features ring3-smoke-test
 
@@ -154,6 +157,9 @@ jobs:
 
       - name: Run headless UEFI and kernel smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run headless page-table CR3 rollback smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PAGING_ROLLBACK_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
 
       - name: Run headless PIT IRQ0 timer smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_TIMER_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh

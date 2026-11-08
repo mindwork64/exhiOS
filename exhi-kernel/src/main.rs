@@ -230,6 +230,16 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial::COM1.write_hex(reused_page);
             serial::COM1.write(b"\r\nP2.1: physical page allocator ready.\r\n");
 
+            #[cfg(feature = "paging-rollback-smoke-test")]
+            {
+                serial::COM1.write(b"P2.2: exercising post-CR3-switch rollback.\r\n");
+                if !paging::rollback_smoke_test(info) {
+                    serial::COM1.write(b"P2.2: controlled CR3 rollback verification failed.\r\n");
+                    halt_forever();
+                }
+                serial::COM1.write(b"P2.2: post-switch failure restored the original CR3.\r\n");
+            }
+
             serial::COM1.write(b"P2.2: building kernel-owned bootstrap page tables.\r\n");
             let paging_status = match paging::initialize_identity_map_4g(info) {
                 Ok(status) => status,
@@ -301,6 +311,32 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             serial::COM1.write(b"\r\nVMM virtual-address limit: 0x");
             serial::COM1.write_hex(vmm_status.virtual_address_limit);
             serial::COM1.write(b"\r\n");
+
+            let invalid_unaligned_virtual = matches!(
+                vmm::map_page(0x4000_0001, 0x1000, vmm::PageFlags::kernel_data()),
+                Err(vmm::VmmError::UnalignedAddress)
+            );
+            let invalid_virtual_limit = matches!(
+                vmm::map_page(
+                    0x0000_0080_0000_0000,
+                    0x1000,
+                    vmm::PageFlags::kernel_data(),
+                ),
+                Err(vmm::VmmError::AddressOutOfRange)
+            );
+            let invalid_physical_limit = matches!(
+                vmm::map_page(
+                    0x4000_0000,
+                    0x1_0000_0000,
+                    vmm::PageFlags::kernel_data(),
+                ),
+                Err(vmm::VmmError::AddressOutOfRange)
+            );
+            if !(invalid_unaligned_virtual && invalid_virtual_limit && invalid_physical_limit) {
+                serial::COM1.write(b"P2.2: invalid page-range rejection checks failed.\r\n");
+                halt_forever();
+            }
+            serial::COM1.write(b"P2.2: unaligned, out-of-window virtual and out-of-range physical mappings rejected.\r\n");
 
             if let Err(error) = stack_guard::install(stack_guard_reservation) {
                 serial::COM1.write(b"P2.6: failed to install kernel stack guard page: ");

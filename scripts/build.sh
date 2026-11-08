@@ -334,6 +334,15 @@ if [[ "${EXHIOS_DRIVER_REGISTRY_TEST:-0}" == "1" ]]; then
     echo "Building the kernel with the driver registry runtime smoke test."
 fi
 
+if [[ "${EXHIOS_PAGING_ROLLBACK_TEST:-0}" == "1" ]]; then
+    if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]]; then
+        echo "EXHIOS_PAGING_ROLLBACK_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2
+        exit 1
+    fi
+    KERNEL_FEATURES+=(paging-rollback-smoke-test)
+    echo "Building the kernel with the controlled page-table rollback smoke test."
+fi
+
 FEATURE_ARGS=()
 if (( ${#KERNEL_FEATURES[@]} > 0 )); then
     FEATURE_LIST="$(IFS=,; printf '%s' "${KERNEL_FEATURES[*]}")"

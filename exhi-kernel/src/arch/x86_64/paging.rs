@@ -60,6 +60,7 @@ pub enum PagingError {
     Cr3Mismatch,
     NotMapped,
     IdentityMappingVerificationFailed,
+    RollbackSmokeTestTriggered,
 }
 
 impl PagingError {
@@ -87,6 +88,7 @@ impl PagingError {
             Self::Cr3Mismatch => b"CR3 readback does not match the new PML4 address",
             Self::NotMapped => b"virtual address is not mapped",
             Self::IdentityMappingVerificationFailed => b"identity mapping verification failed",
+            Self::RollbackSmokeTestTriggered => b"paging rollback smoke test requested a controlled rollback",
         }
     }
 }
@@ -115,6 +117,26 @@ pub struct PagingStatus {
 /// safely under the firmware's existing mappings. Dynamic page-table frames
 /// can be allocated from the physical allocator after this map is active.
 pub fn initialize_identity_map_4g(boot_info: &BootInfo) -> Result<PagingStatus, PagingError> {
+    initialize_identity_map_4g_inner(boot_info, false)
+}
+
+/// Exercises the post-CR3-switch rollback path before normal paging setup.
+/// The test switches to the new hierarchy, verifies all critical ranges, then
+/// restores the previous CR3 and proves that the active-state flag stayed clear.
+#[cfg(feature = "paging-rollback-smoke-test")]
+pub fn rollback_smoke_test(boot_info: &BootInfo) -> bool {
+    let previous_root = read_cr3() & PAGE_TABLE_ADDRESS_MASK;
+    matches!(
+        initialize_identity_map_4g_inner(boot_info, true),
+        Err(PagingError::RollbackSmokeTestTriggered)
+    ) && (read_cr3() & PAGE_TABLE_ADDRESS_MASK) == previous_root
+        && !unsafe { PAGE_TABLES_ACTIVE }
+}
+
+fn initialize_identity_map_4g_inner(
+    boot_info: &BootInfo,
+    force_rollback_after_switch: bool,
+) -> Result<PagingStatus, PagingError> {
     // SAFETY: Kernel startup is single-threaded and IF remains clear.
     if unsafe { PAGE_TABLES_ACTIVE } {
         return Err(PagingError::AlreadyInitialized);
@@ -264,6 +286,23 @@ pub fn initialize_identity_map_4g(boot_info: &BootInfo) -> Result<PagingStatus, 
                 return Err(error);
             }
         }
+    }
+
+    if force_rollback_after_switch {
+        // This branch deliberately simulates a post-switch failure after the
+        // new root has passed its translation checks. It must restore the
+        // exact previous CR3 and leave the one-time initialization flag clear.
+        unsafe {
+            asm!(
+                "mov cr3, {}",
+                in(reg) old_cr3,
+                options(nostack, preserves_flags)
+            );
+        }
+        if read_cr3() & PAGE_TABLE_ADDRESS_MASK != old_cr3 & PAGE_TABLE_ADDRESS_MASK {
+            return Err(PagingError::Cr3Mismatch);
+        }
+        return Err(PagingError::RollbackSmokeTestTriggered);
     }
 
     // SAFETY: Startup is single-threaded with IF clear. The static tables stay

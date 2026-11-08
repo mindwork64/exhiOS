@@ -22,9 +22,15 @@ USER_COPY_TEST="${EXHIOS_USER_COPY_TEST:-0}"
 USER_TASK_LIFECYCLE_TEST="${EXHIOS_USER_TASK_LIFECYCLE_TEST:-0}"
 CONTEXT_SWITCH_TEST="${EXHIOS_CONTEXT_SWITCH_TEST:-0}"
 SERIAL_RX_TEST="${EXHIOS_SERIAL_RX_TEST:-0}"
+PAGING_ROLLBACK_TEST="${EXHIOS_PAGING_ROLLBACK_TEST:-0}"
 
 if [[ "$EXCEPTION_TEST" == "1" && "$QEMU_EXIT_TEST" == "1" ]]; then
     echo "Choose either EXHIOS_EXCEPTION_TEST or EXHIOS_QEMU_EXIT_TEST, not both." >&2
+    exit 1
+fi
+
+if [[ "$PAGING_ROLLBACK_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
+    echo "EXHIOS_PAGING_ROLLBACK_TEST requires EXHIOS_QEMU_EXIT_TEST=1 for controlled QEMU shutdown." >&2
     exit 1
 fi
 
@@ -238,7 +244,10 @@ if [[ "$HEADLESS_TEST" == "1" ]]; then
     QEMU_ARGS+=(-display none -monitor none)
 fi
 
-if [[ "$USER_TASK_LIFECYCLE_TEST" == "1" ]]; then
+if [[ "$PAGING_ROLLBACK_TEST" == "1" ]]; then
+    echo "Starting ExhiOS controlled page-table CR3 rollback smoke test."
+    QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
+elif [[ "$USER_TASK_LIFECYCLE_TEST" == "1" ]]; then
     echo "Starting ExhiOS two-user-task SYSCALL yield/exit lifecycle smoke test."
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
 elif [[ "$USER_COPY_TEST" == "1" ]]; then
