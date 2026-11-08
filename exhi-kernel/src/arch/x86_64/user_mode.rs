@@ -313,6 +313,26 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         ptr::write(ptr::addr_of_mut!(RING3_ADDRESS_SPACE), Some(space));
     }
 
+    if mode == Ring3TestMode::Breakpoint {
+        let slot = unsafe { &*ptr::addr_of!(RING3_ADDRESS_SPACE) };
+        let inactive_rejected = slot.as_ref().is_some_and(|space| {
+            matches!(
+                user::prepare_entry(
+                    space,
+                    kernel_stack_base + PAGE_SIZE,
+                    kernel_stack_top,
+                    USER_CODE_ADDRESS,
+                    USER_STACK_POINTER,
+                ),
+                Err(user::UserEntryError::AddressSpaceNotActive)
+            )
+        });
+        if !inactive_rejected {
+            setup_failed(b"P5.1: inactive address space was accepted for user entry.\\r\\n");
+        }
+        serial::COM1.write(b"P5.1: inactive address-space entry rejected.\\r\\n");
+    }
+
     serial::COM1.write(match mode {
         Ring3TestMode::Breakpoint => b"P5.1: user code mapped RX; user stack mapped RW+NX.\r\n",
         Ring3TestMode::SupervisorFault => {
@@ -392,6 +412,50 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
     };
     if space.activate().is_err() {
         setup_failed(b"P5.1: CR3 activation for Ring 3 failed.\r\n");
+    }
+
+    if mode == Ring3TestMode::Breakpoint {
+        let bottom = kernel_stack_base + PAGE_SIZE;
+        let invalid_code_rejected = matches!(
+            user::prepare_entry(
+                space,
+                bottom,
+                kernel_stack_top,
+                USER_STACK_ADDRESS,
+                USER_STACK_POINTER,
+            ),
+            Err(user::UserEntryError::CodeMappingRejected)
+        );
+        let invalid_stack_rejected = matches!(
+            user::prepare_entry(
+                space,
+                bottom,
+                kernel_stack_top,
+                USER_CODE_ADDRESS,
+                USER_CODE_ADDRESS,
+            ),
+            Err(user::UserEntryError::StackMappingRejected)
+        );
+        let invalid_kernel_stack_rejected = matches!(
+            user::prepare_entry(
+                space,
+                bottom + 1,
+                kernel_stack_top,
+                USER_CODE_ADDRESS,
+                USER_STACK_POINTER,
+            ),
+            Err(user::UserEntryError::InvalidKernelStack)
+        );
+        if !(invalid_code_rejected
+            && invalid_stack_rejected
+            && invalid_kernel_stack_rejected
+            && gdt::read_rsp0() == kernel_stack_top)
+        {
+            setup_failed(b"P5.1: invalid code/stack/kernel-stack entry checks failed.\r\n");
+        }
+        serial::COM1.write(
+            b"P5.1: invalid code, non-writable user stack and malformed kernel stack rejected.\r\n",
+        );
     }
 
     let fx_state = unsafe { &*(fx_state as *const user::FxState) };
