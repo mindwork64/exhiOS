@@ -172,10 +172,26 @@ const _: [(); 64] = [(); size_of::<SyscallCpuLocal>()];
 /// Stable register image and IRETQ privilege-return tail.
 #[repr(C, align(16))]
 pub(crate) struct UserTaskSyscallFrame {
-    pub r15: u64, pub r14: u64, pub r13: u64, pub r12: u64, pub r11: u64,
-    pub r10: u64, pub r9: u64, pub r8: u64, pub rdi: u64, pub rsi: u64,
-    pub rbp: u64, pub rbx: u64, pub rdx: u64, pub rcx: u64, pub rax: u64,
-    pub rip: u64, pub cs: u64, pub rflags: u64, pub rsp: u64, pub ss: u64,
+    pub r15: u64,
+    pub r14: u64,
+    pub r13: u64,
+    pub r12: u64,
+    pub r11: u64,
+    pub r10: u64,
+    pub r9: u64,
+    pub r8: u64,
+    pub rdi: u64,
+    pub rsi: u64,
+    pub rbp: u64,
+    pub rbx: u64,
+    pub rdx: u64,
+    pub rcx: u64,
+    pub rax: u64,
+    pub rip: u64,
+    pub cs: u64,
+    pub rflags: u64,
+    pub rsp: u64,
+    pub ss: u64,
 }
 const _: [(); 20 * size_of::<u64>()] = [(); size_of::<UserTaskSyscallFrame>()];
 
@@ -194,9 +210,15 @@ pub fn initialize_cpu_local(kernel_stack_top: u64, fx_state: usize, dispatcher: 
         return false;
     }
     unsafe {
-        ptr::write_volatile(ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top), kernel_stack_top);
+        ptr::write_volatile(
+            ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top),
+            kernel_stack_top,
+        );
         ptr::write_volatile(ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.fx_state), fx_state);
-        ptr::write_volatile(ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.dispatcher), dispatcher);
+        ptr::write_volatile(
+            ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.dispatcher),
+            dispatcher,
+        );
     }
     let old_gs = unsafe { read_msr(IA32_GS_BASE) };
     let old_kernel_gs = unsafe { read_msr(IA32_KERNEL_GS_BASE) };
@@ -208,7 +230,8 @@ pub fn initialize_cpu_local(kernel_stack_top: u64, fx_state: usize, dispatcher: 
     let valid = unsafe {
         read_msr(IA32_GS_BASE) == 0
             && read_msr(IA32_KERNEL_GS_BASE) == local
-            && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top)) == kernel_stack_top
+            && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top))
+                == kernel_stack_top
             && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.fx_state)) == fx_state
             && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.dispatcher)) == dispatcher
     };
@@ -227,7 +250,10 @@ pub fn update_current_task_context(kernel_stack_top: u64, fx_state: usize) -> bo
         return false;
     }
     unsafe {
-        ptr::write_volatile(ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top), kernel_stack_top);
+        ptr::write_volatile(
+            ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top),
+            kernel_stack_top,
+        );
         ptr::write_volatile(ptr::addr_of_mut!(BOOT_CPU_SYSCALL_LOCAL.fx_state), fx_state);
     }
     core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
@@ -261,7 +287,11 @@ pub(crate) fn initialize_smoke_test_cpu_local(kernel_stack_top: u64, fx_state: u
     unsafe extern "sysv64" {
         fn exhi_user_task_syscall_handler(frame: *mut UserTaskSyscallFrame) -> usize;
     }
-    initialize_cpu_local(kernel_stack_top, fx_state, exhi_user_task_syscall_handler as *const () as usize)
+    initialize_cpu_local(
+        kernel_stack_top,
+        fx_state,
+        exhi_user_task_syscall_handler as *const () as usize,
+    )
 }
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
