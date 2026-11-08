@@ -661,7 +661,9 @@ impl<const CAPACITY: usize> Scheduler<CAPACITY> {
         capabilities: CapabilitySet,
     ) -> Result<(), SchedulerError> {
         let task = self.get_mut(id).ok_or(SchedulerError::NotFound)?;
-        let metadata = task.user_metadata_mut().ok_or(SchedulerError::NotUserTask)?;
+        let metadata = task
+            .user_metadata_mut()
+            .ok_or(SchedulerError::NotUserTask)?;
         metadata.set_capabilities(capabilities);
         Ok(())
     }
@@ -860,13 +862,24 @@ mod tests {
     fn capability_grants_are_empty_by_default_and_kernel_managed() {
         let mut scheduler = Scheduler::<2>::new();
         let metadata = UserTaskMetadata::new(0x2000, 0x2FF8, 0x4000, 0x5000);
-        let user = scheduler.spawn_user("user", context(0x3000), metadata).unwrap();
+        let user = scheduler
+            .spawn_user("user", context(0x3000), metadata)
+            .unwrap();
         let kernel = scheduler.spawn("kernel", context(0x6000)).unwrap();
 
         assert_eq!(scheduler.current_capabilities(), CapabilitySet::EMPTY);
-        assert_eq!(scheduler.set_capabilities(kernel, CapabilitySet::EMPTY.with(Capability::ConsoleWrite)), Err(SchedulerError::NotUserTask));
-        assert_eq!(scheduler.get(user).unwrap().capabilities(), CapabilitySet::EMPTY);
-        assert_eq!(CapabilitySet::from_bits(1 << 63), Err(CapabilitySetError::UnknownBits));
+        assert_eq!(
+            scheduler.set_capabilities(kernel, CapabilitySet::EMPTY.with(Capability::ConsoleWrite)),
+            Err(SchedulerError::NotUserTask)
+        );
+        assert_eq!(
+            scheduler.get(user).unwrap().capabilities(),
+            CapabilitySet::EMPTY
+        );
+        assert_eq!(
+            CapabilitySet::from_bits(1 << 63),
+            Err(CapabilitySetError::UnknownBits)
+        );
 
         let grants = CapabilitySet::EMPTY
             .with(Capability::TaskYield)
@@ -874,8 +887,14 @@ mod tests {
         scheduler.set_capabilities(user, grants).unwrap();
         assert_eq!(scheduler.start(), Ok(user));
         assert_eq!(scheduler.current_capabilities(), grants);
-        assert_eq!(scheduler.authorize_current(Capability::ConsoleWrite), Ok(()));
-        assert_eq!(scheduler.authorize_current(Capability::ConsoleRead), Err(SchedulerError::CapabilityDenied));
+        assert_eq!(
+            scheduler.authorize_current(Capability::ConsoleWrite),
+            Ok(())
+        );
+        assert_eq!(
+            scheduler.authorize_current(Capability::ConsoleRead),
+            Err(SchedulerError::CapabilityDenied)
+        );
 
         scheduler
             .get_mut(user)
@@ -883,7 +902,10 @@ mod tests {
             .user_metadata_mut()
             .unwrap()
             .revoke(Capability::ConsoleWrite);
-        assert_eq!(scheduler.authorize_current(Capability::ConsoleWrite), Err(SchedulerError::CapabilityDenied));
+        assert_eq!(
+            scheduler.authorize_current(Capability::ConsoleWrite),
+            Err(SchedulerError::CapabilityDenied)
+        );
         assert!(scheduler.authorize_current(Capability::TaskYield).is_ok());
     }
 
