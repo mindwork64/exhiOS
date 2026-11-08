@@ -939,8 +939,30 @@ pub extern "sysv64" fn exhi_exception_handler(
     serial::COM1.write_hex(flags);
     serial::COM1.write(b"\r\n");
 
-    #[cfg(feature = "ring3-smoke-test")]
     if code_selector & 3 == 3 {
+        let user_exception = match arch::x86_64::user::capture_exception(
+            vector,
+            error_code,
+            instruction_pointer,
+            code_selector,
+            flags,
+            exception_stack_pointer,
+        ) {
+            Ok(exception) => exception,
+            Err(_) => {
+                serial::COM1.write(b"User exception frame is outside the active kernel stack or malformed.\r\n");
+                halt_forever();
+            }
+        };
+        serial::COM1.write(b"User exception: RIP=0x");
+        serial::COM1.write_hex(user_exception.instruction_pointer);
+        serial::COM1.write(b" user RSP=0x");
+        serial::COM1.write_hex(user_exception.user_stack_pointer);
+        serial::COM1.write(b" error=0x");
+        serial::COM1.write_hex(user_exception.error_code);
+        serial::COM1.write(b"\r\n");
+
+        #[cfg(feature = "ring3-smoke-test")]
         arch::x86_64::user_mode::handle_user_exception(
             vector,
             error_code,
@@ -949,6 +971,9 @@ pub extern "sysv64" fn exhi_exception_handler(
             flags,
             exception_stack_pointer,
         );
+
+        serial::COM1.write(b"No user-task fault termination policy is installed.\r\n");
+        halt_forever();
     }
 
     // A fatal exception in the opt-in P4.4 QEMU test must terminate the guest

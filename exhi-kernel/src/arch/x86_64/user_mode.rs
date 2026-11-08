@@ -24,7 +24,7 @@ use super::address_space::{self, AddressSpace, UserPageFlags};
 use super::syscall;
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 use super::syscall::UserTaskSyscallFrame as UserTaskInterruptFrame;
-use super::{gdt, serial, task, vmm};
+use super::{gdt, serial, task, user, vmm};
 use crate::memory;
 
 const PAGE_SIZE: u64 = 4096;
@@ -115,42 +115,12 @@ static mut USER_TASK_COUNTERS: UserTaskCounters = UserTaskCounters {
 #[repr(C, align(4096))]
 struct KernelStack([u8; STACK_TOTAL_SIZE]);
 
-#[repr(C, align(16))]
-struct UserEntryFrame {
-    r15: u64,
-    r14: u64,
-    r13: u64,
-    r12: u64,
-    r11: u64,
-    r10: u64,
-    r9: u64,
-    r8: u64,
-    rdi: u64,
-    rsi: u64,
-    rbp: u64,
-    rbx: u64,
-    rdx: u64,
-    rcx: u64,
-    rax: u64,
-    rip: u64,
-    cs: u64,
-    rflags: u64,
-    rsp: u64,
-    ss: u64,
-}
-
-const _: [(); 20 * size_of::<u64>()] = [(); size_of::<UserEntryFrame>()];
-
 static mut RING3_KERNEL_STACK: KernelStack = KernelStack([0; STACK_TOTAL_SIZE]);
 #[no_mangle]
 static mut RING3_KERNEL_STACK_TOP: u64 = 0;
 static mut RING3_ADDRESS_SPACE: Option<AddressSpace> = None;
 static mut RING3_CODE_FRAME: u64 = 0;
 static mut RING3_STACK_FRAME: u64 = 0;
-
-unsafe extern "sysv64" {
-    fn exhi_interrupt_context_start(initial_rsp: usize, fx_state: usize) -> !;
-}
 
 #[cfg(feature = "ring3-syscall-smoke-test")]
 unsafe extern "sysv64" {
@@ -410,40 +380,27 @@ fn run_ring3_test(mode: Ring3TestMode) -> ! {
         }
     }
 
-    let mut frame = UserEntryFrame {
-        r15: 0,
-        r14: 0,
-        r13: 0,
-        r12: 0,
-        r11: 0,
-        r10: 0,
-        r9: 0,
-        r8: 0,
-        rdi: 0,
-        rsi: 0,
-        rbp: 0,
-        rbx: 0,
-        rdx: 0,
-        rcx: 0,
-        rax: 0,
-        rip: USER_CODE_ADDRESS,
-        cs: u64::from(gdt::USER_CODE_SELECTOR),
-        rflags: 0x202,
-        rsp: USER_STACK_POINTER,
-        ss: u64::from(gdt::USER_DATA_SELECTOR),
+    let space_slot = unsafe { &*ptr::addr_of!(RING3_ADDRESS_SPACE) };
+    let Some(space) = space_slot.as_ref() else {
+        setup_failed(b"P5.1: Ring 3 address space disappeared before entry.\r\n");
     };
-    let frame_rsp = ptr::addr_of_mut!(frame) as usize;
-
-    let space = unsafe { &*ptr::addr_of!(RING3_ADDRESS_SPACE) };
-    if space
-        .as_ref()
-        .map_or(true, |space| space.activate().is_err())
-    {
+    if space.activate().is_err() {
         setup_failed(b"P5.1: CR3 activation for Ring 3 failed.\r\n");
     }
 
-    unsafe {
-        exhi_interrupt_context_start(frame_rsp, fx_state);
+    let fx_state = unsafe { &*(fx_state as *const user::FxState) };
+    let kernel_stack_bottom = kernel_stack_base + PAGE_SIZE;
+    let frame = user::prepare_entry(
+        space,
+        kernel_stack_bottom,
+        kernel_stack_top,
+        USER_CODE_ADDRESS,
+        USER_STACK_POINTER,
+    )
+    .unwrap_or_else(|_| setup_failed(b"P5.1: production user-entry validation failed.\r\n"));
+    match user::enter_user(&frame, fx_state) {
+        Ok(never) => match never {},
+        Err(_) => setup_failed(b"P5.1: production user-entry handoff failed validation.\r\n"),
     }
 }
 

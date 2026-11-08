@@ -15,6 +15,7 @@ pub mod syscall;
 ))]
 pub mod task;
 pub mod timer;
+pub mod user;
 #[cfg(feature = "ring3-smoke-test")]
 pub mod user_mode;
 pub mod vmm;
