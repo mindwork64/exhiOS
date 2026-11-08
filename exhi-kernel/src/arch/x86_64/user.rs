@@ -10,7 +10,7 @@ use core::arch::{asm, global_asm};
 use core::mem::size_of;
 use core::ptr;
 
-use super::address_space::AddressSpace;
+use super::address_space::{AddressSpace, AddressSpaceError};
 use super::{gdt, vmm};
 
 const PAGE_SIZE: u64 = 4096;
@@ -317,6 +317,139 @@ pub fn capture_exception(
         flags,
         user_stack_pointer: frame[5],
     })
+}
+
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UserAccess {
+    Read,
+    Write,
+    Execute,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UserRangeError {
+    AddressOverflow,
+    RangeTooLarge,
+    NotUserMemory,
+    PermissionDenied,
+    AddressSpace(AddressSpaceError),
+    AddressSpaceNotActive,
+    InterruptsEnabled,
+}
+
+const MAX_USER_POINTER_RANGE: u64 = 16 * 1024 * 1024;
+
+/// Validates every page touched by a user buffer before a syscall accesses it.
+/// Zero-length buffers are accepted without dereferencing their pointer.
+pub fn validate_user_range(
+    space: &AddressSpace,
+    address: u64,
+    length: usize,
+    access: UserAccess,
+) -> Result<(), UserRangeError> {
+    if length == 0 {
+        return Ok(());
+    }
+    let length = u64::try_from(length).map_err(|_| UserRangeError::RangeTooLarge)?;
+    if length > MAX_USER_POINTER_RANGE {
+        return Err(UserRangeError::RangeTooLarge);
+    }
+    let last = address
+        .checked_add(length - 1)
+        .ok_or(UserRangeError::AddressOverflow)?;
+    let mut page = address & !(PAGE_SIZE - 1);
+    let last_page = last & !(PAGE_SIZE - 1);
+
+    loop {
+        let mapping = space
+            .translate(page)
+            .map_err(UserRangeError::AddressSpace)?;
+        if !mapping.user {
+            return Err(UserRangeError::NotUserMemory);
+        }
+        let permitted = match access {
+            UserAccess::Read => true,
+            UserAccess::Write => mapping.writable,
+            UserAccess::Execute => mapping.executable,
+        };
+        if !permitted {
+            return Err(UserRangeError::PermissionDenied);
+        }
+        if page == last_page {
+            break;
+        }
+        page = page
+            .checked_add(PAGE_SIZE)
+            .ok_or(UserRangeError::AddressOverflow)?;
+    }
+    Ok(())
+}
+
+/// Copies a user buffer into a kernel-owned slice after validating every page.
+/// IF must be clear and the address space active so it cannot be switched while
+/// the validated mapping is accessed.
+pub fn copy_from_user(
+    space: &AddressSpace,
+    user_source: u64,
+    kernel_destination: &mut [u8],
+) -> Result<(), UserRangeError> {
+    ensure_user_copy_context(space)?;
+    validate_user_range(
+        space,
+        user_source,
+        kernel_destination.len(),
+        UserAccess::Read,
+    )?;
+    if !kernel_destination.is_empty() {
+        unsafe {
+            ptr::copy(
+                user_source as *const u8,
+                kernel_destination.as_mut_ptr(),
+                kernel_destination.len(),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Copies a kernel-owned slice into user memory only after the whole destination
+/// range has been validated. No partial writes occur for rejected ranges.
+pub fn copy_to_user(
+    space: &AddressSpace,
+    user_destination: u64,
+    kernel_source: &[u8],
+) -> Result<(), UserRangeError> {
+    ensure_user_copy_context(space)?;
+    validate_user_range(
+        space,
+        user_destination,
+        kernel_source.len(),
+        UserAccess::Write,
+    )?;
+    if !kernel_source.is_empty() {
+        unsafe {
+            ptr::copy(
+                kernel_source.as_ptr(),
+                user_destination as *mut u8,
+                kernel_source.len(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn ensure_user_copy_context(space: &AddressSpace) -> Result<(), UserRangeError> {
+    if interrupts_enabled() {
+        return Err(UserRangeError::InterruptsEnabled);
+    }
+    if !space
+        .is_active()
+        .map_err(UserRangeError::AddressSpace)?
+    {
+        return Err(UserRangeError::AddressSpaceNotActive);
+    }
+    Ok(())
 }
 
 fn validate_kernel_range(start: u64, end: u64) -> Result<(), ()> {
