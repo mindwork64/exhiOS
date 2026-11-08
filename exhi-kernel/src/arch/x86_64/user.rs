@@ -238,10 +238,7 @@ pub fn prepare_entry(
 
 /// Restores the initialized user FX image and performs the CPL3 IRETQ.
 /// A successful call transfers control to user mode and never returns here.
-pub fn enter_user(
-    frame: &UserEntryFrame,
-    fx_state: &FxState,
-) -> Result<(), UserEntryError> {
+pub fn enter_user(frame: &UserEntryFrame, fx_state: &FxState) -> Result<(), UserEntryError> {
     let frame_pointer = frame as *const UserEntryFrame as u64;
     let fx_pointer = fx_state as *const FxState as u64;
     if frame_pointer & 0xF != 0 || !is_kernel_canonical(frame_pointer) {
