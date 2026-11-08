@@ -950,7 +950,9 @@ pub extern "sysv64" fn exhi_exception_handler(
         ) {
             Ok(exception) => exception,
             Err(_) => {
-                serial::COM1.write(b"User exception frame is outside the active kernel stack or malformed.\r\n");
+                serial::COM1.write(
+                    b"User exception frame is outside the active kernel stack or malformed.\r\n",
+                );
                 halt_forever();
             }
         };

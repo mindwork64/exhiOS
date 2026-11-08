@@ -280,4 +280,3 @@ pub fn read_rsp0() -> u64 {
 const fn is_canonical_address(address: u64) -> bool {
     address >> 47 == 0 || address >> 47 == 0x1_FFFF
 }
-

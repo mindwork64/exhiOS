@@ -93,10 +93,26 @@ impl FxState {
 /// Stable register image consumed by the assembly IRETQ entry routine.
 #[repr(C, align(16))]
 pub struct UserEntryFrame {
-    r15: u64, r14: u64, r13: u64, r12: u64, r11: u64,
-    r10: u64, r9: u64, r8: u64, rdi: u64, rsi: u64,
-    rbp: u64, rbx: u64, rdx: u64, rcx: u64, rax: u64,
-    rip: u64, cs: u64, rflags: u64, rsp: u64, ss: u64,
+    r15: u64,
+    r14: u64,
+    r13: u64,
+    r12: u64,
+    r11: u64,
+    r10: u64,
+    r9: u64,
+    r8: u64,
+    rdi: u64,
+    rsi: u64,
+    rbp: u64,
+    rbx: u64,
+    rdx: u64,
+    rcx: u64,
+    rax: u64,
+    rip: u64,
+    cs: u64,
+    rflags: u64,
+    rsp: u64,
+    ss: u64,
 }
 const _: [(); 20 * size_of::<u64>()] = [(); size_of::<UserEntryFrame>()];
 
@@ -146,7 +162,10 @@ pub fn prepare_entry(
     if interrupts_enabled() {
         return Err(UserEntryError::InterruptsEnabled);
     }
-    if !address_space.is_active().map_err(|_| UserEntryError::AddressSpaceNotActive)? {
+    if !address_space
+        .is_active()
+        .map_err(|_| UserEntryError::AddressSpaceNotActive)?
+    {
         return Err(UserEntryError::AddressSpaceNotActive);
     }
     if !is_user_address(user_instruction_pointer) {
@@ -156,12 +175,14 @@ pub fn prepare_entry(
         return Err(UserEntryError::InvalidUserStackPointer);
     }
 
-    let code = address_space.translate(user_instruction_pointer)
+    let code = address_space
+        .translate(user_instruction_pointer)
         .map_err(|_| UserEntryError::CodeMappingRejected)?;
     if !code.user || !code.executable || code.writable {
         return Err(UserEntryError::CodeMappingRejected);
     }
-    let stack = address_space.translate(user_stack_pointer - 1)
+    let stack = address_space
+        .translate(user_stack_pointer - 1)
         .map_err(|_| UserEntryError::StackMappingRejected)?;
     if !stack.user || !stack.writable || stack.executable {
         return Err(UserEntryError::StackMappingRejected);
@@ -184,14 +205,29 @@ pub fn prepare_entry(
 
     // The first implementation is boot-CPU-only and called with IF=0.
     unsafe {
-        ptr::write_volatile(ptr::addr_of_mut!(ACTIVE_KERNEL_STACK_BOTTOM), kernel_stack_bottom);
+        ptr::write_volatile(
+            ptr::addr_of_mut!(ACTIVE_KERNEL_STACK_BOTTOM),
+            kernel_stack_bottom,
+        );
         ptr::write_volatile(ptr::addr_of_mut!(ACTIVE_KERNEL_STACK_TOP), kernel_stack_top);
     }
 
     Ok(UserEntryFrame {
-        r15: 0, r14: 0, r13: 0, r12: 0, r11: 0,
-        r10: 0, r9: 0, r8: 0, rdi: 0, rsi: 0,
-        rbp: 0, rbx: 0, rdx: 0, rcx: 0, rax: 0,
+        r15: 0,
+        r14: 0,
+        r13: 0,
+        r12: 0,
+        r11: 0,
+        r10: 0,
+        r9: 0,
+        r8: 0,
+        rdi: 0,
+        rsi: 0,
+        rbp: 0,
+        rbx: 0,
+        rdx: 0,
+        rcx: 0,
+        rax: 0,
         rip: user_instruction_pointer,
         cs: u64::from(gdt::USER_CODE_SELECTOR),
         rflags: 0x202,
@@ -214,8 +250,11 @@ pub fn enter_user(
     if fx_pointer & 0xF != 0 || !is_kernel_canonical(fx_pointer) {
         return Err(UserEntryError::InvalidFxState);
     }
-    validate_kernel_range(frame_pointer, frame_pointer + size_of::<UserEntryFrame>() as u64)
-        .map_err(|_| UserEntryError::EntryFrameMappingRejected)?;
+    validate_kernel_range(
+        frame_pointer,
+        frame_pointer + size_of::<UserEntryFrame>() as u64,
+    )
+    .map_err(|_| UserEntryError::EntryFrameMappingRejected)?;
     validate_kernel_range(fx_pointer, fx_pointer + FX_STATE_SIZE as u64)
         .map_err(|_| UserEntryError::FxMappingRejected)?;
 
@@ -239,8 +278,11 @@ pub fn capture_exception(
     let frame_end = exception_stack_pointer
         .checked_add(7 * size_of::<u64>() as u64)
         .ok_or(UserEntryError::InvalidExceptionFrame)?;
-    if bottom == 0 || top <= bottom || exception_stack_pointer & 7 != 0
-        || exception_stack_pointer < bottom || frame_end > top
+    if bottom == 0
+        || top <= bottom
+        || exception_stack_pointer & 7 != 0
+        || exception_stack_pointer < bottom
+        || frame_end > top
     {
         return Err(UserEntryError::InvalidExceptionFrame);
     }
@@ -248,40 +290,50 @@ pub fn capture_exception(
     let words = exception_stack_pointer as *const u64;
     let frame = unsafe {
         [
-            ptr::read_volatile(words), ptr::read_volatile(words.add(1)),
-            ptr::read_volatile(words.add(2)), ptr::read_volatile(words.add(3)),
-            ptr::read_volatile(words.add(4)), ptr::read_volatile(words.add(5)),
+            ptr::read_volatile(words),
+            ptr::read_volatile(words.add(1)),
+            ptr::read_volatile(words.add(2)),
+            ptr::read_volatile(words.add(3)),
+            ptr::read_volatile(words.add(4)),
+            ptr::read_volatile(words.add(5)),
             ptr::read_volatile(words.add(6)),
         ]
     };
-    if frame[0] != vector || frame[1] != error_code
-        || frame[2] != instruction_pointer || frame[3] != code_selector
+    if frame[0] != vector
+        || frame[1] != error_code
+        || frame[2] != instruction_pointer
+        || frame[3] != code_selector
         || frame[4] != flags
         || code_selector != u64::from(gdt::USER_CODE_SELECTOR)
         || frame[6] != u64::from(gdt::USER_DATA_SELECTOR)
-        || !is_user_address(frame[2]) || !is_user_address(frame[5])
+        || !is_user_address(frame[2])
+        || !is_user_address(frame[5])
         || flags & RFLAGS_RESERVED_ONE == 0
         || flags & (RFLAGS_IOPL | RFLAGS_NT | RFLAGS_VM) != 0
     {
         return Err(UserEntryError::InvalidExceptionFrame);
     }
     Ok(UserException {
-        vector, error_code, instruction_pointer, flags,
+        vector,
+        error_code,
+        instruction_pointer,
+        flags,
         user_stack_pointer: frame[5],
     })
 }
 
 fn validate_kernel_range(start: u64, end: u64) -> Result<(), ()> {
-    if start == 0 || end <= start || !is_kernel_canonical(start)
-        || !is_kernel_canonical(end - 1)
-    {
+    if start == 0 || end <= start || !is_kernel_canonical(start) || !is_kernel_canonical(end - 1) {
         return Err(());
     }
     let mut page = start & !(PAGE_SIZE - 1);
     let last_page = (end - 1) & !(PAGE_SIZE - 1);
     loop {
         let mapping = vmm::query_page(page).map_err(|_| ())?;
-        if mapping.flags.user || !mapping.flags.writable || mapping.flags.executable {
+        // The bootstrap 2 MiB identity map is currently RWX. These kernel
+        // objects remain supervisor-only; a later kernel W^X pass will make
+        // writable stacks/data explicitly NX while keeping text RX.
+        if mapping.flags.user || !mapping.flags.writable {
             return Err(());
         }
         if page == last_page {
