@@ -246,7 +246,9 @@ pub fn initialize_cpu_local(kernel_stack_top: u64, fx_state: usize, dispatcher: 
 
 /// Updates trusted entry state before returning to another scheduled task.
 pub fn update_current_task_context(kernel_stack_top: u64, fx_state: usize) -> bool {
-    if !valid_entry_context(kernel_stack_top, fx_state) || !boot_cpu_context_is_ready() {
+    // This function is called from the syscall dispatcher after the entry stub
+    // has executed SWAPGS, so the trusted per-CPU base is IA32_GS_BASE here.
+    if !valid_entry_context(kernel_stack_top, fx_state) || !boot_cpu_context_is_active() {
         return false;
     }
     unsafe {
@@ -276,6 +278,20 @@ fn boot_cpu_context_is_ready() -> bool {
             && local & 0x3F == 0
             && read_msr(IA32_GS_BASE) == 0
             && read_msr(IA32_KERNEL_GS_BASE) == local
+            && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top)) != 0
+            && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.fx_state)) != 0
+            && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.dispatcher)) != 0
+    }
+}
+
+/// True only while the syscall dispatcher is executing after SWAPGS.
+fn boot_cpu_context_is_active() -> bool {
+    let local = ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL) as u64;
+    unsafe {
+        is_canonical_address(local)
+            && local & 0x3F == 0
+            && read_msr(IA32_GS_BASE) == local
+            && read_msr(IA32_KERNEL_GS_BASE) == 0
             && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.kernel_stack_top)) != 0
             && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.fx_state)) != 0
             && ptr::read_volatile(ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL.dispatcher)) != 0
