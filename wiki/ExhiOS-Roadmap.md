@@ -216,16 +216,74 @@ Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b4
 - [x] По инструкции пользователя успешный self-hosted QEMU runtime считается эквивалентным локальной системе. P4.6 принят без отдельного ручного прогона.
 - [x] Scope: Ring 0, single CPU, PIT/legacy PIC, static guarded stacks. Освобождение task stacks — отдельный этап.
 
-### P5.1 — Ring 3 entry and exception return (implementation in progress)
-- [ ] GDT DPL3 descriptors, private address space, RX code + RW/NX user stack and TSS.RSP0 kernel stack are implemented; the CPL3 INT3 exception verifier and cleanup path are wired.
-- [ ] Dedicated build and QEMU runtime must prove CS=0x33, SS=0x2B, saved user RIP/RSP and correct private mapping flags; current-HEAD self-hosted runtime acceptance is pending.
-- [ ] P5.2 supervisor/user hardware fault isolation, syscalls and user-pointer validation remain separate work.
-
 ## P5 — User-mode isolation
-- [ ] Ring 3, per-process address spaces, syscalls, user-pointer validation, capabilities.
+
+**P5.1–P5.7 завершены и приняты по self-hosted build + полному headless QEMU runtime suite.** Реализация общего production syscall entry и memory primitives находится в always-built x86-64 architecture modules. Подтверждённая конфигурация BSP/single-CPU; SMP/AP-local GS и user TLS не заявляются.
+
+- [x] **P5.1 — Ring 3 entry and CPL3 exception return:** DPL3 selectors, private CR3, TSS.RSP0, validated IRETQ frame and processor-originated exception return.
+- [x] **P5.2 — Supervisor isolation:** CPL3 cannot access supervisor-only kernel mappings; hardware #PF reports the expected U/S protection fault.
+- [x] **P5.3 — System-call entry/return:** validated SYSCALL MSR setup, common GS-relative BSP entry, trusted kernel-stack switch, normalized frame, FXSAVE/FXRSTOR and IRETQ return.
+- [x] **P5.4 — User-pointer validation:** canonical-address, complete mapped-range and per-page read/write/execute permission checks; bounded to 16 MiB.
+- [x] **P5.5 — Safe user copies:** whole-range validation before touching memory; invalid cross-boundary destination is rejected without partial writes.
+- [x] **P5.6 — User-task lifecycle:** two isolated Ring 3 tasks with private CR3/code/stack contexts; syscall yield/exit, idle dispatch, kernel reaping, address-space/frame reclamation and scheduler-record removal.
+- [x] **P5.7 — Capabilities/default deny:** typed process capability set, empty-by-default user tasks, unknown-bit rejection and enforcement inside the shared syscall dispatcher before service invocation.
+
+Runtime evidence: [CI run #405](https://github.com/mindwork64/exhiOS/actions/runs/42434078573) passed build, host tests and all 20 headless QEMU scenarios. It verified common syscall entry/return; separate A/B user address spaces; authorized ConsoleWrite; denied Yield and ConsoleWrite without side effects; two exits; kernel reaping; page/frame reclamation; task-record removal and TSS.RSP0 cleanup. The accepted scope is BSP-only: AP-local GS, user TLS, NMI/exception SWAPGS-window handling and SMP scheduling remain future work.
 
 ## P6 — Storage
-- [ ] VFS, RAMFS, file/directory operations.
+
+**Initial allocator-free VFS/RAMFS implementation is complete and QEMU-verified.**
+
+- [x] Allocator-free `FileSystem` contract, generation-tagged `NodeId`, metadata and paginated directory-entry API.
+- [x] Bounded fixed-capacity `RamFs<NODE_COUNT, FILE_CAPACITY>` with fixed node table and per-node file storage.
+- [x] Lookup, nested absolute/relative path resolution, create/read/write/remove, directory pagination, sparse zero-fill, capacity/overflow checks, non-empty directory protection and stale-handle rejection.
+- [x] Kernel integration smoke test covers `/etc/exhi.conf`, binary read/write round-trip, enumeration, oversized-write no-mutation, directory protection, removal and stale-handle invalidation.
+
+Evidence: all eight `exhi-vfs` unit tests passed; [CI run #412](https://github.com/mindwork64/exhiOS/actions/runs/42546613316) passed build and the full headless QEMU runtime job, including `P6: VFS/RAMFS runtime smoke test passed.` and debug-exit status 33.
+
+Scope boundary: userland file-open/read/write syscalls and persistent on-disk filesystems are not implemented. The current configuration is embedded in `exhi-init`; VFS/RAMFS is currently exercised from kernel code.
 
 ## P7 — Userland
-- [ ] init, libexhi, serial shell, basic utilities.
+
+### P7.1 — First user process (`init`) — implementation in progress
+
+- [x] Bounded fixed-address ELF64 ET_EXEC loader in `arch::x86_64::process`: PT_LOAD validation, private address space, RX/RW+NX permissions, zero-filled BSS, four-page user stack and an unmapped guard page.
+- [x] Reverse-order rollback and explicit ownership of user data frames and private page-table frames.
+- [x] Default build selects `process-runtime`, embeds `exhi-init` and enters it in Ring 3 through the common IRETQ path.
+- [x] Dedicated supervisor kernel stack with guard page, TSS.RSP0, initialized FXSAVE image and shared BSP SYSCALL entry.
+- [x] `ConsoleWrite`, `ConsoleRead`, `Yield` and `Exit` are dispatched through the shared capability-gated syscall dispatcher.
+- [x] Init exit and validated user-mode exception paths restore the kernel address space and reclaim the init address space and its user frames. The user-fault cleanup path also verifies CRLF diagnostics.
+- [ ] Replace the current single-process adapter: production `Yield` still resumes the same init process (`Ok(None)`); the general `exhi-task` scheduler and its real multi-process dispatch are not yet wired into the production process runtime. This is the remaining P7.1 blocker.
+- [ ] Add a production QEMU runtime scenario proving actual process scheduling and safe reaping through that runtime, rather than relying only on the separate P5.6 scheduler smoke adapter.
+
+Evidence: CI #430 verified ELF loader permissions/BSS/guard/reclamation; CI #435 verified Ring 3 entry and the `libexhi` syscall sequence. Latest [CI run #451](https://github.com/mindwork64/exhiOS/actions/runs/42580983148) has successful build and QEMU runtime jobs, including user-fault cleanup.
+
+### P7.2 — System-call support library (`libexhi`)
+
+- [x] `no_std` wrappers for `console_write`, non-blocking `console_read`, `yield_now` and `exit`.
+- [x] Stable ABI numbers and decoding of kernel error return values.
+- [x] Unit tests and Ring 3 QEMU execution through the shared x86-64 SYSCALL entry.
+
+Evidence: CI #435 passed the wrapper tests and the QEMU init syscall sequence.
+
+### P7.3 — Interactive serial shell
+
+- [x] Ring 3 init reads COM1 through capability-gated non-blocking `ConsoleRead` and writes through validated `ConsoleWrite`.
+- [x] CR/LF/CRLF, backspace/DEL, Ctrl+C, Ctrl+D, bounded 127-byte command line and overflow bell.
+- [x] Commands: `help`, `hostname`, `version`, `echo`, `clear`, `config`, `exit`.
+- [x] QEMU serial-socket interaction verifies echo, line editing, Ctrl+C, command output, configuration display and clean exit.
+
+Evidence: CI #447 passed the interactive QEMU shell scenario.
+
+### P7.4 — Basic utilities and configuration format
+
+- [x] `exhi-config`: bounded allocation-free UTF-8 `key=value` parser; comments, whitespace trimming, CRLF, line/key/value limits and structured line-numbered errors.
+- [x] Init applies `hostname`, `prompt`, and `version`; malformed or duplicate known settings safely fall back to built-in defaults.
+- [x] The `config` command prints the active settings; parser and QEMU checks passed in CI #447.
+- [ ] Load configuration from VFS through a userland filesystem syscall. Current configuration remains embedded in the init image.
+
+## Current platform boundaries
+
+- Production first-process runtime and the shared syscall CPU-local context are BSP/single-CPU only.
+- AP-local GS setup, SMP scheduling/TLB shootdown, user TLS and NMI/exception handling during the SWAPGS transition are not claimed.
+- The initial VFS is in-memory RAMFS; persistent storage and userland filesystem syscalls remain future work.

@@ -460,3 +460,28 @@ Implementation:
 - Constructed a 20-qword IRETQ frame to enter CPL3, where a one-byte INT3 instruction should raise #BP. The CPL3 exception verifier checks saved user CS/RIP/RFLAGS/RSP/SS and the effective user page permissions; cleanup restores kernel CR3 and reclaims the private address space and user frames.
 - Added `EXHIOS_RING3_TEST=1` build/QEMU selectors and dedicated build/runtime CI steps.
 - P5.1 remains implementation-in-progress until the current-HEAD self-hosted QEMU runtime job passes.
+
+## 2026-11-08 — P5.1–P5.7 user-mode isolation accepted
+
+- Production x86-64 user-entry and user-memory primitives were promoted into always-built architecture modules. Ring 3 entry validates active CR3, RX code, RW+NX user stack, supervisor kernel stack, TSS.RSP0, FX state and the full exception-return frame.
+- Common SYSCALL entry uses one normalized 20-qword frame and a 64-byte-aligned BSP GS-relative context. The entry switches away from user RSP, saves/restores FXSAVE state and invokes a kernel dispatcher before IRETQ return.
+- `exhi-syscall` owns syscall-number/capability mapping and default-deny authorization. The adapter cannot override the authorization decision. User pointers are validated across all pages; copy helpers validate a whole range before mutation.
+- The P5.6 runtime executes two isolated Ring 3 tasks with separate CR3/code/stack contexts, syscall yield/exit, idle dispatch and kernel reaper. It checks authorized ConsoleWrite, denied Yield/ConsoleWrite without side effects, frame/page-table reclamation and task-record removal.
+- Host/build plus all 20 headless QEMU scenarios passed in [CI #405](https://github.com/mindwork64/exhiOS/actions/runs/42434078573). Accepted scope: BSP/single-CPU; no AP-local GS, user TLS, SWAPGS-window NMI handling or SMP claim.
+
+## 2026-11-08 — P6 VFS/RAMFS accepted
+
+- Added allocator-free `FileSystem` contract and bounded fixed-capacity `RamFs` implementation in `exhi-vfs`, with generation-tagged handles, nested paths, file/directory CRUD, paginated entries, sparse zero-fill and explicit overflow/capacity/stale-handle errors.
+- Kernel smoke test exercises `/etc/exhi.conf`, binary write/read, absolute/relative lookup, directory enumeration, no-mutation on oversized write, non-empty directory protection and stale slot generation.
+- All eight `exhi-vfs` host tests and the kernel build/QEMU runtime passed in [CI #412](https://github.com/mindwork64/exhiOS/actions/runs/42546613316). Userland filesystem syscalls and persistent storage remain future work.
+
+## 2026-11-09 — P7 userland progress and latest green CI
+
+- P7.1: bounded ET_EXEC loader enters the embedded `init` in Ring 3 with private address space, RX/RW+NX mappings, zeroed BSS, four-page user stack and unmapped guard. Exit and processor-originated user exceptions restore kernel CR3 and reclaim owned user frames/page tables.
+- P7.2: `libexhi` exposes `console_write`, non-blocking `console_read`, `yield_now` and `exit` wrappers over the shared stable syscall ABI. CI #435 passed host and QEMU syscall sequence tests.
+- P7.3: interactive serial shell runs in Ring 3, supports bounded line editing and commands `help/hostname/version/echo/clear/config/exit`; CI #447 passed serial-socket interaction.
+- P7.4: bounded allocation-free `exhi-config` parser and embedded hostname/prompt/version settings; invalid/duplicate known entries safely fall back to defaults. CI #447 passed parser and QEMU shell checks. Persistent VFS config loading remains open.
+- The remaining P7.1 blocker is production scheduler integration: the current `InitServices::yield_current` returns `Ok(None)`, so init resumes itself; the general `exhi-task` scheduler is not yet the production process scheduler. The P5.6 two-task scheduler path remains an architecture smoke adapter.
+- User-mode fault termination cleanup was hardened in [e1d8999](https://github.com/mindwork64/exhiOS/commit/e1d8999792ff10d68dd3f188816f32b05150ced1); diagnostics were fixed to emit CRLF in [bd52245](https://github.com/mindwork64/exhiOS/commit/bd522457884c3d8536c1cd2b487fd8bc07179954); rustfmt followed in [3943378](https://github.com/mindwork64/exhiOS/commit/39433785d5a116fa1e6908bf1f91b806bd931c48).
+- Current HEAD [3943378](https://github.com/mindwork64/exhiOS/commit/39433785d5a116fa1e6908bf1f91b806bd931c48) passed both self-hosted CI jobs in [run #451](https://github.com/mindwork64/exhiOS/actions/runs/42580983148): full build/host tests and the headless QEMU runtime suite including user-fault cleanup. Intermediate runs #449/#450 failed; #451 is the successful current-HEAD result.
+- Documentation checkpoint: all core wiki pages are being synchronized to this code state. Wiki updates are part of every milestone, not optional cleanup.

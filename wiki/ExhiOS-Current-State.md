@@ -1,9 +1,9 @@
 # ExhiOS — текущее состояние
 
-Снимок: **2026-11-07**  
+Снимок: **2026-11-09**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: P3.5 и P4.1–P4.6 закрыты по self-hosted CI/build + QEMU runtime. P4.5 дополнительно принят по пользовательскому Linux Mint/QEMU serial log 2026-11-07. P4.6 прошёл полный self-hosted CI/QEMU в [run 42337327289](https://github.com/mindwork64/exhiOS/actions/runs/42337327289): host scheduler tests, все kernel build variants, предыдущие QEMU-регрессии и отдельный idle-context/timed-wakeup runtime test. По прямой инструкции пользователя успешный QEMU runtime на его self-hosted runner считается эквивалентом локальной системы. Следующий этап — P5.1: Ring 3 entry и CPL3 exception return; реализация добавлена, CI/QEMU-приёмка ожидается.
+Кодовый checkpoint: P0–P6 закрыты по их runtime/host evidence; P5.1–P5.7 приняты по полному self-hosted CI/QEMU suite (#405); P6 VFS/RAMFS принят (#412). В P7 реализованы init ELF loader, libexhi, интерактивный Ring 3 serial shell и встроенная конфигурация. P7.1 остаётся открытым только в части production-интеграции общего планировщика: текущий production runtime однопроцессный, а `Yield` возобновляет тот же init. Последний HEAD `39433785d5a1` прошёл оба job в [CI #451](https://github.com/mindwork64/exhiOS/actions/runs/42580983148), включая user-fault cleanup.  
 
 ## Закрыто и проверено в QEMU
 
@@ -328,9 +328,37 @@ Implementation:
 - По прямой инструкции пользователя этот успешный self-hosted QEMU runtime принят как локально-эквивалентное подтверждение. Отдельный ручной запуск не требуется.
 - Границы: Ring 0, single CPU, PIT/legacy PIC; task stacks пока статические. Освобождение стеков — отдельный этап.
 
-## Следующий этап — P5.1: Ring 3 entry and exception return
+## Текущее состояние на 2026-11-09
 
-- GDT дополнена DPL3 code/data descriptors (selectors `0x33` и `0x2B`).
-- Ветка P5.1 готовит private address space, RX user code page с `INT3` и RW+NX user stack, устанавливает TSS.RSP0 на отдельный kernel stack и входит в CPL3 через IRETQ.
-- Exception path проверяет privilege-transition frame, saved user RSP/SS и права mappings; затем должен восстановить kernel CR3 и освободить user pages/page tables.
-- Отдельные build + QEMU runtime selectors добавлены, CI-приёмка P5.1 ожидается. Syscalls и user-pointer ABI в P5.1 не входят.
+### P5 — User-mode isolation: закрыто
+
+P5.1–P5.7 реализованы. Общие x86-64 Ring 3 entry, SYSCALL entry, user-pointer validation и safe-copy примитивы находятся в always-built architecture modules; capability checks выполняются общим `exhi-syscall` dispatcher. Два изолированных Ring 3 task contexts проверены через полный lifecycle: yield, exit, idle, reaper, освобождение address spaces/frames и удаление Finished records.
+
+[CI #405](https://github.com/mindwork64/exhiOS/actions/runs/42434078573) прошёл все 20 QEMU runtime scenarios и build/host-test job. Текущая платформа BSP/single-CPU; SMP/AP-local GS/user TLS не заявлены.
+
+### P6 — VFS/RAMFS: закрыто
+
+`exhi-vfs` предоставляет allocator-free FileSystem API и bounded RAMFS с generation-tagged handles, nested paths, CRUD, directory pagination, sparse zero-fill, capacity checks и защитой stale handles. В kernel smoke test покрыты read/write, oversized-write no-mutation, non-empty directory и повторное использование slot.
+
+[CI #412](https://github.com/mindwork64/exhiOS/actions/runs/42546613316): 8/8 VFS host tests, build и headless QEMU runtime passed. Userland filesystem syscalls и persistent filesystem пока отсутствуют.
+
+### P7 — Userland: состояние
+
+**P7.1 — init: частично готово.** Встроенный ET_EXEC init загружается в private address space, получает RX code, RW+NX stack с guard page и исполняется в Ring 3. ELF loader проверяет сегменты, BSS и права; cleanup возвращает kernel CR3 и освобождает frames/page tables. Exit и user-mode fault termination очищают resources. Это покрыто CI #430/#435 и последним QEMU suite #451. Остаётся production-интеграция general scheduler: текущая реализация однопроцессная, `Yield` возвращает тот же процесс; отдельный P5.6 scheduler smoke test пока не является production process scheduler.
+
+**P7.2 — libexhi: готово.** `no_std` wrappers: `console_write`, `console_read`, `yield_now`, `exit`; стабильные syscall numbers и decoding kernel errors. CI #435 подтвердил использование в Ring 3.
+
+**P7.3 — serial shell: готово.** Интерактивная консоль Ring 3 с line editing, CR/LF/CRLF, Backspace/DEL, Ctrl+C/D, ограничением 127 байт и командами `help`, `hostname`, `version`, `echo`, `clear`, `config`, `exit`. QEMU serial-socket interaction accepted в CI #447.
+
+**P7.4 — конфигурация: готова для embedded config.** `exhi-config` — bounded allocation-free UTF-8 key/value parser; init применяет hostname/prompt/version, invalid config безопасно переключается на defaults. CI #447 passed. Persistent VFS config loading — future work.
+
+### Последняя проверенная точка CI
+
+- HEAD: [3943378](https://github.com/mindwork64/exhiOS/commit/39433785d5a116fa1e6908bf1f91b806bd931c48).
+- CI [#451](https://github.com/mindwork64/exhiOS/actions/runs/42580983148): build — success; QEMU runtime smoke test — success.
+- Последние исправления: [e1d8999](https://github.com/mindwork64/exhiOS/commit/e1d8999792ff10d68dd3f188816f32b05150ced1) — resource cleanup after user-mode faults; [bd52245](https://github.com/mindwork64/exhiOS/commit/bd522457884c3d8536c1cd2b487fd8bc07179954) — CRLF in user-fault diagnostics; [3943378](https://github.com/mindwork64/exhiOS/commit/39433785d5a116fa1e6908bf1f91b806bd931c48) — rustfmt.
+- CI #449/#450 were failed intermediate runs; #451 on current HEAD is green.
+
+### Ближайшая задача
+
+P7.1: подключить общий `exhi-task::Scheduler` к production process runtime. Реализовать реальные task contexts для user processes, диспетчеризацию `Yield`, смену CR3/kernel stack/FX state/TSS.RSP0 и безопасный exit/reap через kernel reaper. Отдельный QEMU сценарий должен доказать работу именно production path. Не подменять этот результат тестовым P5.6 adapter.

@@ -42,7 +42,7 @@ BootInfo v2 содержит magic/version/struct_size, физический а�
 - Loader/firmware/runtime/ACPI/MMIO и остальные типы зарезервированы.
 - Первые 1 MiB зарезервированы; первая bitmap управляет адресами ниже 4 GiB.
 - Page size 4096 bytes; bitmap managed + allocated.
-- Физический frame пока выдаётся как адрес; arbitrary dereference откладывается до page tables.
+- Физические кадры allocator выдаёт как адрес; доступ к ним разрешается только после подтверждённого mapping в текущем kernel address space.
 
 ## P2.2 — Bootstrap paging (runtime verified)
 
@@ -239,11 +239,42 @@ A separate opt-in path extends the P4.4 interrupt scheduler with an actual task-
 - Self-hosted CI [run 42337327289](https://github.com/mindwork64/exhiOS/actions/runs/42337327289) passed build and QEMU runtime jobs. The QEMU job ran the full regression suite, including the P4.6 runtime mode. Per the user's explicit instruction, successful runtime on this self-hosted runner is accepted as equivalent to their Linux Mint/QEMU system.
 - Scope remains Ring 0, single CPU, PIT/legacy PIC and static guarded stacks. Task stack reclamation is not included.
 
-## P5.1 — Ring 3 entry and exception return (implementation in progress)
+## P5 — User-mode isolation (accepted)
 
-- GDT now includes DPL3 user data/code descriptors: selectors 0x2B and 0x33; kernel selectors and TSS selector are unchanged.
-- The opt-in `ring3-smoke-test` builds a private address space using the existing address-space manager. It maps one user code page RX and one user stack page RW+NX, with an unmapped guard page between them.
-- A synthetic 20-qword IRETQ frame enters CPL3 with user CS/SS, RFLAGS.IF set and a user RSP. The user instruction is `INT3`.
-- The exception handler routes CPL3 exceptions to a verifier. For expected #BP it checks saved RIP, CS, RFLAGS, user RSP/SS and effective page permissions, then restores kernel CR3, unmaps both pages, destroys private page tables and releases user data frames.
-- Dedicated build and QEMU runtime selectors are in the workflow. Do not mark P5.1 accepted until the current-HEAD self-hosted QEMU runtime job passes.
-- This is only the CPL3 transition/#BP proof. Hardware enforcement of supervisor isolation, syscalls, user-pointer validation and process lifecycle remain separate P5 stages.
+P5.1–P5.7 accepted by the full self-hosted build and headless QEMU suite [run #405](https://github.com/mindwork64/exhiOS/actions/runs/42434078573).
+
+- User selectors: CS=0x33, SS=0x2B. User processes receive private PML4/PDPT roots while the kernel identity map and heap remain supervisor-only shared mappings.
+- The production IRETQ entry validates an active address space, RX/non-writable user code, RW+NX user stack, supervisor kernel stack, TSS.RSP0, FXSAVE state and the full hardware exception frame.
+- The common SYSCALL entry is always built. A 64-byte-aligned BSP GS-relative CPU-local record holds user RSP, trusted kernel stack, FXSAVE image and dispatcher pointer. Entry uses SWAPGS before touching trusted state, switches stack, saves FX state, dispatches and returns through IRETQ.
+- User memory helpers validate every page and effective permissions, require the target space active and IF=0, and reject oversized ranges. Safe copies validate the entire range before dereference, avoiding partial writes on a rejected destination.
+- `exhi-syscall` owns syscall-number/capability policy. Empty grants are default; the dispatcher denies before entering the service adapter. The P5.6 runtime verifies authorized ConsoleWrite and denied Yield/ConsoleWrite without side effects.
+- P5.6 smoke runtime uses two private Ring 3 contexts, exercises yield/exit, idle dispatch and kernel reaping, then verifies user frames/page tables and Finished task records are reclaimed.
+- Scope is BSP/single-CPU. No AP-local GS provisioning, user TLS, NMI/exception SWAPGS-window handling or SMP scheduling is claimed.
+
+## P6 — VFS/RAMFS
+
+The allocator-free `exhi-vfs` crate defines the filesystem contract and bounded `RamFs<NODE_COUNT, FILE_CAPACITY>`. It uses generation-tagged handles, fixed node/data storage, nested path lookup, file/directory CRUD, paginated directory entries, sparse zero-fill and explicit capacity/stale-handle errors. Kernel smoke test verifies binary `/etc/exhi.conf` read/write, directory behavior, oversized-write atomic rejection, non-empty directory protection and stale-handle rejection. Host tests 8/8 and QEMU runtime passed in [CI #412](https://github.com/mindwork64/exhiOS/actions/runs/42546613316).
+
+Userland filesystem syscalls and a persistent on-disk filesystem are not implemented.
+
+## P7 — Userland architecture and runtime
+
+### P7.1 — First process
+
+The default `scripts/build.sh` builds a fixed-address ET_EXEC `exhi-init`, embeds it into the kernel and starts it in Ring 3. `arch::x86_64::process::LoadedProcess` owns its address space and all mapped frames. The loader bounds PT_LOAD pages, maps RX/RW+NX, zeroes BSS, creates a four-page RW+NX user stack plus an unmapped guard page, and rolls back in reverse order on failure.
+
+The current production runtime owns one init process. It configures a guarded supervisor stack, TSS.RSP0, an FXSAVE image and the common BSP SYSCALL entry. Init exit and validated user exceptions return to the kernel address space and reclaim process mappings/frames; user-fault cleanup is part of current QEMU CI #451.
+
+**Remaining P7.1 work:** wire the general `exhi-task` scheduler into this production process runtime. Today `Yield` returns `Ok(None)` and resumes the same process. The separate two-process P5.6 architecture smoke adapter is evidence for the scheduler primitives, not evidence that production init uses the scheduler. Add a QEMU test for the integrated production process scheduler and reaper before closing P7.1.
+
+### P7.2 — libexhi
+
+The `no_std` `libexhi` crate wraps the current ABI: `console_write`, non-blocking `console_read`, `yield_now` and `exit`. It decodes stable kernel errors. Unit and Ring 3 QEMU sequence passed in CI #435.
+
+### P7.3 — serial shell
+
+Ring 3 init implements an interactive COM1 shell over the capability-gated ConsoleRead/ConsoleWrite calls. It supports CR/LF/CRLF, backspace/DEL, Ctrl+C, Ctrl+D, 127-byte bounded input and overflow bell. Commands are `help`, `hostname`, `version`, `echo`, `clear`, `config` and `exit`. Serial-socket interaction passed in CI #447.
+
+### P7.4 — configuration
+
+`exhi-config` parses bounded allocation-free UTF-8 `key=value` configuration with comments, whitespace and CRLF handling, strict limits and line-numbered errors. Init applies `hostname`, `prompt` and `version` and falls back to built-in defaults on malformed/duplicate known keys. Configuration is currently embedded in the init image; reading it from VFS through a user syscall is future work.

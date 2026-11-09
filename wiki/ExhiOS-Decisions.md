@@ -73,11 +73,24 @@
 - The PML4[0] USER bit may be set for user pages, but shared kernel/heap mappings remain supervisor-only because their lower-level entries retain U/S=0.
 - map_user_page is unsafe: caller owns frame, keeps it allocated until unmap and scrubs before exposing it to untrusted code. unmap returns data-frame ownership to caller; destroy only reclaims private page-table structures.
 - CR3 switches require IF=0. Current design is single-core and assumes no PCID/global mappings; SMP TLB shootdown is future work.
-- Actual Ring 3 execution and hardware privilege fault verification remain separate user-mode work.
+- Ring 3 execution, supervisor isolation, syscalls, safe user copies and capabilities are implemented under P5; current runtime remains BSP/single-CPU.
 
 
-## Exception and kernel-stack hardening (planned P2.6)
-- Existing exception vectors 0..31 have assembly stubs and a fatal Rust handler; INT3 was runtime-tested and the handler reports vector/error code/RIP/CS/RFLAGS and CR2 for #PF.
-- Current handlers run on the interrupted kernel stack; no TSS or IST is installed yet. A stack-overflow fault can therefore escalate to double fault/triple fault before diagnostics.
-- Install a TSS with a dedicated IST stack for #DF before enabling a guard page below the boot kernel stack.
-- Verify the #DF path in QEMU before treating the guard page as an active protection mechanism.
+## Exception and kernel-stack hardening (accepted P2.6)
+
+- GDT contains a 64-bit TSS (selector 0x18), loaded by LTR. IST1 points to a dedicated 16 KiB aligned kernel BSS stack.
+- IDT vector 8 (#DF) uses IST1. Exception stubs normalize CPU-pushed error-code frames; the handler validates the frame lies inside IST1.
+- UEFI reserves a contiguous 17-page region: one guard page followed by the 64 KiB boot kernel stack. Kernel reserves and unmaps the guard before use.
+- QEMU deliberately faults on the guard so delivery escalates to #DF; IST1 receives the frame and the test exits with status 33. P2.6 is implemented and runtime-verified, not planned.
+
+## User-mode and process architecture (P5–P7)
+
+- User mappings are private to an address space; the shared kernel identity/heap mappings remain supervisor-only.
+- User entry and syscall handling require IF=0 while changing CR3, TSS.RSP0 and trusted entry state. The first implementation is BSP/single-CPU.
+- Common SYSCALL entry uses a 64-byte-aligned GS-relative boot-CPU context. SYSCALL is not enabled until GS state, trusted kernel stack, FXSAVE pointer and dispatcher are installed and verified.
+- Syscall authorization is default-deny. The common dispatcher owns syscall-to-capability mapping and checks grants before service callbacks. Missing/kernel tasks resolve to empty user-service grants.
+- User pointers are not dereferenced directly: validate canonical bounds, all touched pages and effective permissions first; copy helpers validate the complete range before copying.
+- Address-space teardown must switch to the kernel root first, unmap owned user pages, return data frames, then release private page-table structures. A running/current task must never be reaped.
+- Production process scheduler integration is not yet complete: current init runtime is single-process and Yield resumes the same init. Do not confuse the P5.6 scheduler smoke adapter with a production process manager.
+- AP-local GS state, user TLS, NMI/exception handling across the SWAPGS window, SMP scheduling and TLB shootdown are outside the accepted BSP-only scope.
+- VFS/RAMFS is currently in-memory and kernel-integrated. Userland filesystem syscalls and persistent storage are future work.

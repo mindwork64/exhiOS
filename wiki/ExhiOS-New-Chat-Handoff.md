@@ -1,63 +1,52 @@
 # ExhiOS — передача контекста в новый чат
 
-Прочитать:
-1. [[ExhiOS Current State]]
-2. [[ExhiOS Architecture]]
-3. [[ExhiOS Roadmap]]
-4. [[ExhiOS Decisions]]
-5. [[ExhiOS Development Log]]
+## Что читать в первую очередь
+1. [[ExhiOS Current State]] — фактический статус, последний CI и ближайшая задача.
+2. [[ExhiOS Roadmap]] — приёмка P0–P7.
+3. [[ExhiOS Architecture]] — актуальные подсистемы и границы.
+4. [[ExhiOS Decisions]] — обязательные архитектурные решения.
+5. [[ExhiOS Development Log]] — история изменений и runtime evidence.
 
-## Репозиторий и workflow
-- https://github.com/mindwork64/exhiOS
-- Основная ветка `main`.
-- Wiki source pages находятся в `wiki/` основного репозитория; GitHub Actions публикует их в Wiki.
-- Пользователь работает в Linux Mint + QEMU/OVMF.
-- Основной CI использует self-hosted runner labels `[self-hosted, linux, x64]`; runner уже имеет Rust/binutils/QEMU/OVMF/disk tools, поэтому job не устанавливает пакеты через apt. Fork pull requests не исполняют код на self-hosted runner.
-- Обновление локального репозитория: `git fetch origin` и `git reset --hard origin/main`. Не предлагать `git pull --ff-only`.
-- QEMU запускать из корня: `./scripts/run-qemu.sh`.
-- Пользователь присылает serial output для runtime проверки. Не объявлять этап закрытым без него.
+## Репозиторий и рабочий процесс
+- Repository: https://github.com/mindwork64/exhiOS
+- Основная ветка: `main`; проект Rust Stable, UEFI loader + freestanding x86-64 kernel, target QEMU + OVMF.
+- Wiki source of truth — Markdown в `wiki/` основного репозитория. Изменения `wiki/**` на main публикуются workflow `.github/workflows/publish-wiki.yml`.
+- Wiki критически важна: обновлять Roadmap, Current State, Architecture/Decisions при архитектурных изменениях, Development Log и New Chat Handoff на каждом завершённом этапе. Не оставлять её на старом milestone.
+- Локальное обновление кода пользователя: `git fetch origin`, затем `git reset --hard origin/main`, затем `cargo fmt`. Не предлагать `git pull`.
+- Сборка: `./scripts/build.sh`. QEMU: `./scripts/run-qemu.sh`.
+- Self-hosted GitHub runner labels: `[self-hosted, linux, x64]`; он уже содержит Rust, binutils, QEMU/OVMF и disk tools.
+- Пользователь явно разрешил считать QEMU runtime на этом self-hosted runner эквивалентом локального Linux Mint/QEMU. Не требовать повторного ручного прогона для каждого этапа, когда CI реально выполнил нужный QEMU scenario.
+- Не считать один только compile/build доказательством runtime корректности.
 
-## Последняя подтверждённая точка
-- P0/P1, P2.1, P2.2, P2.3, P2.4, P2.5, P2.5.1, P2.6 и P3.1–P3.5 закрыты по применимым локальным + CI runtime/host evidence.
-- P2.5.1: use-after-destroy, idempotent destroy, active-destroy rejection, W^X, invalid/duplicate mappings, double-unmap, page-table frame validation and retry-safe teardown.
-- P2.5.1 CI QEMU/OVMF: [run 42238977281](https://github.com/mindwork64/exhiOS/actions/runs/42238977281); local Linux Mint/QEMU log also passed with debug-exit 33.
-- P2.5 is Ring 0 address-space management only; actual CPL3 execution, syscalls and hardware-enforced user/supervisor fault tests are not implemented.
+## Текущая подтверждённая точка — 2026-11-09
+- HEAD main: [3943378](https://github.com/mindwork64/exhiOS/commit/39433785d5a116fa1e6908bf1f91b806bd931c48).
+- Последний CI [#451](https://github.com/mindwork64/exhiOS/actions/runs/42580983148): build и QEMU runtime jobs — success. Промежуточные #449/#450 падали, но #451 на текущем HEAD прошёл.
+- P0–P6 закрыты по применимым host/build/QEMU evidence.
+- P5.1–P5.7: Ring 3 entry/isolation, common SYSCALL, pointer validation/safe-copy, двухзадачный user lifecycle и default-deny capabilities приняты полным runtime suite в [CI #405](https://github.com/mindwork64/exhiOS/actions/runs/42434078573). Scope BSP/single-CPU.
+- P6: bounded allocator-free VFS/RAMFS, операции file/directory и kernel smoke test приняты в [CI #412](https://github.com/mindwork64/exhiOS/actions/runs/42546613316). Userland FS syscalls/persistent disk FS отсутствуют.
+- P7.1: ET_EXEC init loader, private address space, RX/RW+NX mappings, stack guard, Ring 3 entry, syscalls and cleanup after exit/user fault implemented. Latest #451 includes user-fault cleanup test. P7.1 remains open because production runtime is still single-process and `Yield` resumes the same init; production process scheduler/reaper dispatch is not integrated.
+- P7.2: `libexhi` wrappers for console_write/read, yield_now and exit are implemented and tested (CI #435).
+- P7.3: interactive Ring 3 serial shell and QEMU serial input tests passed (CI #447).
+- P7.4: bounded `key=value` parser; embedded hostname/prompt/version config is applied and displayed. Persistent VFS config load is not implemented.
 
-## Текущий кодовый checkpoint
-- Current P3.4 implementation commits: [993b651](https://github.com/mindwork64/exhiOS/commit/993b651b7dd4cffa9aeffb6331e325dd1d8b190a) and [eafdbd1](https://github.com/mindwork64/exhiOS/commit/eafdbd1305ec7f3ae5b1f29f26d85bf317662310).
-- P2.6 implementation: 64-bit TSS in GDT (selector 0x18), TR loaded with LTR, 16 KiB aligned IST1 stack, IDT vector 8 uses IST1; exception assembly passes normalized frame pointer to the Rust #DF handler.
-- BootInfo ABI was bumped to magic `EXHIOS02`, version 2, and now carries kernel stack base/size.
-- UEFI loader allocates a contiguous 17-page LOADER_DATA region: first page is a reserved guard page; remaining 16 pages form the 64 KiB kernel stack.
-- Kernel reserves the guard physical page before later allocator use, then removes its identity mapping through VMM after the UEFI map is parsed. It verifies the guard is NotMapped and the stack remains supervisor mapped.
-- QEMU debug-exit test sets RSP to the first byte of the mapped kernel stack and reads from the guard page. Page-fault frame delivery hits the same guard page and escalates to #DF; CPU switches to IST1.
-- Headless CI/OVMF runtime: [run 42256850017](https://github.com/mindwork64/exhiOS/actions/runs/42256850017) passed. Local Linux Mint/QEMU log on 2026-11-06 also passed: guard 0x1E0D3000, stack 0x1E0D4000..0x1E0E4000, guard unmapped, stack supervisor-only, #DF frame pointer 0x122FC8 inside IST1 0x11F000..0x123000, debug-exit 33. P2.6 is closed.
-- P3.1 adds a reusable polling 16550 SerialPort driver in `arch/x86_64/serial.rs`. COM1 output is migrated from main.rs; RX adds non-blocking try_read_byte and polling read_byte_blocking. Boot prints the P3.1 readiness marker.
-- RX-inclusive driver build + headless QEMU regression [run 42258141119](https://github.com/mindwork64/exhiOS/actions/runs/42258141119) passed before the interactive test harness was added. The CI boot trace proves TX/boot regression, not receipt of input bytes.
-- Commits [a58220e](https://github.com/mindwork64/exhiOS/commit/a58220e5fda9afb069b71f08529ebc68f95a4d36) and [6014dec](https://github.com/mindwork64/exhiOS/commit/6014dec505682a4d91ff7165d222f274a15561da) add the opt-in interactive RX byte-echo mode. Run `EXHIOS_SERIAL_RX_TEST=1 ./scripts/run-qemu.sh`; type ASCII, test Enter/Backspace, then press Ctrl+D to print the received-byte count. This mode has not yet been locally exercised.
-- P2.6 and P3.1 are closed with local + CI evidence. P3.1 local RX log: `hello exhiOS` echoed, Enter produced a new prompt, Ctrl+D printed byte count 0x0D.
-- P3.2 initial GOP framebuffer console is implemented in `exhi-console` and kernel startup. It supports GOP formats 0/1, visible width + separate scanline stride, ASCII text, wrap and scroll. Host tests, build variants and headless QEMU runtime passed in CI [run 42272107662](https://github.com/mindwork64/exhiOS/actions/runs/42272107662). User's local QEMU serial log (2026-11-06) confirms GOP framebuffer 0x80000000, 1280x800, stride 1280, pixel format 1, successful console initialization, kernel handoff and halt loop. User-provided screenshot description confirms the expected visible strings for kernel banner, framebuffer ready, 1280x800, stride 1280, BGRX, COM1 ready and kernel handoff success. Fine visual details (font sharpness, spacing, artifacts) were not independently assessed. P3.2 initial functional acceptance is complete.
-- Follow-up commits [c3d2b8c](https://github.com/mindwork64/exhiOS/commit/c3d2b8ccaa34c6b399b7f12905ae11658455916b) and [558b394](https://github.com/mindwork64/exhiOS/commit/558b394f8b5d8dc66d3cd565e21302bbffde049a) add an allocation-free `KernelConsole` writer. After GOP setup it mirrors byte and formatted output to COM1 + framebuffer; on GOP failure it remains serial-only. Early startup diagnostics remain COM1-only. `write_fmt` uses `core::fmt` without heap allocation. CI build + headless QEMU runtime passed in [run 42275788072](https://github.com/mindwork64/exhiOS/actions/runs/42275788072); local QEMU serial output confirms unified-writer readiness and final handoff/halt messages.
+## Ближайшая задача: закрытие P7.1
+Интегрировать общий `exhi-task::Scheduler` в production process runtime, а не переиспользовать только smoke adapter:
+1. Process/task control block владеет private address space, user/kernel stacks, saved syscall/interrupt frame, FX state и capability grants.
+2. Реальная `Yield` сохраняет контекст и переключает к другой Ready process; при dispatch синхронно меняет CR3, trusted GS kernel-stack/FX pointers и TSS.RSP0.
+3. `Exit` и user exception переводят process в Finished; отдельный kernel reaper выполняется уже на собственном kernel stack и освобождает user mappings, page tables, frames, FX state и task record только после switch-away.
+4. Не освобождать стек, на котором ещё выполняется код или который может быть восстановлен. Сначала доказать безопасный handoff.
+5. Добавить отдельный QEMU runtime test именно для production manager: не менее двух Ring 3 процессов, реальное yield-переключение, exit/fault, reaper, capability denial/no side effects, корректный CR3/TSS/FX и полная reclamation.
+6. Все P5/P6 и базовые P7 сценарии сохранить в CI как регрессии. После успешного локально-эквивалентного QEMU CI сразу переходить к следующей запланированной задаче без ожидания отдельного одобрения.
 
-## Последняя подтверждённая точка — P4.1–P4.5 закрыты локально + self-hosted CI
+## Платформенные ограничения, которые нельзя скрывать
+- BSP/single-CPU only: AP-local GS setup, SMP process scheduling and TLB shootdown not implemented.
+- User TLS is not implemented. NMI/exception handling during SWAPGS transition window is not claimed.
+- RAMFS is in-memory; userland filesystem syscalls and persistent storage are future work.
+- Production init currently has one process; `Yield` is a same-process resume until P7.1 scheduler integration is completed.
 
-- User local QEMU log (2026-11-06): registry summary `registered=3 initialized=1 failed=0`; COM1/Serial/Initialized, PIT/Clock/Registered, i8042 PS/2/Input/Registered; runtime pass marker and debug-exit status 33.
-- Self-hosted CI workflow migration commit [f161f2a](https://github.com/mindwork64/exhiOS/commit/f161f2a967b4fe0194c05ea968ebab87ed814202). Run [42301446350](https://github.com/mindwork64/exhiOS/actions/runs/42301446350) passed build, host tests, standard boot, PIT and registry QEMU runtime.
-- P3.5 is fully closed.
-- User-local Linux Mint `cargo fmt` + `cargo test` (2026-11-06) passed 57/57 host tests, including 11/11 `exhi-task` tests.
-- P4.2 implementation commits: [651d95a](https://github.com/mindwork64/exhiOS/commit/651d95a319abc2d545734e492c61e5751f93aa42) adds the x86-64 stack/context-switch smoke implementation; [8e479b4](https://github.com/mindwork64/exhiOS/commit/8e479b4329dc02be610482495d317c61386e899d) fixes task exit control flow; [498116f](https://github.com/mindwork64/exhiOS/commit/498116ffcfa2114d69a2f62927604635038ae3f5) restores executable mode on both shell scripts.
-- Self-hosted CI [run 42304100157](https://github.com/mindwork64/exhiOS/actions/runs/42304100157) and the user's local Linux Mint/QEMU log (2026-11-06) confirm P4.2: A/B alternation, distinct stack-local addresses, progress=3 for both, Finished=2, TSS.RSP0 restored, boot stack resumed, pass marker and debug-exit 33. P4.2 is closed.
-
-## Последняя подтверждённая точка — P4.1–P4.6 закрыты по self-hosted CI/QEMU
-
-1. P4.1–P4.6 accepted. P4.6 self-hosted CI [run 42337327289](https://github.com/mindwork64/exhiOS/actions/runs/42337327289) passed both build and QEMU runtime jobs. The runtime job includes standard boot, PIT/registry, P4.2, P4.3, P4.4, P4.5 and the dedicated idle-context/timed-wakeup test.
-2. Пользователь явно разрешил считать, что self-hosted GitHub Actions runner исполняется на той же системе, что и его личный Linux Mint/QEMU. Успешный QEMU runtime на этом runner является local-equivalent acceptance; не ждать отдельного ручного serial log для таких этапов.
-3. P4.6 implementation: explicit scheduler idle state; guarded idle stack + 20-qword interrupt frame; DPL0 `INT 0x30` full-frame block path; `sti; hlt` idle loop; PIT deadline wake-up from idle; dispatch to selected task with restored FXSAVE and TSS.RSP0. Task stacks remain static and are not freed.
-4. P5.1 Ring 3 entry and exception-return implementation is in `exhi-kernel/src/arch/x86_64/user_mode.rs`; dedicated build and QEMU mode `EXHIOS_RING3_TEST=1` are wired into self-hosted CI. It creates a private address space with RX user code and RW+NX user stack, enters CPL3 via IRETQ, expects #BP/INT3 to arrive on TSS.RSP0, verifies saved user CS/RIP/RSP/SS and page permissions, then restores kernel CR3 and reclaims private page tables/user frames. Do not close P5.1 until current-HEAD CI build + QEMU runtime both pass.
-5. P5.2 next after P5.1: explicit CPL3 attempt to access a supervisor-only kernel mapping and verify #PF U/S error-code bits and CR2. Syscall entry/return and user-pointer validation follow as separate steps.
-6. Do not free static task stacks yet. Safe reclamation requires a dedicated proof that a stack is no longer executing and cannot be restored.
-## Правила работы
-- Русский язык общения.
-- Конкретные порции готового кода, коммиты в main, CI, затем runtime-тест.
-- Не задавать повторно вопросы, ответы на которые есть в Wiki.
-- Не считать compile success runtime success.
-- По ходу работы обновлять Wiki и ROADMAP.
+## Правила общения/работы
+- Общение на русском.
+- Двигаться последовательными законченными порциями: код → tests/build → CI → QEMU runtime → wiki.
+- Использовать фактические репозиторий/CI данные; не повторять вопросы, ответы на которые уже есть в Wiki.
+- При отчёте пользователя о локальном QEMU прогоне сразу продолжать следующую запланированную задачу, если нет реального блокера или риска данных.
+- Wiki обновлять в том же цикле, а не откладывать «на потом».
