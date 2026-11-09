@@ -7,12 +7,16 @@
 
 use core::ptr;
 
+use exhi_abi::{SyscallError, SyscallRequest};
 use exhi_elf::{ElfError, ElfFile, ProgramHeader, PT_LOAD};
+use exhi_syscall::{dispatch as dispatch_syscall, DispatchOutcome, SyscallServices};
+use exhi_task::{Capability, CapabilitySet};
 use exhi_memory::MemoryError;
 
 use crate::memory;
 
 use super::address_space::{self, AddressSpace, AddressSpaceError, PageMapping, UserPageFlags};
+use super::{serial, stack_guard, syscall, user};
 
 const PAGE_SIZE: u64 = 4096;
 const PAGE_MASK: u64 = PAGE_SIZE - 1;
@@ -25,6 +29,19 @@ const USER_STACK_BASE: u64 = USER_STACK_TOP - USER_STACK_SIZE;
 const USER_STACK_GUARD: u64 = USER_STACK_BASE - PAGE_SIZE;
 const MAX_IMAGE_PAGES: usize = 256;
 const MAX_OWNED_PAGES: usize = MAX_IMAGE_PAGES + USER_STACK_PAGES;
+#[cfg(feature = "process-run-smoke-test")]
+const INIT_KERNEL_STACK_PAGES: usize = 5;
+#[cfg(feature = "process-run-smoke-test")]
+const INIT_KERNEL_STACK_USABLE_PAGES: usize = INIT_KERNEL_STACK_PAGES - 1;
+#[cfg(feature = "process-run-smoke-test")]
+const INIT_KERNEL_STACK_BYTES: usize = INIT_KERNEL_STACK_PAGES * PAGE_SIZE as usize;
+#[cfg(feature = "process-run-smoke-test")]
+const INIT_YIELD_EXPECTED: u64 = 3;
+#[cfg(feature = "process-run-smoke-test")]
+const INIT_SYSCALL_EXPECTED: u64 = 5;
+#[cfg(feature = "process-run-smoke-test")]
+const MAX_INIT_CONSOLE_WRITE: usize = 64 * 1024;
+
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessLoadError {
@@ -147,6 +164,12 @@ impl LoadedProcess {
         self.address_space
             .as_ref()
             .map(AddressSpace::root_address)
+            .ok_or(ProcessLoadError::AddressSpace(AddressSpaceError::Destroyed))
+    }
+
+    pub fn address_space(&self) -> Result<&AddressSpace, ProcessLoadError> {
+        self.address_space
+            .as_ref()
             .ok_or(ProcessLoadError::AddressSpace(AddressSpaceError::Destroyed))
     }
 
@@ -486,4 +509,277 @@ fn validate_loaded_process(
     }
 
     Ok(())
+}
+
+
+#[cfg(feature = "process-run-smoke-test")]
+#[repr(C, align(4096))]
+struct InitKernelStack([u8; INIT_KERNEL_STACK_BYTES]);
+
+#[cfg(feature = "process-run-smoke-test")]
+static mut INIT_KERNEL_STACK: InitKernelStack = InitKernelStack([0; INIT_KERNEL_STACK_BYTES]);
+#[cfg(feature = "process-run-smoke-test")]
+static mut INIT_FX_STATE: user::FxState = user::FxState::zeroed();
+#[cfg(feature = "process-run-smoke-test")]
+static mut INIT_PROCESS: Option<LoadedProcess> = None;
+#[cfg(feature = "process-run-smoke-test")]
+static mut INIT_YIELD_COUNT: u64 = 0;
+#[cfg(feature = "process-run-smoke-test")]
+static mut INIT_SYSCALL_COUNT: u64 = 0;
+
+#[cfg(feature = "process-run-smoke-test")]
+struct InitServices;
+
+#[cfg(feature = "process-run-smoke-test")]
+impl SyscallServices for InitServices {
+    type SwitchTarget = ();
+
+    fn current_capabilities(&self) -> CapabilitySet {
+        CapabilitySet::EMPTY
+            .with(Capability::TaskYield)
+            .with(Capability::TaskExit)
+            .with(Capability::ConsoleWrite)
+    }
+
+    fn yield_current(&mut self) -> Result<Option<Self::SwitchTarget>, SyscallError> {
+        unsafe {
+            let count = ptr::read_volatile(ptr::addr_of!(INIT_YIELD_COUNT));
+            ptr::write_volatile(
+                ptr::addr_of_mut!(INIT_YIELD_COUNT),
+                count.saturating_add(1),
+            );
+        }
+        Ok(None)
+    }
+
+    fn exit_current(&mut self) -> Result<Self::SwitchTarget, SyscallError> {
+        let yields = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_YIELD_COUNT)) };
+        let syscalls = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_SYSCALL_COUNT)) };
+        if yields == INIT_YIELD_EXPECTED && syscalls == INIT_SYSCALL_EXPECTED {
+            serial::COM1.write(
+                b"P7.2: init executed ConsoleWrite, three Yield calls and Exit through libexhi.\r\n",
+            );
+            unsafe {
+                core::arch::asm!(
+                    "out dx, eax",
+                    in("dx") crate::QEMU_DEBUG_EXIT_PORT,
+                    in("eax") crate::QEMU_DEBUG_EXIT_VALUE,
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+        } else {
+            serial::COM1.write(b"P7.2: init syscall sequence counters did not match expectations.\r\n");
+            unsafe {
+                core::arch::asm!(
+                    "out dx, eax",
+                    in("dx") crate::QEMU_DEBUG_EXIT_PORT,
+                    in("eax") (crate::QEMU_DEBUG_EXIT_VALUE + 1),
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+        }
+        loop {
+            unsafe {
+                core::arch::asm!("cli", "hlt", options(nomem, nostack));
+            }
+        }
+    }
+
+    fn console_write(&mut self, user_address: u64, length: u64) -> Result<u64, SyscallError> {
+        let length = usize::try_from(length).map_err(|_| SyscallError::InvalidArgument)?;
+        if length > MAX_INIT_CONSOLE_WRITE {
+            return Err(SyscallError::InvalidArgument);
+        }
+        user_address
+            .checked_add(length as u64)
+            .ok_or(SyscallError::InvalidArgument)?;
+
+        let process_slot = ptr::addr_of!(INIT_PROCESS);
+        let process = unsafe { (*process_slot).as_ref() }.ok_or(SyscallError::Io)?;
+        let space = process
+            .address_space()
+            .map_err(|_| SyscallError::Io)?;
+
+        let mut buffer = [0u8; 256];
+        let mut copied = 0usize;
+        while copied < length {
+            let count = (length - copied).min(buffer.len());
+            let address = user_address
+                .checked_add(copied as u64)
+                .ok_or(SyscallError::InvalidArgument)?;
+            user::copy_from_user(space, address, &mut buffer[..count])
+                .map_err(|_| SyscallError::InvalidArgument)?;
+            serial::COM1.write(&buffer[..count]);
+            copied += count;
+        }
+        Ok(copied as u64)
+    }
+}
+
+/// Captures the stable syscall frame, dispatches it through the shared
+/// capability gate, and returns the current frame for same-task resumption.
+#[cfg(feature = "process-run-smoke-test")]
+#[no_mangle]
+extern "sysv64" fn exhi_init_syscall_dispatch(
+    frame: *mut syscall::UserTaskSyscallFrame,
+) -> usize {
+    if frame.is_null() {
+        init_runtime_failure(b"P7.2: null syscall frame received.\r\n");
+    }
+
+    let frame_ref = unsafe { &mut *frame };
+    unsafe {
+        let count = ptr::read_volatile(ptr::addr_of!(INIT_SYSCALL_COUNT));
+        ptr::write_volatile(
+            ptr::addr_of_mut!(INIT_SYSCALL_COUNT),
+            count.saturating_add(1),
+        );
+    }
+
+    let request = SyscallRequest::from_registers(
+        frame_ref.rax,
+        frame_ref.rdi,
+        frame_ref.rsi,
+        frame_ref.rdx,
+        frame_ref.r10,
+        frame_ref.r8,
+        frame_ref.r9,
+    );
+    let outcome = dispatch_syscall(request, &mut InitServices);
+    match outcome {
+        DispatchOutcome::Return(value) => {
+            frame_ref.rax = value;
+            frame as usize
+        }
+        DispatchOutcome::Switch(()) => {
+            frame_ref.rax = SyscallError::NotImplemented.as_return_value();
+            frame as usize
+        }
+    }
+}
+
+/// Runs the embedded init image through the production IRETQ and shared
+/// SYSCALL entry. The QEMU init build issues console_write, three yields and
+/// exit; the kernel exits QEMU only after observing that exact syscall sequence.
+#[cfg(feature = "process-run-smoke-test")]
+pub fn run_init_smoke(image: &[u8]) -> ! {
+    let process = match LoadedProcess::load(image) {
+        Ok(process) => process,
+        Err(error) => init_runtime_failure_fmt(error),
+    };
+
+    let process_slot = ptr::addr_of_mut!(INIT_PROCESS);
+    unsafe {
+        ptr::write(process_slot, Some(process));
+    }
+
+    let stack_storage = ptr::addr_of_mut!(INIT_KERNEL_STACK.0).cast::<u8>() as u64;
+    let stack_base = stack_storage + PAGE_SIZE;
+    let stack_top = stack_storage + INIT_KERNEL_STACK_BYTES as u64;
+    let reservation = stack_guard::StackGuardReservation {
+        stack_base,
+        stack_size: INIT_KERNEL_STACK_USABLE_PAGES as u64 * PAGE_SIZE,
+        stack_end: stack_top,
+        guard_page: stack_storage,
+    };
+    if stack_guard::install(reservation).is_err() {
+        init_runtime_failure(b"P7.2: could not install the init kernel-stack guard.\r\n");
+    }
+
+    let fx_state_pointer = ptr::addr_of_mut!(INIT_FX_STATE);
+    if unsafe { (*fx_state_pointer).initialize() }.is_err() {
+        init_runtime_failure(b"P7.2: could not initialize the init FXSAVE state.\r\n");
+    }
+
+    let process = unsafe { (*process_slot).as_ref() }
+        .unwrap_or_else(|| init_runtime_failure(b"P7.2: init process ownership was lost.\r\n"));
+    if process.activate().is_err() {
+        init_runtime_failure(b"P7.2: could not activate init address space.\r\n");
+    }
+
+    if !syscall::initialize_cpu_local(
+        stack_top,
+        fx_state_pointer as usize,
+        exhi_init_syscall_dispatch as *const () as usize,
+    ) {
+        init_runtime_failure(b"P7.2: could not initialize init syscall CPU-local state.\r\n");
+    }
+    if syscall::initialize(syscall::entry_address()).is_err() {
+        init_runtime_failure(b"P7.2: could not initialize init syscall MSRs.\r\n");
+    }
+
+    let frame = match user::prepare_entry(
+        process.address_space().unwrap_or_else(|_| {
+            init_runtime_failure(b"P7.2: init address space is unavailable.\r\n")
+        }),
+        stack_base,
+        stack_top,
+        process.entry_point(),
+        process.user_stack_pointer(),
+    ) {
+        Ok(frame) => frame,
+        Err(_) => init_runtime_failure(b"P7.2: init user-entry validation failed.\r\n"),
+    };
+
+    let fx_state = unsafe { &*fx_state_pointer };
+    match user::enter_user(&frame, fx_state) {
+        Ok(()) => init_runtime_failure(b"P7.2: init IRETQ entry unexpectedly returned.\r\n"),
+        Err(_) => init_runtime_failure(b"P7.2: init IRETQ handoff failed.\r\n"),
+    }
+}
+
+#[cfg(feature = "process-run-smoke-test")]
+fn init_runtime_failure(message: &[u8]) -> ! {
+    serial::COM1.write(message);
+    unsafe {
+        core::arch::asm!(
+            "out dx, eax",
+            in("dx") crate::QEMU_DEBUG_EXIT_PORT,
+            in("eax") (crate::QEMU_DEBUG_EXIT_VALUE + 1),
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    loop {
+        unsafe {
+            core::arch::asm!("cli", "hlt", options(nomem, nostack));
+        }
+    }
+}
+
+#[cfg(feature = "process-run-smoke-test")]
+fn init_runtime_failure_fmt(error: ProcessLoadError) -> ! {
+    use core::fmt::Write;
+
+    let mut message = InitErrorMessage([0; 128]);
+    let _ = write!(&mut message, "P7.2: init process load failed: {:?}.\r\n", error);
+    serial::COM1.write(message.as_bytes());
+    init_runtime_failure(b"P7.2: init process startup aborted.\r\n")
+}
+
+#[cfg(feature = "process-run-smoke-test")]
+struct InitErrorMessage([u8; 128]);
+
+#[cfg(feature = "process-run-smoke-test")]
+impl InitErrorMessage {
+    fn as_bytes(&self) -> &[u8] {
+        let length = self.0.iter().position(|byte| *byte == 0).unwrap_or(self.0.len());
+        &self.0[..length]
+    }
+}
+
+#[cfg(feature = "process-run-smoke-test")]
+impl core::fmt::Write for InitErrorMessage {
+    fn write_str(&mut self, value: &str) -> core::fmt::Result {
+        static mut LENGTH: usize = 0;
+        let length = unsafe { ptr::read_volatile(ptr::addr_of!(LENGTH)) };
+        let end = length.saturating_add(value.len());
+        if end > self.0.len() {
+            return Err(core::fmt::Error);
+        }
+        self.0[length..end].copy_from_slice(value.as_bytes());
+        unsafe {
+            ptr::write_volatile(ptr::addr_of_mut!(LENGTH), end);
+        }
+        Ok(())
+    }
 }
