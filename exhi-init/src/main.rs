@@ -8,16 +8,14 @@ use core::panic::PanicInfo;
 use exhi_config::ConfigParser;
 #[cfg(not(feature = "user-fault-smoke-test"))]
 use libexhi::{console_read, yield_now};
+#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
+use libexhi::file_read;
 use libexhi::{console_write, exit};
 
 #[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 const LINE_CAPACITY: usize = 128;
 #[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 const INPUT_CHUNK: usize = 32;
-#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
-const CONFIG_TEXT: &str =
-    "# ExhiOS system configuration\nhostname=exhios\nprompt=exhios>\nversion=0.1\n";
-
 #[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 #[derive(Clone, Copy)]
 struct ShellConfig<'a> {
@@ -115,10 +113,24 @@ fn trigger_user_fault() -> ! {
 
 #[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 fn run_shell() -> ! {
-    let config = match load_shell_config(CONFIG_TEXT) {
-        Ok(config) => config,
-        Err(()) => {
-            let _ = console_write(b"ExhiOS init: invalid configuration; using defaults.\r\n");
+    let mut config_buffer = [0u8; 256];
+    let config = match file_read("/etc/exhi.conf", 0, &mut config_buffer) {
+        Ok(count) => match core::str::from_utf8(&config_buffer[..count])
+            .ok()
+            .and_then(|source| load_shell_config(source).ok())
+        {
+            Some(config) => config,
+            None => {
+                let _ = console_write(
+                    b"ExhiOS init: invalid VFS configuration; using defaults.\\r\\n",
+                );
+                DEFAULT_CONFIG
+            }
+        },
+        Err(_) => {
+            let _ = console_write(
+                b"ExhiOS init: configuration read failed; using defaults.\\r\\n",
+            );
             DEFAULT_CONFIG
         }
     };
