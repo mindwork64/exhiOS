@@ -665,7 +665,7 @@ pub fn run_init_smoke(image: &[u8]) -> ! {
         ptr::write(process_slot, Some(process));
     }
 
-    let stack_storage = ptr::addr_of_mut!(INIT_KERNEL_STACK.0).cast::<u8>() as u64;
+    let stack_storage = unsafe { ptr::addr_of_mut!(INIT_KERNEL_STACK.0).cast::<u8>() as u64 };
     let stack_base = stack_storage + PAGE_SIZE;
     let stack_top = stack_storage + INIT_KERNEL_STACK_BYTES as u64;
     let reservation = stack_guard::StackGuardReservation {
