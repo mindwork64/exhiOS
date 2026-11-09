@@ -96,8 +96,6 @@ static mut USER_TASK_KERNEL_STACKS: [KernelStack; 3] = [
     KernelStack([0; STACK_TOTAL_SIZE]),
 ];
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
-static mut USER_TASK_KERNEL_STACK_TOPS: [u64; 3] = [0; 3];
-#[cfg(feature = "user-task-lifecycle-smoke-test")]
 static mut USER_TASK_SPACE_A: Option<AddressSpace> = None;
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
 static mut USER_TASK_SPACE_B: Option<AddressSpace> = None;
@@ -848,7 +846,6 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
         ptr::write(ptr::addr_of_mut!(USER_TASK_SPACE_B), None);
         ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_CODE_FRAMES), [0; 2]);
         ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_STACK_FRAMES), [0; 2]);
-        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_KERNEL_STACK_TOPS), [0; 3]);
         ptr::write_volatile(
             ptr::addr_of_mut!(USER_TASK_COUNTERS),
             UserTaskCounters {
@@ -893,10 +890,6 @@ pub fn user_task_lifecycle_smoke_test() -> ! {
         }
         *top_slot = top;
     }
-    unsafe {
-        ptr::write_volatile(ptr::addr_of_mut!(USER_TASK_KERNEL_STACK_TOPS), kernel_tops);
-    }
-
     let Some((space_a, code_a, stack_a)) =
         create_user_task_address_space(0x211C_E001, 0x211C_E002, false)
     else {
@@ -1804,10 +1797,6 @@ fn report_user_task_saved_context(id: TaskId, label: &'static [u8]) {
             serial::COM1.write_hex(min);
             serial::COM1.write(b" top=0x");
             serial::COM1.write_hex(top);
-            serial::COM1.write(b" cached-top=0x");
-            serial::COM1.write_hex(unsafe {
-                ptr::read_volatile(ptr::addr_of!(USER_TASK_KERNEL_STACK_TOPS[index]))
-            });
             serial::COM1.write(b" end=0x");
             serial::COM1.write_hex(end.unwrap_or(0));
             serial::COM1.write(b" stack=");
@@ -1853,11 +1842,6 @@ fn user_task_saved_context_matches(id: TaskId) -> bool {
     let Some((base, top)) = user_task_stack_bounds(index) else {
         return false;
     };
-    let cached_top =
-        unsafe { ptr::read_volatile(ptr::addr_of!(USER_TASK_KERNEL_STACK_TOPS[index])) };
-    if cached_top != top {
-        return false;
-    }
     let end = (frame_address as u64).checked_add(size_of::<UserTaskInterruptFrame>() as u64);
     if frame_address == 0
         || (frame_address as u64) < base + PAGE_SIZE
@@ -1866,7 +1850,8 @@ fn user_task_saved_context_matches(id: TaskId) -> bool {
         return false;
     }
     let frame = unsafe { &*(frame_address as *const UserTaskInterruptFrame) };
-    frame.cs == u64::from(gdt::USER_CODE_SELECTOR)
+    metadata.kernel_stack_top() == top
+        && frame.cs == u64::from(gdt::USER_CODE_SELECTOR)
         && frame.ss == u64::from(gdt::USER_DATA_SELECTOR)
         && frame.rflags & (1 << 9) == 0
         && frame.rsp == metadata.user_stack_pointer()
