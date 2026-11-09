@@ -383,6 +383,11 @@ if [[ "${EXHIOS_PAGING_ROLLBACK_TEST:-0}" == "1" ]]; then
     echo "Building the kernel with the controlled page-table rollback smoke test."
 fi
 
+if (( ${#KERNEL_FEATURES[@]} == 0 )); then
+    KERNEL_FEATURES+=(process-runtime)
+    echo "Building the kernel with the production first-user-process runtime."
+fi
+
 FEATURE_ARGS=()
 if (( ${#KERNEL_FEATURES[@]} > 0 )); then
     FEATURE_LIST="$(IFS=,; printf '%s' "${KERNEL_FEATURES[*]}")"

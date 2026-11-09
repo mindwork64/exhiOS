@@ -24,8 +24,9 @@ user-copy-smoke-test = ["ring3-smoke-test"]
 user-task-lifecycle-smoke-test = ["ring3-smoke-test"]
 paging-rollback-smoke-test = ["qemu-debug-exit-smoke-test"]
 vfs-smoke-test = ["qemu-debug-exit-smoke-test"]
+process-runtime = []
 process-load-smoke-test = ["qemu-debug-exit-smoke-test"]
-process-run-smoke-test = ["process-load-smoke-test"]
+process-run-smoke-test = ["process-load-smoke-test", "process-runtime"]
 
 [[bin]]
 name = "exhi-kernel"

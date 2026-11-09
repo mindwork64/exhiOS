@@ -24,7 +24,7 @@ const QEMU_DEBUG_EXIT_PORT: u16 = 0xF4;
 #[cfg(feature = "qemu-debug-exit-smoke-test")]
 const QEMU_DEBUG_EXIT_VALUE: u32 = 0x10;
 
-#[cfg(feature = "process-load-smoke-test")]
+#[cfg(any(feature = "process-load-smoke-test", feature = "process-runtime"))]
 const EMBEDDED_INIT_ELF: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../target/x86_64-unknown-none/debug/exhi-init"
@@ -680,7 +680,16 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
 
     #[cfg(feature = "process-run-smoke-test")]
     {
-        arch::x86_64::process::run_init_smoke(EMBEDDED_INIT_ELF);
+        arch::x86_64::process::run_init(EMBEDDED_INIT_ELF);
+    }
+
+    #[cfg(all(
+        feature = "process-runtime",
+        not(any(feature = "process-run-smoke-test", feature = "process-load-smoke-test"))
+    ))]
+    {
+        kernel_console.write(b"P7: starting init in Ring 3.\r\n");
+        arch::x86_64::process::run_init(EMBEDDED_INIT_ELF);
     }
 
     #[cfg(all(

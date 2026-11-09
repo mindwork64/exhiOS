@@ -7,19 +7,19 @@
 
 use core::ptr;
 
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 use exhi_abi::{SyscallError, SyscallRequest};
 use exhi_elf::{ElfError, ElfFile, ProgramHeader, PT_LOAD};
 use exhi_memory::MemoryError;
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 use exhi_syscall::{dispatch as dispatch_syscall, DispatchOutcome, SyscallServices};
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 use exhi_task::{Capability, CapabilitySet};
 
 use crate::memory;
 
 use super::address_space::{self, AddressSpace, AddressSpaceError, PageMapping, UserPageFlags};
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 use super::{serial, stack_guard, syscall, user};
 
 const PAGE_SIZE: u64 = 4096;
@@ -33,19 +33,19 @@ const USER_STACK_BASE: u64 = USER_STACK_TOP - USER_STACK_SIZE;
 const USER_STACK_GUARD: u64 = USER_STACK_BASE - PAGE_SIZE;
 const MAX_IMAGE_PAGES: usize = 256;
 const MAX_OWNED_PAGES: usize = MAX_IMAGE_PAGES + USER_STACK_PAGES;
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 const INIT_KERNEL_STACK_PAGES: usize = 5;
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 const INIT_KERNEL_STACK_USABLE_PAGES: usize = INIT_KERNEL_STACK_PAGES - 1;
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 const INIT_KERNEL_STACK_BYTES: usize = INIT_KERNEL_STACK_PAGES * PAGE_SIZE as usize;
 #[cfg(feature = "process-run-smoke-test")]
 const INIT_YIELD_EXPECTED: u64 = 3;
 #[cfg(feature = "process-run-smoke-test")]
 const INIT_SYSCALL_EXPECTED: u64 = 6;
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 const MAX_INIT_CONSOLE_WRITE: usize = 64 * 1024;
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 const MAX_INIT_CONSOLE_READ: usize = 256;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -516,25 +516,25 @@ fn validate_loaded_process(
     Ok(())
 }
 
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 #[repr(C, align(4096))]
 struct InitKernelStack([u8; INIT_KERNEL_STACK_BYTES]);
 
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 static mut INIT_KERNEL_STACK: InitKernelStack = InitKernelStack([0; INIT_KERNEL_STACK_BYTES]);
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 static mut INIT_FX_STATE: user::FxState = user::FxState::zeroed();
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 static mut INIT_PROCESS: Option<LoadedProcess> = None;
 #[cfg(feature = "process-run-smoke-test")]
 static mut INIT_YIELD_COUNT: u64 = 0;
 #[cfg(feature = "process-run-smoke-test")]
 static mut INIT_SYSCALL_COUNT: u64 = 0;
 
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 struct InitServices;
 
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 impl SyscallServices for InitServices {
     type SwitchTarget = ();
 
@@ -547,6 +547,7 @@ impl SyscallServices for InitServices {
     }
 
     fn yield_current(&mut self) -> Result<Option<Self::SwitchTarget>, SyscallError> {
+        #[cfg(feature = "process-run-smoke-test")]
         unsafe {
             let count = ptr::read_volatile(ptr::addr_of!(INIT_YIELD_COUNT));
             ptr::write_volatile(ptr::addr_of_mut!(INIT_YIELD_COUNT), count.saturating_add(1));
@@ -555,32 +556,50 @@ impl SyscallServices for InitServices {
     }
 
     fn exit_current(&mut self) -> Result<Self::SwitchTarget, SyscallError> {
-        let yields = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_YIELD_COUNT)) };
-        let syscalls = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_SYSCALL_COUNT)) };
-        if yields == INIT_YIELD_EXPECTED && syscalls == INIT_SYSCALL_EXPECTED {
-            serial::COM1.write(
-                b"P7.2: init executed ConsoleWrite, ConsoleRead, three Yield calls and Exit through libexhi.\r\n",
-            );
-            unsafe {
-                core::arch::asm!(
-                    "out dx, eax",
-                    in("dx") crate::QEMU_DEBUG_EXIT_PORT,
-                    in("eax") crate::QEMU_DEBUG_EXIT_VALUE,
-                    options(nomem, nostack, preserves_flags)
+        #[cfg(feature = "process-run-smoke-test")]
+        {
+            let yields = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_YIELD_COUNT)) };
+            let syscalls = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_SYSCALL_COUNT)) };
+            let success = yields == INIT_YIELD_EXPECTED && syscalls == INIT_SYSCALL_EXPECTED;
+            if success {
+                serial::COM1.write(
+                    b"P7.2: init executed ConsoleWrite, ConsoleRead, three Yield calls and Exit through libexhi.\r\n",
+                );
+            } else {
+                serial::COM1.write(
+                    b"P7.2: init syscall sequence counters did not match expectations.\r\n",
                 );
             }
-        } else {
-            serial::COM1
-                .write(b"P7.2: init syscall sequence counters did not match expectations.\r\n");
             unsafe {
                 core::arch::asm!(
                     "out dx, eax",
                     in("dx") crate::QEMU_DEBUG_EXIT_PORT,
-                    in("eax") (crate::QEMU_DEBUG_EXIT_VALUE + 1),
+                    in("eax") if success { crate::QEMU_DEBUG_EXIT_VALUE } else { crate::QEMU_DEBUG_EXIT_VALUE + 1 },
                     options(nomem, nostack, preserves_flags)
                 );
             }
         }
+
+        #[cfg(not(feature = "process-run-smoke-test"))]
+        {
+            serial::COM1.write(b"ExhiOS: init exited; reclaiming its address space.\r\n");
+            let process_slot = ptr::addr_of_mut!(INIT_PROCESS);
+            let cleanup = unsafe {
+                match (*process_slot).as_mut() {
+                    Some(process) => process.destroy(),
+                    None => Ok(()),
+                }
+            };
+            if cleanup.is_err() {
+                serial::COM1.write(b"ExhiOS: init cleanup failed; stopping on the kernel address space.\r\n");
+            } else {
+                serial::COM1.write(b"ExhiOS: init address space and user frames reclaimed.\r\n");
+            }
+            unsafe {
+                ptr::write(process_slot, None);
+            }
+        }
+
         loop {
             unsafe {
                 core::arch::asm!("cli", "hlt", options(nomem, nostack));
@@ -653,7 +672,7 @@ impl SyscallServices for InitServices {
 
 /// Captures the stable syscall frame, dispatches it through the shared
 /// capability gate, and returns the current frame for same-task resumption.
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 #[no_mangle]
 extern "sysv64" fn exhi_init_syscall_dispatch(frame: *mut syscall::UserTaskSyscallFrame) -> usize {
     if frame.is_null() {
@@ -661,6 +680,7 @@ extern "sysv64" fn exhi_init_syscall_dispatch(frame: *mut syscall::UserTaskSysca
     }
 
     let frame_ref = unsafe { &mut *frame };
+    #[cfg(feature = "process-run-smoke-test")]
     unsafe {
         let count = ptr::read_volatile(ptr::addr_of!(INIT_SYSCALL_COUNT));
         ptr::write_volatile(
@@ -694,8 +714,8 @@ extern "sysv64" fn exhi_init_syscall_dispatch(frame: *mut syscall::UserTaskSysca
 /// Runs the embedded init image through the production IRETQ and shared
 /// SYSCALL entry. The QEMU init build issues console_write, three yields and
 /// exit; the kernel exits QEMU only after observing that exact syscall sequence.
-#[cfg(feature = "process-run-smoke-test")]
-pub fn run_init_smoke(image: &[u8]) -> ! {
+#[cfg(feature = "process-runtime")]
+pub fn run_init(image: &[u8]) -> ! {
     let process = match LoadedProcess::load(image) {
         Ok(process) => process,
         Err(error) => init_runtime_failure_fmt(error),
@@ -761,9 +781,10 @@ pub fn run_init_smoke(image: &[u8]) -> ! {
     }
 }
 
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 fn init_runtime_failure(message: &[u8]) -> ! {
     serial::COM1.write(message);
+    #[cfg(feature = "process-run-smoke-test")]
     unsafe {
         core::arch::asm!(
             "out dx, eax",
@@ -779,7 +800,7 @@ fn init_runtime_failure(message: &[u8]) -> ! {
     }
 }
 
-#[cfg(feature = "process-run-smoke-test")]
+#[cfg(feature = "process-runtime")]
 fn init_runtime_failure_fmt(_error: ProcessLoadError) -> ! {
     init_runtime_failure(b"P7.2: init process load failed.\r\n")
 }

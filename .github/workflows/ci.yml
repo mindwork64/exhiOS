@@ -91,8 +91,8 @@ jobs:
       - name: Build UEFI application
         run: cargo build -p exhi-boot --target x86_64-unknown-uefi
 
-      - name: Build kernel ELF
-        run: cargo build -p exhi-kernel --target x86_64-unknown-none
+      - name: Build kernel ELF with production process runtime
+        run: cargo build -p exhi-kernel --target x86_64-unknown-none --features process-runtime
 
       - name: Build kernel exception smoke-test variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features exception-smoke-test
