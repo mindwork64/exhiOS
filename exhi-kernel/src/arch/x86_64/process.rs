@@ -20,6 +20,10 @@ use exhi_task::{
     Capability, CapabilitySet, ScheduleDecision, Scheduler, TaskContext, TaskId, TaskState,
     UserTaskMetadata,
 };
+#[cfg(feature = "process-runtime")]
+use exhi_vfs::{
+    create_directory_path, create_file_path, resolve_path, FileSystem, NodeKind, RamFs,
+};
 
 use crate::memory;
 
@@ -55,6 +59,17 @@ const INIT_SYSCALL_EXPECTED: u64 = 6;
 const MAX_INIT_CONSOLE_WRITE: usize = 64 * 1024;
 #[cfg(feature = "process-runtime")]
 const MAX_INIT_CONSOLE_READ: usize = 256;
+#[cfg(feature = "process-runtime")]
+const USERLAND_MAX_PATH: usize = 128;
+#[cfg(feature = "process-runtime")]
+const USERLAND_MAX_FILE_READ: usize = 256;
+#[cfg(feature = "process-runtime")]
+const USERLAND_FS_NODE_COUNT: usize = 8;
+#[cfg(feature = "process-runtime")]
+const USERLAND_FS_FILE_CAPACITY: usize = 256;
+#[cfg(feature = "process-runtime")]
+const USERLAND_CONFIG_CONTENT: &[u8] =
+    b"# ExhiOS system configuration\\nhostname=exhios\\nprompt=exhios>\\nversion=0.1\\n";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessLoadError {
@@ -562,6 +577,10 @@ static mut REAPER_FX_STATE: user::FxState = user::FxState::zeroed();
 #[cfg(feature = "process-runtime")]
 static mut PROCESS_OBJECTS: [Option<LoadedProcess>; MAX_PROCESS_RECORDS] = [None, None];
 #[cfg(feature = "process-runtime")]
+static mut USERLAND_FILESYSTEM: Option<
+    RamFs<USERLAND_FS_NODE_COUNT, USERLAND_FS_FILE_CAPACITY>,
+> = None;
+#[cfg(feature = "process-runtime")]
 static mut PROCESS_SCHEDULER: Scheduler<3> = Scheduler::new();
 #[cfg(feature = "process-runtime")]
 const MAX_PROCESS_RECORDS: usize = 2;
@@ -590,6 +609,27 @@ static mut INIT_YIELD_COUNT: u64 = 0;
 static mut INIT_SYSCALL_COUNT: u64 = 0;
 #[cfg(feature = "process-multi-smoke-test")]
 static mut PROCESS_MULTI_SWITCH_COUNT: u64 = 0;
+
+#[cfg(feature = "process-runtime")]
+fn initialize_userland_filesystem() {
+    let mut filesystem =
+        RamFs::<USERLAND_FS_NODE_COUNT, USERLAND_FS_FILE_CAPACITY>::new()
+            .unwrap_or_else(|_| init_runtime_failure(b"P7.4: could not create userland RAMFS.\\r\\n"));
+    let root = filesystem.root();
+    if create_directory_path(&mut filesystem, root, "/etc").is_err() {
+        init_runtime_failure(b"P7.4: could not create /etc in userland RAMFS.\\r\\n");
+    }
+    let config = create_file_path(&mut filesystem, root, "/etc/exhi.conf")
+        .unwrap_or_else(|_| init_runtime_failure(b"P7.4: could not create /etc/exhi.conf.\\r\\n"));
+    if filesystem.write(config, 0, USERLAND_CONFIG_CONTENT).ok()
+        != Some(USERLAND_CONFIG_CONTENT.len())
+    {
+        init_runtime_failure(b"P7.4: could not populate /etc/exhi.conf.\\r\\n");
+    }
+    unsafe {
+        ptr::write(ptr::addr_of_mut!(USERLAND_FILESYSTEM), Some(filesystem));
+    }
+}
 
 #[cfg(feature = "process-runtime")]
 fn runtime_stack_bounds(storage: u64) -> Option<(u64, u64)> {
@@ -884,6 +924,85 @@ impl SyscallServices for InitServices {
         }
         Ok(read as u64)
     }
+
+    fn file_read(
+        &mut self,
+        path_address: u64,
+        path_length: u64,
+        offset: u64,
+        user_buffer: u64,
+        buffer_length: u64,
+    ) -> Result<u64, SyscallError> {
+        if self.scheduler.is_null() {
+            return Err(SyscallError::Io);
+        }
+        let current =
+            unsafe { (*self.scheduler).current().map(|task| task.id()) }.ok_or(SyscallError::Io)?;
+        let record = process_record_for_task(current).ok_or(SyscallError::AccessDenied)?;
+        let path_length =
+            usize::try_from(path_length).map_err(|_| SyscallError::InvalidArgument)?;
+        let offset = usize::try_from(offset).map_err(|_| SyscallError::InvalidArgument)?;
+        let buffer_length =
+            usize::try_from(buffer_length).map_err(|_| SyscallError::InvalidArgument)?;
+        if path_length == 0
+            || path_length > USERLAND_MAX_PATH
+            || buffer_length > USERLAND_MAX_FILE_READ
+        {
+            return Err(SyscallError::InvalidArgument);
+        }
+        path_address
+            .checked_add(path_length as u64)
+            .ok_or(SyscallError::InvalidArgument)?;
+        user_buffer
+            .checked_add(buffer_length as u64)
+            .ok_or(SyscallError::InvalidArgument)?;
+
+        let process = unsafe { (*record.process).as_ref() }.ok_or(SyscallError::Io)?;
+        let space = process.address_space().map_err(|_| SyscallError::Io)?;
+        user::validate_user_range(
+            space,
+            path_address,
+            path_length,
+            user::UserAccess::Read,
+        )
+        .map_err(|_| SyscallError::InvalidArgument)?;
+        if buffer_length != 0 {
+            user::validate_user_range(
+                space,
+                user_buffer,
+                buffer_length,
+                user::UserAccess::Write,
+            )
+            .map_err(|_| SyscallError::InvalidArgument)?;
+        }
+
+        let mut path_bytes = [0u8; USERLAND_MAX_PATH];
+        user::copy_from_user(space, path_address, &mut path_bytes[..path_length])
+            .map_err(|_| SyscallError::InvalidArgument)?;
+        let path = core::str::from_utf8(&path_bytes[..path_length])
+            .map_err(|_| SyscallError::InvalidArgument)?;
+        if !path.starts_with('/') || path.as_bytes().contains(&0) {
+            return Err(SyscallError::InvalidArgument);
+        }
+
+        let filesystem_slot = ptr::addr_of!(USERLAND_FILESYSTEM);
+        let filesystem = unsafe { (*filesystem_slot).as_ref() }.ok_or(SyscallError::Io)?;
+        let node =
+            resolve_path(filesystem, filesystem.root(), path).map_err(|_| SyscallError::Io)?;
+        if filesystem.metadata(node).map_err(|_| SyscallError::Io)?.kind != NodeKind::File {
+            return Err(SyscallError::InvalidArgument);
+        }
+
+        let mut buffer = [0u8; USERLAND_MAX_FILE_READ];
+        let read = filesystem
+            .read(node, offset, &mut buffer[..buffer_length])
+            .map_err(|_| SyscallError::Io)?;
+        if read != 0 {
+            user::copy_to_user(space, user_buffer, &buffer[..read])
+                .map_err(|_| SyscallError::InvalidArgument)?;
+        }
+        Ok(read as u64)
+    }
 }
 
 #[cfg(feature = "process-runtime")]
@@ -1120,6 +1239,7 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
         init_runtime_failure(b"P7.1: process set exceeds runtime capacity.\r\n");
     }
 
+    initialize_userland_filesystem();
     let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
     let mut first_task_id = None;
 
@@ -1198,7 +1318,9 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
             .with(Capability::TaskExit)
             .with(Capability::ConsoleWrite);
         if slot == 0 {
-            capabilities = capabilities.with(Capability::ConsoleRead);
+            capabilities = capabilities
+                .with(Capability::ConsoleRead)
+                .with(Capability::FileRead);
         }
         let task_id = unsafe {
             (*scheduler)
