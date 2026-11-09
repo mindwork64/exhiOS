@@ -9,9 +9,9 @@ use core::ptr;
 
 use exhi_abi::{SyscallError, SyscallRequest};
 use exhi_elf::{ElfError, ElfFile, ProgramHeader, PT_LOAD};
+use exhi_memory::MemoryError;
 use exhi_syscall::{dispatch as dispatch_syscall, DispatchOutcome, SyscallServices};
 use exhi_task::{Capability, CapabilitySet};
-use exhi_memory::MemoryError;
 
 use crate::memory;
 
@@ -41,7 +41,6 @@ const INIT_YIELD_EXPECTED: u64 = 3;
 const INIT_SYSCALL_EXPECTED: u64 = 5;
 #[cfg(feature = "process-run-smoke-test")]
 const MAX_INIT_CONSOLE_WRITE: usize = 64 * 1024;
-
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessLoadError {
@@ -544,10 +543,7 @@ impl SyscallServices for InitServices {
     fn yield_current(&mut self) -> Result<Option<Self::SwitchTarget>, SyscallError> {
         unsafe {
             let count = ptr::read_volatile(ptr::addr_of!(INIT_YIELD_COUNT));
-            ptr::write_volatile(
-                ptr::addr_of_mut!(INIT_YIELD_COUNT),
-                count.saturating_add(1),
-            );
+            ptr::write_volatile(ptr::addr_of_mut!(INIT_YIELD_COUNT), count.saturating_add(1));
         }
         Ok(None)
     }
@@ -568,7 +564,8 @@ impl SyscallServices for InitServices {
                 );
             }
         } else {
-            serial::COM1.write(b"P7.2: init syscall sequence counters did not match expectations.\r\n");
+            serial::COM1
+                .write(b"P7.2: init syscall sequence counters did not match expectations.\r\n");
             unsafe {
                 core::arch::asm!(
                     "out dx, eax",
@@ -596,9 +593,7 @@ impl SyscallServices for InitServices {
 
         let process_slot = ptr::addr_of!(INIT_PROCESS);
         let process = unsafe { (*process_slot).as_ref() }.ok_or(SyscallError::Io)?;
-        let space = process
-            .address_space()
-            .map_err(|_| SyscallError::Io)?;
+        let space = process.address_space().map_err(|_| SyscallError::Io)?;
 
         let mut buffer = [0u8; 256];
         let mut copied = 0usize;
@@ -620,9 +615,7 @@ impl SyscallServices for InitServices {
 /// capability gate, and returns the current frame for same-task resumption.
 #[cfg(feature = "process-run-smoke-test")]
 #[no_mangle]
-extern "sysv64" fn exhi_init_syscall_dispatch(
-    frame: *mut syscall::UserTaskSyscallFrame,
-) -> usize {
+extern "sysv64" fn exhi_init_syscall_dispatch(frame: *mut syscall::UserTaskSyscallFrame) -> usize {
     if frame.is_null() {
         init_runtime_failure(b"P7.2: null syscall frame received.\r\n");
     }
