@@ -9,7 +9,8 @@ use libexhi::{console_read, console_write, exit, yield_now};
 
 const LINE_CAPACITY: usize = 128;
 const INPUT_CHUNK: usize = 32;
-const CONFIG_TEXT: &str = "# ExhiOS system configuration\nhostname=exhios\nprompt=exhios>\nversion=0.1\n";
+const CONFIG_TEXT: &str =
+    "# ExhiOS system configuration\nhostname=exhios\nprompt=exhios>\nversion=0.1\n";
 
 #[no_mangle]
 pub extern "sysv64" fn _start() -> ! {
@@ -37,9 +38,7 @@ pub extern "sysv64" fn _start() -> ! {
 }
 
 fn run_shell() -> ! {
-    let _ = console_write(
-        b"ExhiOS userland 0.1\r\nType 'help' for available commands.\r\n",
-    );
+    let _ = console_write(b"ExhiOS userland 0.1\r\nType 'help' for available commands.\r\n");
     write_prompt();
 
     let mut line = [0u8; LINE_CAPACITY];
@@ -145,9 +144,7 @@ fn execute_command(line: &[u8]) -> bool {
 
     match command {
         "help" => {
-            let _ = console_write(
-                b"commands: help version echo clear config exit\r\n",
-            );
+            let _ = console_write(b"commands: help version echo clear config exit\r\n");
         }
         "version" => {
             let _ = console_write(b"ExhiOS userland 0.1\r\n");

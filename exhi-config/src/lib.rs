@@ -146,6 +146,8 @@ const fn is_key_byte(byte: u8) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::format;
+    use std::string::String;
 
     #[test]
     fn parses_comments_blank_lines_whitespace_and_crlf() {
