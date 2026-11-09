@@ -544,6 +544,8 @@ static mut PROCESS_SCHEDULER: Scheduler<3> = Scheduler::new();
 static mut INIT_TASK_ID: Option<TaskId> = None;
 #[cfg(feature = "process-runtime")]
 static mut REAPER_TASK_ID: Option<TaskId> = None;
+#[cfg(feature = "process-fault-smoke-test")]
+static mut INIT_FAULT_VECTOR: u64 = u64::MAX;
 #[cfg(feature = "process-run-smoke-test")]
 static mut INIT_YIELD_COUNT: u64 = 0;
 #[cfg(feature = "process-run-smoke-test")]
@@ -1081,13 +1083,15 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
             None => false,
         }
     };
+    let mut task_reaped = false;
     if cleanup_ok {
         unsafe {
             ptr::write(process_slot, None);
         }
         let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
         let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) };
-        if init_id.is_none_or(|id| unsafe { (*scheduler).reap(id).is_err() }) {
+        task_reaped = init_id.is_some_and(|id| unsafe { (*scheduler).reap(id).is_ok() });
+        if !task_reaped {
             serial::COM1
                 .write(b"ExhiOS: init resources reclaimed but task record reaping failed.\r\n");
         } else {
@@ -1104,7 +1108,7 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
         let yields = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_YIELD_COUNT)) };
         let syscalls = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_SYSCALL_COUNT)) };
         let success =
-            cleanup_ok && yields == INIT_YIELD_EXPECTED && syscalls == INIT_SYSCALL_EXPECTED;
+            cleanup_ok && task_reaped && yields == INIT_YIELD_EXPECTED && syscalls == INIT_SYSCALL_EXPECTED;
         if success {
             serial::COM1.write(
                 b"P7.2: init executed ConsoleWrite, ConsoleRead, three Yield calls and Exit through libexhi; kernel reaper reclaimed the process.\r\n",
@@ -1131,59 +1135,23 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
         core::arch::asm!(
             "out dx, eax",
             in("dx") crate::QEMU_DEBUG_EXIT_PORT,
-            in("eax") if cleanup_ok { crate::QEMU_DEBUG_EXIT_VALUE } else { crate::QEMU_DEBUG_EXIT_VALUE + 1 },
+            in("eax") if cleanup_ok && task_reaped { crate::QEMU_DEBUG_EXIT_VALUE } else { crate::QEMU_DEBUG_EXIT_VALUE + 1 },
             options(nomem, nostack, preserves_flags)
         );
     }
 
-    loop {
-        unsafe {
-            core::arch::asm!("cli", "hlt", options(nomem, nostack));
-        }
-    }
-}
-
-#[cfg(feature = "process-runtime")]
-pub fn terminate_init_after_user_exception(_vector: u64, exception: user::UserException) -> ! {
-    serial::COM1.write(b"ExhiOS: terminating init after user-mode exception; RIP=0x");
-    serial::COM1.write_hex(exception.instruction_pointer);
-    serial::COM1.write(b" user RSP=0x");
-    serial::COM1.write_hex(exception.user_stack_pointer);
-    serial::COM1.write(b".\r\n");
-
-    let process_slot = ptr::addr_of_mut!(INIT_PROCESS);
-    let cleanup_ok = unsafe {
-        match (*process_slot).as_mut() {
-            Some(process) => process.destroy().is_ok(),
-            None => false,
-        }
-    };
-    if cleanup_ok {
-        unsafe {
-            ptr::write(process_slot, None);
-        }
-        serial::COM1
-            .write(b"ExhiOS: init address space, user stack and all owned frames reclaimed.\r\n");
-    } else {
-        serial::COM1.write(
-            b"ExhiOS: init resource reclamation failed; process retained for diagnosis.\r\n",
-        );
-    }
-
-    #[cfg(any(
-        feature = "process-run-smoke-test",
-        feature = "process-shell-smoke-test",
-        feature = "process-fault-smoke-test"
-    ))]
+    #[cfg(feature = "process-fault-smoke-test")]
     {
-        let expected_fault =
-            cfg!(feature = "process-fault-smoke-test") && _vector == 6 && cleanup_ok;
+        let vector = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_FAULT_VECTOR)) };
+        let expected_fault = vector == 6 && cleanup_ok && task_reaped;
         if expected_fault {
             serial::COM1.write(
-                b"P7.1: Ring 3 invalid-opcode fault captured; init resources reclaimed successfully.\r\n",
+                b"P7.1: Ring 3 invalid-opcode fault captured; reaper reclaimed init and task record.\r\n",
             );
         } else {
-            serial::COM1.write(b"P7.1: unexpected user fault or failed process cleanup.\r\n");
+            serial::COM1.write(
+                b"P7.1: user-fault termination or reaper cleanup verification failed.\r\n",
+            );
         }
         unsafe {
             core::arch::asm!(
@@ -1200,6 +1168,64 @@ pub fn terminate_init_after_user_exception(_vector: u64, exception: user::UserEx
             core::arch::asm!("cli", "hlt", options(nomem, nostack));
         }
     }
+}
+
+/// Marks the current init task Finished and transfers execution to the
+/// dedicated kernel reaper. No init-owned address space or task record is
+/// reclaimed on the faulting task's kernel stack.
+#[cfg(feature = "process-runtime")]
+fn handoff_faulting_init_to_reaper() -> ! {
+    unsafe {
+        core::arch::asm!("cli", options(nomem, nostack, preserves_flags));
+    }
+    let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
+    let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) }
+        .unwrap_or_else(|| init_runtime_failure(b"P7.1: init task id is unavailable during fault handoff.\r\n"));
+    let reaper_id = unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) }
+        .unwrap_or_else(|| init_runtime_failure(b"P7.1: reaper task id is unavailable during fault handoff.\r\n"));
+    let current_id = unsafe { (*scheduler).current().map(|task| task.id()) };
+    if current_id != Some(init_id) {
+        init_runtime_failure(b"P7.1: user fault did not originate from the running init task.\r\n");
+    }
+
+    let next = unsafe { (*scheduler).finish_current() }
+        .unwrap_or_else(|_| init_runtime_failure(b"P7.1: could not finish faulting init task.\r\n"));
+    if next.is_some() {
+        init_runtime_failure(b"P7.1: unexpected runnable peer during single-process fault handoff.\r\n");
+    }
+    unsafe {
+        (*scheduler)
+            .wake(reaper_id)
+            .unwrap_or_else(|_| init_runtime_failure(b"P7.1: could not wake kernel reaper after user fault.\r\n"));
+    }
+    let selected = unsafe { (*scheduler).schedule_from_idle() }
+        .unwrap_or_else(|_| init_runtime_failure(b"P7.1: could not schedule kernel reaper after user fault.\r\n"))
+        .unwrap_or_else(|| init_runtime_failure(b"P7.1: scheduler did not select reaper after user fault.\r\n"));
+    if selected != reaper_id {
+        init_runtime_failure(b"P7.1: scheduler selected the wrong task after user fault.\r\n");
+    }
+
+    let frame = select_process_context(reaper_id);
+    let frame = unsafe { &*(frame as *const user::UserEntryFrame) };
+    let fx_state = unsafe { &*ptr::addr_of!(REAPER_FX_STATE) };
+    match user::enter_user(frame, fx_state) {
+        Ok(()) => init_runtime_failure(b"P7.1: reaper IRETQ handoff unexpectedly returned.\r\n"),
+        Err(_) => init_runtime_failure(b"P7.1: reaper IRETQ handoff validation failed.\r\n"),
+    }
+}
+
+#[cfg(feature = "process-runtime")]
+pub fn terminate_init_after_user_exception(_vector: u64, exception: user::UserException) -> ! {
+    serial::COM1.write(b"ExhiOS: terminating init after user-mode exception; RIP=0x");
+    serial::COM1.write_hex(exception.instruction_pointer);
+    serial::COM1.write(b" user RSP=0x");
+    serial::COM1.write_hex(exception.user_stack_pointer);
+    serial::COM1.write(b".\r\n");
+    #[cfg(feature = "process-fault-smoke-test")]
+    unsafe {
+        ptr::write_volatile(ptr::addr_of_mut!(INIT_FAULT_VECTOR), _vector);
+    }
+    handoff_faulting_init_to_reaper();
 }
 
 #[cfg(feature = "process-runtime")]
