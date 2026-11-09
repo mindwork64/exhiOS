@@ -3,7 +3,7 @@
 Снимок: **2026-11-09**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: P0–P6 закрыты по их runtime/host evidence; P5.1–P5.7 приняты по полному self-hosted CI/QEMU suite (#405); P6 VFS/RAMFS принят (#412). В P7 реализованы init ELF loader, libexhi, интерактивный Ring 3 serial shell и встроенная конфигурация. P7.1 остаётся открытым только в части production-интеграции общего планировщика: текущий production runtime однопроцессный, а `Yield` возобновляет тот же init. Последний HEAD `39433785d5a1` прошёл оба job в [CI #451](https://github.com/mindwork64/exhiOS/actions/runs/42580983148), включая user-fault cleanup.  
+Кодовый checkpoint: P0–P6 закрыты по runtime/host evidence; P5.1–P5.7 приняты (#405); P6 VFS/RAMFS принят (#412). P7.2–P7.4 реализованы; P7.1 имеет init loader, Ring 3 entry, syscalls и проверенный cleanup, но production scheduler всё ещё однопроцессный (`Yield` возобновляет тот же init). HEAD `b80c4c280243` прошёл build и все 21 QEMU runtime сценарий в [CI #453](https://github.com/mindwork64/exhiOS/actions/runs/42592065020). Исправлено слежение за границами активного kernel stack при переключении user task.  
 
 ## Закрыто и проверено в QEMU
 
@@ -344,7 +344,7 @@ P5.1–P5.7 реализованы. Общие x86-64 Ring 3 entry, SYSCALL entr
 
 ### P7 — Userland: состояние
 
-**P7.1 — init: частично готово.** Встроенный ET_EXEC init загружается в private address space, получает RX code, RW+NX stack с guard page и исполняется в Ring 3. ELF loader проверяет сегменты, BSS и права; cleanup возвращает kernel CR3 и освобождает frames/page tables. Exit и user-mode fault termination очищают resources. Это покрыто CI #430/#435 и последним QEMU suite #451. Остаётся production-интеграция general scheduler: текущая реализация однопроцессная, `Yield` возвращает тот же процесс; отдельный P5.6 scheduler smoke test пока не является production process scheduler.
+**P7.1 — init: частично готово.** Встроенный ET_EXEC init загружается в private address space, получает RX code, RW+NX stack с guard page и исполняется в Ring 3. ELF loader проверяет сегменты, BSS и права; cleanup возвращает kernel CR3 и освобождает frames/page tables. Exit и validated user-mode fault termination очищают resources (CI #451). В P5.6 context selector теперь синхронно обновляет TSS.RSP0 и границы kernel stack, проверяемые при CPL3 exception capture; build и полный QEMU suite прошли в CI #453. Остаётся production-интеграция general scheduler: текущая реализация однопроцессная, `Yield` возвращает тот же процесс; отдельный P5.6 scheduler smoke test пока не является production process scheduler.
 
 **P7.2 — libexhi: готово.** `no_std` wrappers: `console_write`, `console_read`, `yield_now`, `exit`; стабильные syscall numbers и decoding kernel errors. CI #435 подтвердил использование в Ring 3.
 
@@ -354,10 +354,10 @@ P5.1–P5.7 реализованы. Общие x86-64 Ring 3 entry, SYSCALL entr
 
 ### Последняя проверенная точка CI
 
-- HEAD: [3943378](https://github.com/mindwork64/exhiOS/commit/39433785d5a116fa1e6908bf1f91b806bd931c48).
-- CI [#451](https://github.com/mindwork64/exhiOS/actions/runs/42580983148): build — success; QEMU runtime smoke test — success.
+- HEAD: [b80c4c2](https://github.com/mindwork64/exhiOS/commit/b80c4c2802434ccb150927f8ee1cda2d3193ef40).
+- CI [#453](https://github.com/mindwork64/exhiOS/actions/runs/42592065020): build — success; QEMU runtime smoke test — success (21/21 runtime scenarios).
 - Последние исправления: [e1d8999](https://github.com/mindwork64/exhiOS/commit/e1d8999792ff10d68dd3f188816f32b05150ced1) — resource cleanup after user-mode faults; [bd52245](https://github.com/mindwork64/exhiOS/commit/bd522457884c3d8536c1cd2b487fd8bc07179954) — CRLF in user-fault diagnostics; [3943378](https://github.com/mindwork64/exhiOS/commit/39433785d5a116fa1e6908bf1f91b806bd931c48) — rustfmt.
-- CI #449/#450 were failed intermediate runs; #451 on current HEAD is green.
+- CI #449/#450 were failed intermediate runs; #451 passed on code HEAD `3943378`; #453 passed on current code HEAD `b80c4c2`.
 
 ### Ближайшая задача
 

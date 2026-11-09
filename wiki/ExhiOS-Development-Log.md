@@ -485,3 +485,13 @@ Implementation:
 - User-mode fault termination cleanup was hardened in [e1d8999](https://github.com/mindwork64/exhiOS/commit/e1d8999792ff10d68dd3f188816f32b05150ced1); diagnostics were fixed to emit CRLF in [bd52245](https://github.com/mindwork64/exhiOS/commit/bd522457884c3d8536c1cd2b487fd8bc07179954); rustfmt followed in [3943378](https://github.com/mindwork64/exhiOS/commit/39433785d5a116fa1e6908bf1f91b806bd931c48).
 - Current HEAD [3943378](https://github.com/mindwork64/exhiOS/commit/39433785d5a116fa1e6908bf1f91b806bd931c48) passed both self-hosted CI jobs in [run #451](https://github.com/mindwork64/exhiOS/actions/runs/42580983148): full build/host tests and the headless QEMU runtime suite including user-fault cleanup. Intermediate runs #449/#450 failed; #451 is the successful current-HEAD result.
 - Documentation checkpoint: all core wiki pages are being synchronized to this code state. Wiki updates are part of every milestone, not optional cleanup.
+
+
+## 2026-11-09 — P7.1 kernel-stack tracking across user-task switches
+
+- The common user-entry validator held global active kernel-stack bounds written only by the initial `prepare_entry`. The P5.6 scheduler already changed CR3, TSS.RSP0 and the syscall entry stack/FX pointers, but the exception-frame validator could still be checking the first task's old stack bounds after a user-task switch.
+- Added `user::activate_kernel_stack(address_space, bottom, top)`: requires IF=0 and an already active address space; validates canonical/aligned supervisor stack bounds and the complete mapping; sets and reads back TSS.RSP0; updates and verifies the active exception-frame bounds.
+- `prepare_entry` now uses this shared helper. The P5.6 user-task selector calls it after activating the chosen user's CR3, so the fault-frame validator follows the selected task. `UserEntryFrame` fields are crate-visible for the upcoming architecture-owned context construction.
+- Commit: [b80c4c2](https://github.com/mindwork64/exhiOS/commit/b80c4c2802434ccb150927f8ee1cda2d3193ef40).
+- CI [#453](https://github.com/mindwork64/exhiOS/actions/runs/42592065020) passed the complete build/host-test job and all 21 headless QEMU runtime scenarios, including first-process loader, init syscall path, interactive shell, user-fault cleanup, P5.1–P5.6 and the final two-user-task lifecycle/reaper test.
+- This closes the active exception-stack tracking gap in the existing smoke scheduler; it does **not** close P7.1. Production `process-runtime` still has one init process and `Yield` returns `Ok(None)`. General scheduler integration and a dedicated production multi-process QEMU test remain next.

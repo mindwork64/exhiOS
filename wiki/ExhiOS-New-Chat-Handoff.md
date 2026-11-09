@@ -19,12 +19,12 @@
 - Не считать один только compile/build доказательством runtime корректности.
 
 ## Текущая подтверждённая точка — 2026-11-09
-- HEAD main: [3943378](https://github.com/mindwork64/exhiOS/commit/39433785d5a116fa1e6908bf1f91b806bd931c48).
-- Последний CI [#451](https://github.com/mindwork64/exhiOS/actions/runs/42580983148): build и QEMU runtime jobs — success. Промежуточные #449/#450 падали, но #451 на текущем HEAD прошёл.
+- HEAD main: [b80c4c2](https://github.com/mindwork64/exhiOS/commit/b80c4c2802434ccb150927f8ee1cda2d3193ef40).
+- Последний CI [#453](https://github.com/mindwork64/exhiOS/actions/runs/42592065020): build и QEMU runtime jobs — success; все 21 runtime scenario прошли. CI #452 проверил предыдущий docs checkpoint; #451 прошёл на предыдущем code HEAD.
 - P0–P6 закрыты по применимым host/build/QEMU evidence.
 - P5.1–P5.7: Ring 3 entry/isolation, common SYSCALL, pointer validation/safe-copy, двухзадачный user lifecycle и default-deny capabilities приняты полным runtime suite в [CI #405](https://github.com/mindwork64/exhiOS/actions/runs/42434078573). Scope BSP/single-CPU.
 - P6: bounded allocator-free VFS/RAMFS, операции file/directory и kernel smoke test приняты в [CI #412](https://github.com/mindwork64/exhiOS/actions/runs/42546613316). Userland FS syscalls/persistent disk FS отсутствуют.
-- P7.1: ET_EXEC init loader, private address space, RX/RW+NX mappings, stack guard, Ring 3 entry, syscalls and cleanup after exit/user fault implemented. Latest #451 includes user-fault cleanup test. P7.1 remains open because production runtime is still single-process and `Yield` resumes the same init; production process scheduler/reaper dispatch is not integrated.
+- P7.1: ET_EXEC init loader, private address space, RX/RW+NX mappings, stack guard, Ring 3 entry, syscalls and cleanup after exit/user fault implemented. CI #453 passes all 21 QEMU scenarios. `user::activate_kernel_stack` now keeps TSS.RSP0 and CPL3 exception-frame bounds synchronized with the selected task in the P5.6 adapter. P7.1 remains open because production runtime is still single-process and `Yield` resumes the same init; production process scheduler/reaper dispatch is not integrated.
 - P7.2: `libexhi` wrappers for console_write/read, yield_now and exit are implemented and tested (CI #435).
 - P7.3: interactive Ring 3 serial shell and QEMU serial input tests passed (CI #447).
 - P7.4: bounded `key=value` parser; embedded hostname/prompt/version config is applied and displayed. Persistent VFS config load is not implemented.

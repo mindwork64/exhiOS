@@ -256,7 +256,12 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [ ] Replace the current single-process adapter: production `Yield` still resumes the same init process (`Ok(None)`); the general `exhi-task` scheduler and its real multi-process dispatch are not yet wired into the production process runtime. This is the remaining P7.1 blocker.
 - [ ] Add a production QEMU runtime scenario proving actual process scheduling and safe reaping through that runtime, rather than relying only on the separate P5.6 scheduler smoke adapter.
 
-Evidence: CI #430 verified ELF loader permissions/BSS/guard/reclamation; CI #435 verified Ring 3 entry and the `libexhi` syscall sequence. Latest [CI run #451](https://github.com/mindwork64/exhiOS/actions/runs/42580983148) has successful build and QEMU runtime jobs, including user-fault cleanup.
+- [x] User exit and validated user-mode exception cleanup restore kernel CR3 and reclaim the init address space, user frames and private page tables; the fault diagnostic test verifies CRLF.
+- [x] Task-switch-aware exception bounds: `user::activate_kernel_stack` validates the selected supervisor stack and active address space, then updates TSS.RSP0 and the bounds consumed by CPL3 exception-frame validation. The P5.6 context selector calls it after changing CR3.
+  
+Evidence: CI #430 verified ELF loader permissions/BSS/guard/reclamation; CI #435 verified Ring 3 entry and the `libexhi` syscall sequence; CI #451 verified user-fault cleanup; [CI #453](https://github.com/mindwork64/exhiOS/actions/runs/42592065020) passed the full build and all 21 QEMU runtime scenarios, including P5.6 two-user-task switching/reaping. Commit [b80c4c2](https://github.com/mindwork64/exhiOS/commit/b80c4c2802434ccb150927f8ee1cda2d3193ef40) contains the stack-bound tracking fix.
+
+**Remaining P7.1 blocker:** production `Yield` still resumes the same init process (`Ok(None)`). The general `exhi-task` scheduler and real multi-process dispatch/reaping are not yet wired into `process-runtime`. The P5.6 two-process scheduler adapter is not a production process manager. Add a dedicated production-runtime QEMU test before closing P7.1.
 
 ### P7.2 — System-call support library (`libexhi`)
 

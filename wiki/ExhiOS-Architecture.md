@@ -249,6 +249,7 @@ P5.1–P5.7 accepted by the full self-hosted build and headless QEMU suite [run 
 - User memory helpers validate every page and effective permissions, require the target space active and IF=0, and reject oversized ranges. Safe copies validate the entire range before dereference, avoiding partial writes on a rejected destination.
 - `exhi-syscall` owns syscall-number/capability policy. Empty grants are default; the dispatcher denies before entering the service adapter. The P5.6 runtime verifies authorized ConsoleWrite and denied Yield/ConsoleWrite without side effects.
 - P5.6 smoke runtime uses two private Ring 3 contexts, exercises yield/exit, idle dispatch and kernel reaping, then verifies user frames/page tables and Finished task records are reclaimed.
+- During context selection, `user::activate_kernel_stack` revalidates the selected address space and complete supervisor stack mapping, updates TSS.RSP0 and the active kernel-stack bounds consumed by user exception-frame validation. `prepare_entry` shares this helper. CI #453 passed the full 21-scenario build/QEMU suite with the P5.6 two-user-task lifecycle test.
 - Scope is BSP/single-CPU. No AP-local GS provisioning, user TLS, NMI/exception SWAPGS-window handling or SMP scheduling is claimed.
 
 ## P6 — VFS/RAMFS
@@ -263,7 +264,7 @@ Userland filesystem syscalls and a persistent on-disk filesystem are not impleme
 
 The default `scripts/build.sh` builds a fixed-address ET_EXEC `exhi-init`, embeds it into the kernel and starts it in Ring 3. `arch::x86_64::process::LoadedProcess` owns its address space and all mapped frames. The loader bounds PT_LOAD pages, maps RX/RW+NX, zeroes BSS, creates a four-page RW+NX user stack plus an unmapped guard page, and rolls back in reverse order on failure.
 
-The current production runtime owns one init process. It configures a guarded supervisor stack, TSS.RSP0, an FXSAVE image and the common BSP SYSCALL entry. Init exit and validated user exceptions return to the kernel address space and reclaim process mappings/frames; user-fault cleanup is part of current QEMU CI #451.
+The current production runtime owns one init process. It configures a guarded supervisor stack, TSS.RSP0, an FXSAVE image and the common BSP SYSCALL entry. Init exit and validated user exceptions return to the kernel address space and reclaim process mappings/frames; user-fault cleanup is part of QEMU CI #451. Stack-bound tracking across scheduler-selected user tasks passed the complete QEMU suite in CI #453.
 
 **Remaining P7.1 work:** wire the general `exhi-task` scheduler into this production process runtime. Today `Yield` returns `Ok(None)` and resumes the same process. The separate two-process P5.6 architecture smoke adapter is evidence for the scheduler primitives, not evidence that production init uses the scheduler. Add a QEMU test for the integrated production process scheduler and reaper before closing P7.1.
 

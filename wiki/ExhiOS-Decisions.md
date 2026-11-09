@@ -91,6 +91,7 @@
 - Syscall authorization is default-deny. The common dispatcher owns syscall-to-capability mapping and checks grants before service callbacks. Missing/kernel tasks resolve to empty user-service grants.
 - User pointers are not dereferenced directly: validate canonical bounds, all touched pages and effective permissions first; copy helpers validate the complete range before copying.
 - Address-space teardown must switch to the kernel root first, unmap owned user pages, return data frames, then release private page-table structures. A running/current task must never be reaped.
+- After selecting a user task and activating its CR3, the architecture layer must update TSS.RSP0 and the trusted active kernel-stack bounds used by CPL3 exception-frame validation as one serialized IF=0 operation. The P5.6 context selector now uses `user::activate_kernel_stack`; verified in CI #453.
 - Production process scheduler integration is not yet complete: current init runtime is single-process and Yield resumes the same init. Do not confuse the P5.6 scheduler smoke adapter with a production process manager.
 - AP-local GS state, user TLS, NMI/exception handling across the SWAPGS window, SMP scheduling and TLB shootdown are outside the accepted BSP-only scope.
 - VFS/RAMFS is currently in-memory and kernel-integrated. Userland filesystem syscalls and persistent storage are future work.
