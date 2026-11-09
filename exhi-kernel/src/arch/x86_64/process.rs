@@ -812,7 +812,6 @@ impl SyscallServices for InitServices {
         Ok(selected)
     }
 
-
     fn console_write(&mut self, user_address: u64, length: u64) -> Result<u64, SyscallError> {
         if self.scheduler.is_null() {
             return Err(SyscallError::Io);
@@ -1030,7 +1029,7 @@ extern "sysv64" fn exhi_init_syscall_dispatch(frame: *mut syscall::UserTaskSysca
                 serial::COM1.write(b"P7 TRACE: dispatcher returning reaper frame.\\r\\n");
             }
             selected_frame
-        },
+        }
     }
 }
 
