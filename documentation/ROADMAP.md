@@ -156,10 +156,13 @@ P5.1–P5.7 are implemented and accepted by the full self-hosted build and headl
 
 ## P6 — Storage
 
-- [ ] VFS interfaces.
-- [ ] Initial RAMFS.
-- [ ] File and directory operations.
+- [x] VFS interfaces: allocator-free `FileSystem` contract, stable generation-tagged `NodeId`, metadata and paginated directory-entry API.
+- [x] Initial RAMFS: bounded `RamFs<NODE_COUNT, FILE_CAPACITY>` implementation with a fixed node table and fixed per-node data capacity; no allocator dependency.
+- [x] File and directory operations: lookup, nested path resolution, create/read/write/remove, directory pagination, sparse zero-fill, capacity/overflow checks, non-empty directory protection and stale-handle rejection.
 
+  - Unit evidence: CI #412 ran `cargo test -p exhi-vfs`; all eight VFS/RAMFS tests passed.
+  - Kernel integration: `exhi-vfs` is a workspace dependency of `exhi-kernel`. The initial root RAMFS path is exercised from the kernel after handoff: create `/etc/exhi.conf`, write/read its binary contents, resolve absolute and relative paths, enumerate its directory, reject an oversized write without mutation, protect a non-empty directory, remove nodes, and verify a reused slot does not revive a stale handle.
+  - QEMU evidence: [CI run 412](https://github.com/mindwork64/exhiOS/actions/runs/42546613316) completed successfully. The build job and the entire headless QEMU runtime job passed. Its VFS-specific serial output includes `P6: VFS/RAMFS runtime smoke test passed.` and QEMU debug-exit status 33; the P2.6 guard test no longer intercepts this feature path.
 ## P7 — Userland
 
 - [ ] First user process (`init`).
