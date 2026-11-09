@@ -590,6 +590,8 @@ static mut INIT_FAULT_VECTOR: u64 = u64::MAX;
 static mut INIT_YIELD_COUNT: u64 = 0;
 #[cfg(feature = "process-run-smoke-test")]
 static mut INIT_SYSCALL_COUNT: u64 = 0;
+#[cfg(feature = "process-multi-smoke-test")]
+static mut PROCESS_MULTI_SWITCH_COUNT: u64 = 0;
 
 #[cfg(feature = "process-runtime")]
 fn runtime_stack_bounds(storage: u64) -> Option<(u64, u64)> {
@@ -749,6 +751,16 @@ impl SyscallServices for InitServices {
         }
         let decision =
             unsafe { (*self.scheduler).yield_current() }.map_err(|_| SyscallError::Io)?;
+        #[cfg(feature = "process-multi-smoke-test")]
+        if matches!(&decision, ScheduleDecision::Switch { .. }) {
+            unsafe {
+                let count = ptr::read_volatile(ptr::addr_of!(PROCESS_MULTI_SWITCH_COUNT));
+                ptr::write_volatile(
+                    ptr::addr_of_mut!(PROCESS_MULTI_SWITCH_COUNT),
+                    count.saturating_add(1),
+                );
+            }
+        }
         #[cfg(feature = "process-run-smoke-test")]
         unsafe {
             let count = ptr::read_volatile(ptr::addr_of!(INIT_YIELD_COUNT));
@@ -769,6 +781,14 @@ impl SyscallServices for InitServices {
         if let Some(next) =
             unsafe { (*scheduler).finish_current() }.map_err(|_| SyscallError::Io)?
         {
+            #[cfg(feature = "process-multi-smoke-test")]
+            unsafe {
+                let count = ptr::read_volatile(ptr::addr_of!(PROCESS_MULTI_SWITCH_COUNT));
+                ptr::write_volatile(
+                    ptr::addr_of_mut!(PROCESS_MULTI_SWITCH_COUNT),
+                    count.saturating_add(1),
+                );
+            }
             return Ok(next);
         }
 
@@ -1036,26 +1056,134 @@ fn build_reaper_frame(kernel_stack_top: u64) -> *mut user::UserEntryFrame {
 
 #[cfg(feature = "process-runtime")]
 pub fn run_init(image: &[u8]) -> ! {
-    let process = match LoadedProcess::load(image) {
-        Ok(process) => process,
-        Err(error) => init_runtime_failure_fmt(error),
-    };
-    let init_process_slot = process_object_pointer(0);
-    unsafe {
-        ptr::write(init_process_slot, Some(process));
+    run_processes(image, None)
+}
+
+#[cfg(feature = "process-multi-smoke-test")]
+pub fn run_process_pair(first_image: &[u8], second_image: &[u8]) -> ! {
+    run_processes(first_image, Some(second_image))
+}
+
+#[cfg(feature = "process-runtime")]
+fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
+    let process_count = if second_image.is_some() { 2 } else { 1 };
+    if process_count > MAX_PROCESS_RECORDS {
+        init_runtime_failure(b"P7.1: process set exceeds runtime capacity.\r\n");
     }
 
-    let Some((init_stack_bottom, init_stack_top)) = process_kernel_stack_bounds(0) else {
-        init_runtime_failure(b"P7.1: init kernel stack bounds are invalid.\r\n");
-    };
-    let init_stack_storage = init_stack_bottom - PAGE_SIZE;
-    if !install_runtime_stack_guard(init_stack_storage, (init_stack_bottom, init_stack_top)) {
-        init_runtime_failure(b"P7.1: could not install the init kernel-stack guard.\r\n");
+    let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
+    let mut first_task_id = None;
+
+    for slot in 0..process_count {
+        if slot != 0 {
+            if address_space::restore_kernel().is_err()
+                || user::clear_active_kernel_stack().is_err()
+            {
+                init_runtime_failure(b"P7.1: could not restore kernel mappings between processes.\r\n");
+            }
+        }
+        let image = if slot == 0 {
+            first_image
+        } else {
+            second_image.unwrap_or_else(|| {
+                init_runtime_failure(b"P7.1: second process image is missing.\r\n")
+            })
+        };
+        let process = LoadedProcess::load(image)
+            .unwrap_or_else(|error| init_runtime_failure_fmt(error));
+        let process_slot = process_object_pointer(slot);
+        unsafe {
+            ptr::write(process_slot, Some(process));
+        }
+
+        let Some((stack_bottom, stack_top)) = process_kernel_stack_bounds(slot) else {
+            init_runtime_failure(b"P7.1: process kernel stack bounds are invalid.\r\n");
+        };
+        let stack_storage = stack_bottom - PAGE_SIZE;
+        if !install_runtime_stack_guard(stack_storage, (stack_bottom, stack_top)) {
+            init_runtime_failure(b"P7.1: could not install a process kernel-stack guard.\r\n");
+        }
+
+        let fx_pointer = process_fx_state_pointer(slot);
+        if unsafe { (*fx_pointer).initialize() }.is_err() {
+            init_runtime_failure(b"P7.1: could not initialize process FXSAVE state.\r\n");
+        }
+
+        let process = unsafe { (*process_slot).as_ref() }
+            .unwrap_or_else(|| init_runtime_failure(b"P7.1: process ownership was lost.\r\n"));
+        if process.activate().is_err() {
+            init_runtime_failure(b"P7.1: could not activate process address space.\r\n");
+        }
+        let space = process.address_space().unwrap_or_else(|_| {
+            init_runtime_failure(b"P7.1: process address space is unavailable.\r\n")
+        });
+        let frame = user::prepare_entry(
+            space,
+            stack_bottom,
+            stack_top,
+            process.entry_point(),
+            process.user_stack_pointer(),
+        )
+        .unwrap_or_else(|_| init_runtime_failure(b"P7.1: process user-entry validation failed.\r\n"));
+
+        let frame_address = stack_top
+            .checked_sub(size_of::<user::UserEntryFrame>() as u64)
+            .unwrap_or_else(|| init_runtime_failure(b"P7.1: process kernel stack is too small.\r\n"));
+        if frame_address & 0xF != 0 {
+            init_runtime_failure(b"P7.1: process entry frame is misaligned.\r\n");
+        }
+        let frame_pointer = frame_address as *mut user::UserEntryFrame;
+        unsafe {
+            ptr::write(frame_pointer, frame);
+        }
+
+        let name = if slot == 0 { "init" } else { "worker" };
+        let mut capabilities = CapabilitySet::EMPTY
+            .with(Capability::TaskYield)
+            .with(Capability::TaskExit)
+            .with(Capability::ConsoleWrite);
+        if slot == 0 {
+            capabilities = capabilities.with(Capability::ConsoleRead);
+        }
+        let task_id = unsafe {
+            (*scheduler)
+                .spawn_user(
+                    name,
+                    TaskContext::new(frame_address as usize),
+                    UserTaskMetadata::new_with_capabilities(
+                        process.root_address().unwrap_or_else(|_| {
+                            init_runtime_failure(b"P7.1: process address-space root is unavailable.\r\n")
+                        }),
+                        process.user_stack_pointer(),
+                        stack_top,
+                        fx_pointer as usize,
+                        capabilities,
+                    ),
+                )
+                .unwrap_or_else(|_| init_runtime_failure(b"P7.1: could not register user process.\r\n"))
+        };
+        if !register_process_record(
+            task_id,
+            process_slot,
+            stack_bottom,
+            stack_top,
+            fx_pointer as usize,
+        ) {
+            init_runtime_failure(b"P7.1: could not register process architecture resources.\r\n");
+        }
+        if slot == 0 {
+            first_task_id = Some(task_id);
+        }
     }
 
     let Some((reaper_stack_bottom, reaper_stack_top)) = reaper_kernel_stack_bounds() else {
         init_runtime_failure(b"P7.1: reaper kernel stack bounds are invalid.\r\n");
     };
+    if address_space::restore_kernel().is_err()
+        || user::clear_active_kernel_stack().is_err()
+    {
+        init_runtime_failure(b"P7.1: could not restore kernel mappings before reaper setup.\r\n");
+    }
     let reaper_stack_storage =
         unsafe { ptr::addr_of_mut!(REAPER_KERNEL_STACK.0).cast::<u8>() as u64 };
     if !install_runtime_stack_guard(
@@ -1065,68 +1193,12 @@ pub fn run_init(image: &[u8]) -> ! {
         init_runtime_failure(b"P7.1: could not install the reaper kernel-stack guard.\r\n");
     }
 
-    let init_fx_pointer = process_fx_state_pointer(0);
-    if unsafe { (*init_fx_pointer).initialize() }.is_err() {
-        init_runtime_failure(b"P7.1: could not initialize the init FXSAVE state.\r\n");
-    }
     let reaper_fx_pointer = ptr::addr_of_mut!(REAPER_FX_STATE);
     if unsafe { (*reaper_fx_pointer).initialize() }.is_err() {
         init_runtime_failure(b"P7.1: could not initialize the reaper FXSAVE state.\r\n");
     }
 
-    let process_slot = process_object_pointer(0);
-    let process = unsafe { (*process_slot).as_ref() }
-        .unwrap_or_else(|| init_runtime_failure(b"P7.1: init process ownership was lost.\r\n"));
-    if process.activate().is_err() {
-        init_runtime_failure(b"P7.1: could not activate init address space.\r\n");
-    }
-    let space = process
-        .address_space()
-        .unwrap_or_else(|_| init_runtime_failure(b"P7.1: init address space is unavailable.\r\n"));
-    let frame = match user::prepare_entry(
-        space,
-        init_stack_bottom,
-        init_stack_top,
-        process.entry_point(),
-        process.user_stack_pointer(),
-    ) {
-        Ok(frame) => frame,
-        Err(_) => init_runtime_failure(b"P7.1: init user-entry validation failed.\r\n"),
-    };
-    let init_frame_address = init_stack_top
-        .checked_sub(size_of::<user::UserEntryFrame>() as u64)
-        .unwrap_or_else(|| init_runtime_failure(b"P7.1: init kernel stack is too small.\r\n"));
-    if init_frame_address & 0xF != 0 {
-        init_runtime_failure(b"P7.1: initial init frame is misaligned.\r\n");
-    }
-    let init_frame_pointer = init_frame_address as *mut user::UserEntryFrame;
-    unsafe {
-        ptr::write(init_frame_pointer, frame);
-    }
-
     let reaper_frame = build_reaper_frame(reaper_stack_top);
-    let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
-    let init_task = unsafe {
-        (*scheduler)
-            .spawn_user(
-                "init",
-                TaskContext::new(init_frame_address as usize),
-                UserTaskMetadata::new_with_capabilities(
-                    process.root_address().unwrap_or_else(|_| {
-                        init_runtime_failure(b"P7.1: init address-space root is unavailable.\r\n")
-                    }),
-                    process.user_stack_pointer(),
-                    init_stack_top,
-                    init_fx_pointer as usize,
-                    CapabilitySet::EMPTY
-                        .with(Capability::TaskYield)
-                        .with(Capability::TaskExit)
-                        .with(Capability::ConsoleWrite)
-                        .with(Capability::ConsoleRead),
-                ),
-            )
-            .unwrap_or_else(|_| init_runtime_failure(b"P7.1: could not register init task.\r\n"))
-    };
     let reaper_task = unsafe {
         (*scheduler)
             .spawn("kernel-reaper", TaskContext::new(reaper_frame as usize))
@@ -1137,40 +1209,39 @@ pub fn run_init(image: &[u8]) -> ! {
     if unsafe { (*scheduler).block_ready(reaper_task) }.is_err() {
         init_runtime_failure(b"P7.1: could not block the idle kernel reaper.\r\n");
     }
-    if unsafe { (*scheduler).start() } != Ok(init_task) {
-        init_runtime_failure(b"P7.1: scheduler did not start the init process.\r\n");
+
+    let first_task_id = first_task_id.unwrap_or_else(|| {
+        init_runtime_failure(b"P7.1: first user process task id is unavailable.\r\n")
+    });
+    if unsafe { (*scheduler).start() } != Ok(first_task_id) {
+        init_runtime_failure(b"P7.1: scheduler did not start the first user process.\r\n");
     }
     unsafe {
-        ptr::write(ptr::addr_of_mut!(INIT_TASK_ID), Some(init_task));
         ptr::write(ptr::addr_of_mut!(REAPER_TASK_ID), Some(reaper_task));
     }
 
+    let first_record = process_record_for_task(first_task_id)
+        .unwrap_or_else(|| init_runtime_failure(b"P7.1: first process resources are not registered.\r\n"));
     if !syscall::initialize_cpu_local(
-        init_stack_top,
-        init_fx_pointer as usize,
+        first_record.kernel_stack_top,
+        first_record.fx_state,
         exhi_init_syscall_dispatch as *const () as usize,
     ) {
-        init_runtime_failure(b"P7.1: could not initialize the init syscall CPU-local state.\r\n");
-    }
-    if !register_process_record(
-        init_task,
-        process_object_pointer(0),
-        init_stack_bottom,
-        init_stack_top,
-        init_fx_pointer as usize,
-    ) {
-        init_runtime_failure(b"P7.1: could not register init process resources.\r\n");
+        init_runtime_failure(b"P7.1: could not initialize process syscall CPU-local state.\r\n");
     }
     if syscall::initialize(syscall::entry_address()).is_err() {
-        init_runtime_failure(b"P7.1: could not initialize init syscall MSRs.\r\n");
+        init_runtime_failure(b"P7.1: could not initialize process syscall MSRs.\r\n");
     }
 
-    let fx_state = unsafe { &*init_fx_pointer };
-    match user::enter_user(unsafe { &*init_frame_pointer }, fx_state) {
-        Ok(()) => init_runtime_failure(b"P7.1: init IRETQ entry unexpectedly returned.\r\n"),
-        Err(_) => init_runtime_failure(b"P7.1: init IRETQ handoff failed.\r\n"),
+    let frame = select_process_context(first_task_id);
+    let frame = unsafe { &*(frame as *const user::UserEntryFrame) };
+    let fx_state = unsafe { &*(first_record.fx_state as *const user::FxState) };
+    match user::enter_user(frame, fx_state) {
+        Ok(()) => init_runtime_failure(b"P7.1: first user process IRETQ entry unexpectedly returned.\r\n"),
+        Err(_) => init_runtime_failure(b"P7.1: first user process IRETQ handoff failed.\r\n"),
     }
 }
+
 
 /// The kernel reaper always runs after the user task has switched away from
 /// its private kernel stack. Only here is it safe to reclaim the process frames
@@ -1232,7 +1303,8 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
     #[cfg(any(
         feature = "process-run-smoke-test",
         feature = "process-shell-smoke-test",
-        feature = "process-fault-smoke-test"
+        feature = "process-fault-smoke-test",
+        feature = "process-multi-smoke-test"
     ))]
     let task_reaped = _task_reaped;
 
@@ -1275,6 +1347,32 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
         );
     }
 
+    #[cfg(feature = "process-multi-smoke-test")]
+    {
+        let switches = unsafe { ptr::read_volatile(ptr::addr_of!(PROCESS_MULTI_SWITCH_COUNT)) };
+        let registry = ptr::addr_of!(PROCESS_REGISTRY);
+        let registry_empty = unsafe { (*registry).iter().all(Option::is_none) };
+        let success =
+            cleanup_ok && task_reaped && reaped_count == 2 && switches >= 2 && registry_empty;
+        if success {
+            serial::COM1.write(
+                b"P7.1: two production Ring 3 processes yielded to each other, exited and were reaped.\r\n",
+            );
+        } else {
+            serial::COM1.write(
+                b"P7.1: production multi-process lifecycle verification failed.\r\n",
+            );
+        }
+        unsafe {
+            core::arch::asm!(
+                "out dx, eax",
+                in("dx") crate::QEMU_DEBUG_EXIT_PORT,
+                in("eax") if success { crate::QEMU_DEBUG_EXIT_VALUE } else { crate::QEMU_DEBUG_EXIT_VALUE + 1 },
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+    }
+
     #[cfg(feature = "process-fault-smoke-test")]
     {
         let vector = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_FAULT_VECTOR)) };
@@ -1308,65 +1406,67 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
 /// dedicated kernel reaper. No init-owned address space or task record is
 /// reclaimed on the faulting task's kernel stack.
 #[cfg(feature = "process-runtime")]
-fn handoff_faulting_init_to_reaper() -> ! {
+fn handoff_faulting_process_to_scheduler() -> ! {
     unsafe {
         core::arch::asm!("cli", options(nomem, nostack, preserves_flags));
     }
     let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
-    let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) }.unwrap_or_else(|| {
-        init_runtime_failure(b"P7.1: init task id is unavailable during fault handoff.\r\n")
-    });
+    let current_id = unsafe { (*scheduler).current().map(|task| task.id()) }
+        .unwrap_or_else(|| init_runtime_failure(b"P7.1: user fault arrived without a current task.\r\n"));
+    if process_record_for_task(current_id).is_none() {
+        init_runtime_failure(b"P7.1: user faulting task has no process record.\r\n");
+    }
     let reaper_id =
         unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) }.unwrap_or_else(|| {
             init_runtime_failure(b"P7.1: reaper task id is unavailable during fault handoff.\r\n")
         });
-    let current_id = unsafe { (*scheduler).current().map(|task| task.id()) };
-    if current_id != Some(init_id) {
-        init_runtime_failure(b"P7.1: user fault did not originate from the running init task.\r\n");
-    }
 
-    let next = unsafe { (*scheduler).finish_current() }.unwrap_or_else(|_| {
-        init_runtime_failure(b"P7.1: could not finish faulting init task.\r\n")
-    });
-    if next.is_some() {
-        init_runtime_failure(
-            b"P7.1: unexpected runnable peer during single-process fault handoff.\r\n",
-        );
-    }
-    unsafe {
-        (*scheduler).wake(reaper_id).unwrap_or_else(|_| {
-            init_runtime_failure(b"P7.1: could not wake kernel reaper after user fault.\r\n")
-        });
-    }
-    let selected = unsafe { (*scheduler).schedule_from_idle() }
-        .unwrap_or_else(|_| {
-            init_runtime_failure(b"P7.1: could not schedule kernel reaper after user fault.\r\n")
-        })
-        .unwrap_or_else(|| {
-            init_runtime_failure(b"P7.1: scheduler did not select reaper after user fault.\r\n")
-        });
-    if selected != reaper_id {
-        init_runtime_failure(b"P7.1: scheduler selected the wrong task after user fault.\r\n");
-    }
+    let next = unsafe { (*scheduler).finish_current() }
+        .unwrap_or_else(|_| init_runtime_failure(b"P7.1: could not finish faulting user process.\r\n"));
+    let selected = if let Some(next) = next {
+        next
+    } else {
+        unsafe {
+            (*scheduler).wake(reaper_id).unwrap_or_else(|_| {
+                init_runtime_failure(b"P7.1: could not wake kernel reaper after user fault.\r\n")
+            });
+        }
+        unsafe { (*scheduler).schedule_from_idle() }
+            .unwrap_or_else(|_| {
+                init_runtime_failure(b"P7.1: could not schedule after user fault.\r\n")
+            })
+            .unwrap_or_else(|| {
+                init_runtime_failure(b"P7.1: scheduler selected no task after user fault.\r\n")
+            })
+    };
 
-    let frame = select_process_context(reaper_id);
+    let frame = select_process_context(selected);
     let frame = unsafe { &*(frame as *const user::UserEntryFrame) };
-    let fx_state = unsafe { &*ptr::addr_of!(REAPER_FX_STATE) };
+    let fx_state = if selected == reaper_id {
+        ptr::addr_of!(REAPER_FX_STATE) as usize
+    } else {
+        process_record_for_task(selected)
+            .map(|record| record.fx_state)
+            .unwrap_or_else(|| {
+                init_runtime_failure(b"P7.1: selected process has no FXSAVE state.\r\n")
+            })
+    };
+    let fx_state = unsafe { &*(fx_state as *const user::FxState) };
     match user::enter_user(frame, fx_state) {
-        Ok(()) => init_runtime_failure(b"P7.1: reaper IRETQ handoff unexpectedly returned.\r\n"),
-        Err(_) => init_runtime_failure(b"P7.1: reaper IRETQ handoff validation failed.\r\n"),
+        Ok(()) => init_runtime_failure(b"P7.1: scheduler fault handoff unexpectedly returned.\r\n"),
+        Err(_) => init_runtime_failure(b"P7.1: scheduler fault handoff validation failed.\r\n"),
     }
 }
 
 #[cfg(feature = "process-runtime")]
-pub fn terminate_init_after_user_exception(_vector: u64, exception: user::UserException) -> ! {
+pub fn terminate_user_after_user_exception(_vector: u64, exception: user::UserException) -> ! {
     // IDT entry from CPL3 does not execute SWAPGS automatically. Unlike the
     // SYSCALL path, this fault path must establish the trusted kernel GS base
     // before updating the scheduler-selected syscall entry context.
     unsafe {
         core::arch::asm!("swapgs", options(nomem, nostack, preserves_flags));
     }
-    serial::COM1.write(b"ExhiOS: terminating init after user-mode exception; RIP=0x");
+    serial::COM1.write(b"ExhiOS: terminating user process after exception; RIP=0x");
     serial::COM1.write_hex(exception.instruction_pointer);
     serial::COM1.write(b" user RSP=0x");
     serial::COM1.write_hex(exception.user_stack_pointer);
@@ -1375,7 +1475,7 @@ pub fn terminate_init_after_user_exception(_vector: u64, exception: user::UserEx
     unsafe {
         ptr::write_volatile(ptr::addr_of_mut!(INIT_FAULT_VECTOR), _vector);
     }
-    handoff_faulting_init_to_reaper();
+    handoff_faulting_process_to_scheduler();
 }
 
 #[cfg(feature = "process-runtime")]

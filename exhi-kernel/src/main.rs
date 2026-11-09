@@ -29,6 +29,11 @@ const EMBEDDED_INIT_ELF: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../target/x86_64-unknown-none/debug/exhi-init"
 ));
+#[cfg(feature = "process-multi-smoke-test")]
+const EMBEDDED_WORKER_ELF: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../target/x86_64-unknown-none/debug/exhi-worker"
+));
 
 #[no_mangle]
 pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
@@ -682,6 +687,12 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         halt_forever();
     }
 
+    #[cfg(feature = "process-multi-smoke-test")]
+    {
+        serial::COM1.write(b"P7.1: starting two production Ring 3 processes.\r\n");
+        arch::x86_64::process::run_process_pair(EMBEDDED_INIT_ELF, EMBEDDED_WORKER_ELF);
+    }
+
     #[cfg(feature = "process-run-smoke-test")]
     {
         arch::x86_64::process::run_init(EMBEDDED_INIT_ELF);
@@ -705,6 +716,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             feature = "process-run-smoke-test",
             feature = "process-shell-smoke-test",
             feature = "process-fault-smoke-test",
+            feature = "process-multi-smoke-test",
             feature = "process-load-smoke-test"
         ))
     ))]
@@ -1163,7 +1175,7 @@ pub extern "sysv64" fn exhi_exception_handler(
             serial::COM1.write(b" error=0x");
             serial::COM1.write_hex(user_exception.error_code);
             serial::COM1.write(b"\r\n");
-            arch::x86_64::process::terminate_init_after_user_exception(vector, user_exception);
+            arch::x86_64::process::terminate_user_after_user_exception(vector, user_exception);
         }
 
         #[cfg(not(any(
