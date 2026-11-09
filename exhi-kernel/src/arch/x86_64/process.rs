@@ -792,16 +792,26 @@ impl SyscallServices for InitServices {
 
         // When the last user process exits, finish_current enters idle because
         // the kernel reaper is Blocked. Wake it and transfer to its own stack.
+        #[cfg(feature = "process-shell-smoke-test")]
+        serial::COM1.write(b"P7 TRACE: last user task finished; waking reaper.\r\n");
         let reaper =
             unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) }.ok_or(SyscallError::Io)?;
         unsafe {
             (*scheduler).wake(reaper).map_err(|_| SyscallError::Io)?;
+        }
+        #[cfg(feature = "process-shell-smoke-test")]
+        serial::COM1.write(b"P7 TRACE: reaper is Ready.\r\n");
+        let selected = unsafe {
             (*scheduler)
                 .schedule_from_idle()
                 .map_err(|_| SyscallError::Io)?
-                .ok_or(SyscallError::Io)
-        }
+                .ok_or(SyscallError::Io)?
+        };
+        #[cfg(feature = "process-shell-smoke-test")]
+        serial::COM1.write(b"P7 TRACE: scheduler selected reaper.\r\n");
+        Ok(selected)
     }
+
 
     fn console_write(&mut self, user_address: u64, length: u64) -> Result<u64, SyscallError> {
         if self.scheduler.is_null() {
@@ -939,6 +949,8 @@ fn select_process_context(id: TaskId) -> usize {
         {
             init_runtime_failure(b"P7.1: failed to activate the kernel reaper context.\r\n");
         }
+        #[cfg(feature = "process-shell-smoke-test")]
+        serial::COM1.write(b"P7 TRACE: reaper context frame prepared.\\r\\n");
     }
 
     frame
@@ -1011,7 +1023,14 @@ extern "sysv64" fn exhi_init_syscall_dispatch(frame: *mut syscall::UserTaskSysca
             }
             frame_address
         }
-        DispatchOutcome::Switch(next) => select_process_context(next),
+        DispatchOutcome::Switch(next) => {
+            let selected_frame = select_process_context(next);
+            #[cfg(feature = "process-shell-smoke-test")]
+            if Some(next) == unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) } {
+                serial::COM1.write(b"P7 TRACE: dispatcher returning reaper frame.\\r\\n");
+            }
+            selected_frame
+        },
     }
 }
 
