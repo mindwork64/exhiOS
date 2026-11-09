@@ -1,0 +1,7 @@
+[package]
+name = "libexhi"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+exhi-abi.workspace = true

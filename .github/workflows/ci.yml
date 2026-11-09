@@ -71,6 +71,17 @@ jobs:
       - name: Test syscall dispatcher
         run: cargo test -p exhi-syscall
 
+      - name: Test libexhi user syscall wrappers
+        run: cargo test -p libexhi
+
+      - name: Build first user process ELF
+        run: cargo build -p exhi-init --target x86_64-unknown-none
+
+      - name: Verify fixed-address init image
+        run: |
+          LC_ALL=C readelf -h target/x86_64-unknown-none/debug/exhi-init
+          LC_ALL=C readelf -h target/x86_64-unknown-none/debug/exhi-init | grep -Eq 'Type:[[:space:]]+EXEC[[:space:]]+\\(Executable file\\)'
+
       - name: Test VFS and RAMFS
         run: cargo test -p exhi-vfs
 

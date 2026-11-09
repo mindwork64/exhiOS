@@ -1,0 +1,14 @@
+[package]
+name = "exhi-init"
+version.workspace = true
+edition.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "exhi-init"
+path = "src/main.rs"
+test = false
+bench = false
+
+[dependencies]
+libexhi = { path = "../libexhi" }

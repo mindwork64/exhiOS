@@ -250,6 +250,17 @@ cargo test -p exhi-elf
 cargo test -p exhi-memory
 cargo test -p exhi-console
 cargo build -p exhi-boot --target x86_64-unknown-uefi
+cargo test -p libexhi
+cargo build -p exhi-init --target x86_64-unknown-none
+
+INIT_ELF="$ROOT_DIR/target/x86_64-unknown-none/debug/exhi-init"
+echo
+echo "Verifying first user process ELF type..."
+LC_ALL=C readelf -h "$INIT_ELF"
+if ! LC_ALL=C readelf -h "$INIT_ELF" | grep -Eq 'Type:[[:space:]]+EXEC[[:space:]]+\(Executable file\)'; then
+    echo "ERROR: exhi-init must be ET_EXEC, not PIE/ET_DYN." >&2
+    exit 1
+fi
 
 KERNEL_FEATURES=()
 if [[ "${EXHIOS_EXCEPTION_TEST:-0}" == "1" ]]; then
@@ -373,3 +384,4 @@ echo
 echo "Build completed."
 echo "UEFI application: target/x86_64-unknown-uefi/debug/exhi-boot.efi"
 echo "Kernel ELF:       target/x86_64-unknown-none/debug/exhi-kernel"
+echo "Init ELF:         target/x86_64-unknown-none/debug/exhi-init"
