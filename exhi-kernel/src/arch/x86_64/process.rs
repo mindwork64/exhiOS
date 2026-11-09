@@ -1101,7 +1101,7 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
             None => false,
         }
     };
-    let task_reaped = if cleanup_ok {
+    let _task_reaped = if cleanup_ok {
         unsafe {
             ptr::write(process_slot, None);
         }
@@ -1121,6 +1121,12 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
         serial::COM1.write(b"ExhiOS: init resource reclamation failed; process retained.\r\n");
         false
     };
+    #[cfg(any(
+        feature = "process-run-smoke-test",
+        feature = "process-shell-smoke-test",
+        feature = "process-fault-smoke-test"
+    ))]
+    let task_reaped = _task_reaped;
 
     #[cfg(feature = "process-run-smoke-test")]
     {

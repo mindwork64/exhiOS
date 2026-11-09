@@ -136,7 +136,7 @@ static mut RING3_ADDRESS_SPACE: Option<AddressSpace> = None;
 static mut RING3_CODE_FRAME: u64 = 0;
 static mut RING3_STACK_FRAME: u64 = 0;
 
-#[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
 unsafe extern "sysv64" {
     fn exhi_interrupt_context_start(initial_rsp: usize, fx_state: usize) -> !;
 }
