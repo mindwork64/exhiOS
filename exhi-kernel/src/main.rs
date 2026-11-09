@@ -678,7 +678,15 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         halt_forever();
     }
 
-    #[cfg(feature = "process-load-smoke-test")]
+    #[cfg(feature = "process-run-smoke-test")]
+    {
+        arch::x86_64::process::run_init_smoke(EMBEDDED_INIT_ELF);
+    }
+
+    #[cfg(all(
+        feature = "process-load-smoke-test",
+        not(feature = "process-run-smoke-test")
+    ))]
     {
         kernel_console.write(b"P7.1: loading the first user ET_EXEC image.\r\n");
         let result = arch::x86_64::process::smoke_test(EMBEDDED_INIT_ELF);

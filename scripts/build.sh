@@ -251,7 +251,11 @@ cargo test -p exhi-memory
 cargo test -p exhi-console
 cargo build -p exhi-boot --target x86_64-unknown-uefi
 cargo test -p libexhi
-cargo build -p exhi-init --target x86_64-unknown-none
+INIT_FEATURE_ARGS=()
+if [[ "${EXHIOS_PROCESS_RUN_TEST:-0}" == "1" ]]; then
+    INIT_FEATURE_ARGS+=(--features qemu-smoke-test)
+fi
+cargo build -p exhi-init --target x86_64-unknown-none "${INIT_FEATURE_ARGS[@]}"
 
 INIT_ELF="$ROOT_DIR/target/x86_64-unknown-none/debug/exhi-init"
 echo
@@ -354,7 +358,14 @@ if [[ "${EXHIOS_VFS_TEST:-0}" == "1" ]]; then
     echo "Building the kernel with the VFS/RAMFS runtime smoke test."
 fi
 
-if [[ "${EXHIOS_PROCESS_LOAD_TEST:-0}" == "1" ]]; then
+if [[ "${EXHIOS_PROCESS_RUN_TEST:-0}" == "1" ]]; then
+    if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]]; then
+        echo "EXHIOS_PROCESS_RUN_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2
+        exit 1
+    fi
+    KERNEL_FEATURES+=(process-run-smoke-test)
+    echo "Building the kernel with the first Ring 3 init execution smoke test."
+elif [[ "${EXHIOS_PROCESS_LOAD_TEST:-0}" == "1" ]]; then
     if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]]; then
         echo "EXHIOS_PROCESS_LOAD_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2
         exit 1

@@ -77,6 +77,9 @@ jobs:
       - name: Build first user process ELF
         run: cargo build -p exhi-init --target x86_64-unknown-none
 
+      - name: Build QEMU init syscall-sequence ELF
+        run: cargo build -p exhi-init --target x86_64-unknown-none --features qemu-smoke-test
+
       - name: Verify fixed-address init image
         run: |
           LC_ALL=C readelf -h target/x86_64-unknown-none/debug/exhi-init
@@ -99,6 +102,9 @@ jobs:
 
       - name: Build kernel first user ELF loader smoke-test variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features process-load-smoke-test
+
+      - name: Build kernel Ring 3 init execution smoke-test variant
+        run: cargo build -p exhi-kernel --target x86_64-unknown-none --features process-run-smoke-test
 
       - name: Build kernel QEMU debug-exit variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features qemu-debug-exit-smoke-test
@@ -183,6 +189,9 @@ jobs:
 
       - name: Run headless first user ELF loader smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PROCESS_LOAD_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run headless Ring 3 init process syscall smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PROCESS_RUN_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
 
       - name: Run headless page-table CR3 rollback smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PAGING_ROLLBACK_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
