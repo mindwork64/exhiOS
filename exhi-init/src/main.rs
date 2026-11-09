@@ -6,9 +6,9 @@ use core::panic::PanicInfo;
 
 #[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 use exhi_config::ConfigParser;
-use libexhi::{console_write, exit};
 #[cfg(not(feature = "user-fault-smoke-test"))]
 use libexhi::{console_read, yield_now};
+use libexhi::{console_write, exit};
 
 #[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 const LINE_CAPACITY: usize = 128;
