@@ -169,9 +169,9 @@ impl LoadedProcess {
     }
 
     #[cfg(all(
-    feature = "process-load-smoke-test",
-    not(feature = "process-run-smoke-test")
-))]
+        feature = "process-load-smoke-test",
+        not(feature = "process-run-smoke-test")
+    ))]
     pub const fn image_page_count(&self) -> usize {
         self.image_page_count
     }
@@ -192,9 +192,9 @@ impl LoadedProcess {
     }
 
     #[cfg(all(
-    feature = "process-load-smoke-test",
-    not(feature = "process-run-smoke-test")
-))]
+        feature = "process-load-smoke-test",
+        not(feature = "process-run-smoke-test")
+    ))]
     pub fn translate(&self, address: u64) -> Result<PageMapping, ProcessLoadError> {
         self.address_space
             .as_ref()
