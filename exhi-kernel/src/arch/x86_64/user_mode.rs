@@ -1457,6 +1457,12 @@ impl SyscallServices for UserTaskSyscallServices {
     fn console_write(&mut self, user_address: u64, length: u64) -> Result<u64, SyscallError> {
         user_task_console_write(self.task_index, user_address, length)
     }
+
+    fn console_read(&mut self, _user_address: u64, _length: u64) -> Result<u64, SyscallError> {
+        // The P5.6 lifecycle fixtures intentionally do not receive ConsoleRead.
+        // The dispatcher must deny the operation before this adapter is reached.
+        Err(SyscallError::AccessDenied)
+    }
 }
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
