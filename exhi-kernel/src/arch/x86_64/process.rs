@@ -847,8 +847,9 @@ fn select_process_context(id: TaskId) -> usize {
     }
 
     if let Some(metadata) = task.user_metadata() {
-        let record = process_record_for_task(id)
-            .unwrap_or_else(|| init_runtime_failure(b"P7.1: selected user task has no process record.\r\n"));
+        let record = process_record_for_task(id).unwrap_or_else(|| {
+            init_runtime_failure(b"P7.1: selected user task has no process record.\r\n")
+        });
         let frame_end =
             (frame as u64).checked_add(size_of::<syscall::UserTaskSyscallFrame>() as u64);
         if (frame as u64) < record.kernel_stack_bottom
@@ -856,7 +857,9 @@ fn select_process_context(id: TaskId) -> usize {
             || metadata.kernel_stack_top() != record.kernel_stack_top
             || metadata.fx_state_pointer() != record.fx_state
         {
-            init_runtime_failure(b"P7.1: selected process frame or architecture metadata is invalid.\r\n");
+            init_runtime_failure(
+                b"P7.1: selected process frame or architecture metadata is invalid.\r\n",
+            );
         }
 
         let process = unsafe { (*record.process).as_ref() }
@@ -869,12 +872,8 @@ fn select_process_context(id: TaskId) -> usize {
         let space = process.address_space().unwrap_or_else(|_| {
             init_runtime_failure(b"P7.1: selected process address space is unavailable.\r\n")
         });
-        if user::activate_kernel_stack(
-            space,
-            record.kernel_stack_bottom,
-            record.kernel_stack_top,
-        )
-        .is_err()
+        if user::activate_kernel_stack(space, record.kernel_stack_bottom, record.kernel_stack_top)
+            .is_err()
             || !syscall::update_current_task_context(record.kernel_stack_top, record.fx_state)
         {
             init_runtime_failure(b"P7.1: failed to update selected user-task entry context.\r\n");
@@ -923,8 +922,9 @@ extern "sysv64" fn exhi_init_syscall_dispatch(frame: *mut syscall::UserTaskSysca
     let current_id = unsafe { (*scheduler).current().map(|task| task.id()) }.unwrap_or_else(|| {
         init_runtime_failure(b"P7.1: syscall arrived without a current task.\r\n")
     });
-    let record = process_record_for_task(current_id)
-        .unwrap_or_else(|| init_runtime_failure(b"P7.1: syscall has no registered process record.\r\n"));
+    let record = process_record_for_task(current_id).unwrap_or_else(|| {
+        init_runtime_failure(b"P7.1: syscall has no registered process record.\r\n")
+    });
     let frame_address = frame as usize;
     let frame_end =
         (frame_address as u64).checked_add(size_of::<syscall::UserTaskSyscallFrame>() as u64);
