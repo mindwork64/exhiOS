@@ -118,7 +118,9 @@ impl LoadedProcess {
         });
 
         if let Err(error) = result {
-            process.destroy().map_err(|_| ProcessLoadError::CleanupFailed)?;
+            process
+                .destroy()
+                .map_err(|_| ProcessLoadError::CleanupFailed)?;
             return Err(error);
         }
 
@@ -200,11 +202,7 @@ impl LoadedProcess {
         Ok(())
     }
 
-    fn load_segments(
-        &mut self,
-        image: &[u8],
-        elf: &ElfFile<'_>,
-    ) -> Result<(), ProcessLoadError> {
+    fn load_segments(&mut self, image: &[u8], elf: &ElfFile<'_>) -> Result<(), ProcessLoadError> {
         for header in elf.program_headers() {
             if header.kind != PT_LOAD {
                 continue;
@@ -231,8 +229,8 @@ impl LoadedProcess {
         let page_end = align_up(memory_end).ok_or(ProcessLoadError::InvalidSegmentRange)?;
         let source_start =
             usize::try_from(header.offset).map_err(|_| ProcessLoadError::FileRangeOutOfBounds)?;
-        let source_size =
-            usize::try_from(header.file_size).map_err(|_| ProcessLoadError::FileRangeOutOfBounds)?;
+        let source_size = usize::try_from(header.file_size)
+            .map_err(|_| ProcessLoadError::FileRangeOutOfBounds)?;
         let source_end = source_start
             .checked_add(source_size)
             .ok_or(ProcessLoadError::FileRangeOutOfBounds)?;
