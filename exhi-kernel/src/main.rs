@@ -24,6 +24,12 @@ const QEMU_DEBUG_EXIT_PORT: u16 = 0xF4;
 #[cfg(feature = "qemu-debug-exit-smoke-test")]
 const QEMU_DEBUG_EXIT_VALUE: u32 = 0x10;
 
+#[cfg(feature = "process-load-smoke-test")]
+const EMBEDDED_INIT_ELF: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../target/x86_64-unknown-none/debug/exhi-init"
+));
+
 #[no_mangle]
 pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     let mut framebuffer_console: Option<exhi_console::FramebufferConsole<'static>> = None;
@@ -604,6 +610,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                     feature = "driver-registry-smoke-test",
                     feature = "paging-rollback-smoke-test",
                     feature = "vfs-smoke-test",
+                    feature = "process-load-smoke-test",
                     feature = "context-switch-smoke-test",
                     feature = "task-accounting-smoke-test",
                     feature = "timer-preemption-smoke-test"
@@ -664,6 +671,41 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
             asm!(
                 "out dx, eax",
                 in("dx") 0xF4u16,
+                in("eax") exit_value,
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+        halt_forever();
+    }
+
+    #[cfg(feature = "process-load-smoke-test")]
+    {
+        kernel_console.write(b"P7.1: loading the first user ET_EXEC image.\r\n");
+        let result = arch::x86_64::process::smoke_test(EMBEDDED_INIT_ELF);
+        let exit_value = match result {
+            Ok(report) => {
+                kernel_console.write_fmt(format_args!(
+                    "P7.1: init ELF loaded; entry=0x{:016X} image-pages={} stack-pages={} stack=0x{:016X}.\r\n",
+                    report.entry_point,
+                    report.image_pages,
+                    report.stack_pages,
+                    report.user_stack_pointer,
+                ));
+                kernel_console.write(b"P7.1: RX/RW+NX PT_LOAD, entry bytes, zeroed BSS, guard page and full frame reclamation verified.\r\n");
+                QEMU_DEBUG_EXIT_VALUE
+            }
+            Err(error) => {
+                kernel_console.write_fmt(format_args!(
+                    "P7.1: init ELF load failed: {:?}.\r\n",
+                    error
+                ));
+                QEMU_DEBUG_EXIT_VALUE + 1
+            }
+        };
+        unsafe {
+            asm!(
+                "out dx, eax",
+                in("dx") QEMU_DEBUG_EXIT_PORT,
                 in("eax") exit_value,
                 options(nomem, nostack, preserves_flags)
             );

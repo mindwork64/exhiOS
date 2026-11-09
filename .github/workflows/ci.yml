@@ -97,6 +97,9 @@ jobs:
       - name: Build kernel VFS/RAMFS smoke-test variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features vfs-smoke-test
 
+      - name: Build kernel first user ELF loader smoke-test variant
+        run: cargo build -p exhi-kernel --target x86_64-unknown-none --features process-load-smoke-test
+
       - name: Build kernel QEMU debug-exit variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features qemu-debug-exit-smoke-test
 
@@ -177,6 +180,9 @@ jobs:
 
       - name: Run headless VFS/RAMFS file and directory smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_VFS_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run headless first user ELF loader smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PROCESS_LOAD_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
 
       - name: Run headless page-table CR3 rollback smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PAGING_ROLLBACK_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh

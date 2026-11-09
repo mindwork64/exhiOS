@@ -354,6 +354,15 @@ if [[ "${EXHIOS_VFS_TEST:-0}" == "1" ]]; then
     echo "Building the kernel with the VFS/RAMFS runtime smoke test."
 fi
 
+if [[ "${EXHIOS_PROCESS_LOAD_TEST:-0}" == "1" ]]; then
+    if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]]; then
+        echo "EXHIOS_PROCESS_LOAD_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2
+        exit 1
+    fi
+    KERNEL_FEATURES+=(process-load-smoke-test)
+    echo "Building the kernel with the first user ELF loader runtime smoke test."
+fi
+
 if [[ "${EXHIOS_PAGING_ROLLBACK_TEST:-0}" == "1" ]]; then
     if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]]; then
         echo "EXHIOS_PAGING_ROLLBACK_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2
