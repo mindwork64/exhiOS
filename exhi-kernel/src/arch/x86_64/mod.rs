@@ -5,6 +5,7 @@ pub mod idt;
 pub mod keyboard;
 pub mod paging;
 pub mod pic;
+pub mod process;
 pub mod serial;
 pub mod stack_guard;
 pub mod syscall;
