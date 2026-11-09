@@ -12,6 +12,8 @@ bench = false
 
 [features]
 qemu-smoke-test = []
+shell-smoke-test = []
 
 [dependencies]
-libexhi = { path = "../libexhi" }
+libexhi.workspace = true
+exhi-config.workspace = true
