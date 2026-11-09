@@ -1124,9 +1124,8 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
 
     #[cfg(feature = "process-shell-smoke-test")]
     unsafe {
-        serial::COM1.write(
-            b"P7.3: interactive serial shell smoke test passed; kernel reaper reclaimed init.\r\n",
-        );
+        serial::COM1.write(b"P7.3: interactive serial shell smoke test passed.\r\n");
+        serial::COM1.write(b"ExhiOS: kernel reaper reclaimed init after shell exit.\r\n");
         core::arch::asm!(
             "out dx, eax",
             in("dx") crate::QEMU_DEBUG_EXIT_PORT,
