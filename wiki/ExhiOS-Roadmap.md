@@ -250,18 +250,18 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [x] Bounded fixed-address ELF64 ET_EXEC loader in `arch::x86_64::process`: PT_LOAD validation, private address space, RX/RW+NX permissions, zero-filled BSS, four-page user stack and an unmapped guard page.
 - [x] Reverse-order rollback and explicit ownership of user data frames and private page-table frames.
 - [x] Default build selects `process-runtime`, embeds `exhi-init` and enters it in Ring 3 through the common IRETQ path.
-- [x] Dedicated supervisor kernel stack with guard page, TSS.RSP0, initialized FXSAVE image and shared BSP SYSCALL entry.
-- [x] `ConsoleWrite`, `ConsoleRead`, `Yield` and `Exit` are dispatched through the shared capability-gated syscall dispatcher.
-- [x] Init exit and validated user-mode exception paths restore the kernel address space and reclaim the init address space and its user frames. The user-fault cleanup path also verifies CRLF diagnostics.
-- [ ] Replace the current single-process adapter: production `Yield` still resumes the same init process (`Ok(None)`); the general `exhi-task` scheduler and its real multi-process dispatch are not yet wired into the production process runtime. This is the remaining P7.1 blocker.
-- [ ] Add a production QEMU runtime scenario proving actual process scheduling and safe reaping through that runtime, rather than relying only on the separate P5.6 scheduler smoke adapter.
+- [x] Dedicated supervisor init and reaper kernel stacks with guard pages, TSS.RSP0, initialized FXSAVE images and shared BSP SYSCALL entry.
+- [x] Production `exhi-task::Scheduler` lifecycle integration: register init as a user task, register a blocked kernel-reaper task, route `Yield` through scheduler decisions, and route `Exit` through Finished → reaper wake → idle dispatch.
+- [x] Validated CPL3 fault termination uses the same deferred reclamation path. The IDT entry explicitly executes `SWAPGS` before updating the trusted GS-relative syscall context, marks init Finished, and switches to the kernel reaper.
+- [x] Reaper executes on its dedicated guarded supervisor stack, restores kernel CR3, destroys the loaded process/address space, releases owned frames/page tables and removes the Finished scheduler record after switch-away.
+- [x] QEMU production-runtime evidence: [CI #484](https://github.com/mindwork64/exhiOS/actions/runs/42597997791) passed the full build matrix (50 build-job steps, zero Rust warnings) and all 21 runtime scenarios. The #UD scenario verified vector 6, reaper start, address-space/frame/task-record reclamation and expected QEMU debug-exit status 33.
+- [x] Task-switch-aware exception bounds: `user::activate_kernel_stack` validates the selected supervisor stack and active address space, then updates TSS.RSP0 and the bounds consumed by CPL3 exception-frame validation. The P5.6 context selector uses it after changing CR3.
+- [ ] Add production multi-process support: process creation/registry and independent LoadedProcess/address-space/kernel-stack/FX/context ownership for more than the single init user task.
+- [ ] Generalize dispatch, console services, Exit and fault termination to the current registered user process instead of the current init-specific globals. Prove that production `Yield` switches between two Ready user processes.
 
-- [x] User exit and validated user-mode exception cleanup restore kernel CR3 and reclaim the init address space, user frames and private page tables; the fault diagnostic test verifies CRLF.
-- [x] Task-switch-aware exception bounds: `user::activate_kernel_stack` validates the selected supervisor stack and active address space, then updates TSS.RSP0 and the bounds consumed by CPL3 exception-frame validation. The P5.6 context selector calls it after changing CR3.
-  
-Evidence: CI #430 verified ELF loader permissions/BSS/guard/reclamation; CI #435 verified Ring 3 entry and the `libexhi` syscall sequence; CI #451 verified user-fault cleanup; [CI #453](https://github.com/mindwork64/exhiOS/actions/runs/42592065020) passed the full build and all 21 QEMU runtime scenarios, including P5.6 two-user-task switching/reaping. Commit [b80c4c2](https://github.com/mindwork64/exhiOS/commit/b80c4c2802434ccb150927f8ee1cda2d3193ef40) contains the stack-bound tracking fix.
+**Remaining P7.1 blocker:** production runtime now uses the scheduler and reaper for init lifecycle, but only one user process is registered. With no second Ready user task, `Yield` returns the scheduler's `Continue` decision and resumes init. The P5.6 two-user-task QEMU adapter remains a separate scheduler test, not a production multi-process workload. Add a two-process test through the production runtime before closing P7.1.
 
-**Remaining P7.1 blocker:** production `Yield` still resumes the same init process (`Ok(None)`). The general `exhi-task` scheduler and real multi-process dispatch/reaping are not yet wired into `process-runtime`. The P5.6 two-process scheduler adapter is not a production process manager. Add a dedicated production-runtime QEMU test before closing P7.1.
+Evidence: loader and basic syscall sequence — CI #430/#435; shell/config — CI #447; latest production Exit/fault/reaper and warning-free full matrix — [CI #484](https://github.com/mindwork64/exhiOS/actions/runs/42597997791), HEAD [8f0b4bf](https://github.com/mindwork64/exhiOS/commit/8f0b4bf5f854b06b2f4d9452b408baf5a0a719d9).
 
 ### P7.2 — System-call support library (`libexhi`)
 

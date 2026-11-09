@@ -3,7 +3,7 @@
 Снимок: **2026-11-09**  
 Репозиторий: https://github.com/mindwork64/exhiOS  
 Ветка: `main`  
-Кодовый checkpoint: P0–P6 закрыты по runtime/host evidence; P5.1–P5.7 приняты (#405); P6 VFS/RAMFS принят (#412). P7.2–P7.4 реализованы; P7.1 имеет init loader, Ring 3 entry, syscalls и проверенный cleanup, но production scheduler всё ещё однопроцессный (`Yield` возобновляет тот же init). HEAD `b80c4c280243` прошёл build и все 21 QEMU runtime сценарий в [CI #453](https://github.com/mindwork64/exhiOS/actions/runs/42592065020). Исправлено слежение за границами активного kernel stack при переключении user task.  
+Кодовый checkpoint: P0–P6 закрыты по применимым runtime/host evidence; P5.1–P5.7 приняты (#405); P6 VFS/RAMFS принят (#412). P7.2–P7.4 реализованы; P7.1 теперь использует production `exhi-task::Scheduler` для lifecycle init и отдельного kernel reaper, включая cleanup после `Exit` и CPL3 fault. Подтверждённый HEAD `8f0b4bf5f854` прошёл полный build (50 шагов, 0 Rust warnings) и все 21 QEMU runtime сценарий в [CI #484](https://github.com/mindwork64/exhiOS/actions/runs/42597997791). Production runtime пока поддерживает один user process; multi-process creation/dispatch остаётся открытой частью P7.1.
 
 ## Закрыто и проверено в QEMU
 
@@ -344,7 +344,7 @@ P5.1–P5.7 реализованы. Общие x86-64 Ring 3 entry, SYSCALL entr
 
 ### P7 — Userland: состояние
 
-**P7.1 — init: частично готово.** Встроенный ET_EXEC init загружается в private address space, получает RX code, RW+NX stack с guard page и исполняется в Ring 3. ELF loader проверяет сегменты, BSS и права; cleanup возвращает kernel CR3 и освобождает frames/page tables. Exit и validated user-mode fault termination очищают resources (CI #451). В P5.6 context selector теперь синхронно обновляет TSS.RSP0 и границы kernel stack, проверяемые при CPL3 exception capture; build и полный QEMU suite прошли в CI #453. Остаётся production-интеграция general scheduler: текущая реализация однопроцессная, `Yield` возвращает тот же процесс; отдельный P5.6 scheduler smoke test пока не является production process scheduler.
+**P7.1 — init: частично готово.** ET_EXEC init загружается в private address space с RX code, RW+NX stack и guard page и исполняется в Ring 3. Production runtime уже использует `exhi-task::Scheduler`: регистрирует init как user task и заблокированный kernel-reaper task; `Yield` проходит через scheduler, `Exit` переводит init в Finished и передаёт управление reaper. Проверенный CPL3 fault path делает явный `SWAPGS`, переводит init в Finished и также передаёт управление reaper. Reaper работает на отдельном guarded kernel stack, восстанавливает kernel CR3, освобождает address space/frames и удаляет Finished task record после switch-away. Всё это прошло QEMU в CI #484. Ограничение: production runtime пока регистрирует только один user process, поэтому `Yield` продолжает init, когда нет другого Ready user task; spawn и multi-process dispatch ещё не реализованы. P5.6 остаётся отдельным двухзадачным scheduler smoke test.
 
 **P7.2 — libexhi: готово.** `no_std` wrappers: `console_write`, `console_read`, `yield_now`, `exit`; стабильные syscall numbers и decoding kernel errors. CI #435 подтвердил использование в Ring 3.
 
@@ -354,11 +354,11 @@ P5.1–P5.7 реализованы. Общие x86-64 Ring 3 entry, SYSCALL entr
 
 ### Последняя проверенная точка CI
 
-- HEAD: [b80c4c2](https://github.com/mindwork64/exhiOS/commit/b80c4c2802434ccb150927f8ee1cda2d3193ef40).
-- CI [#453](https://github.com/mindwork64/exhiOS/actions/runs/42592065020): build — success; QEMU runtime smoke test — success (21/21 runtime scenarios).
-- Последние исправления: [e1d8999](https://github.com/mindwork64/exhiOS/commit/e1d8999792ff10d68dd3f188816f32b05150ced1) — resource cleanup after user-mode faults; [bd52245](https://github.com/mindwork64/exhiOS/commit/bd522457884c3d8536c1cd2b487fd8bc07179954) — CRLF in user-fault diagnostics; [3943378](https://github.com/mindwork64/exhiOS/commit/39433785d5a116fa1e6908bf1f91b806bd931c48) — rustfmt.
-- CI #449/#450 were failed intermediate runs; #451 passed on code HEAD `3943378`; #453 passed on current code HEAD `b80c4c2`.
+- HEAD: [8f0b4bf](https://github.com/mindwork64/exhiOS/commit/8f0b4bf5f854b06b2f4d9452b408baf5a0a719d9).
+- CI [#484](https://github.com/mindwork64/exhiOS/actions/runs/42597997791): build — success (50 job steps, 0 Rust warning lines); QEMU runtime — success (27 completed job steps, including all 21 runtime scenarios).
+- P7.1 runtime markers in #484: init syscall/Exit reaper path passed; invalid-opcode vector 6 was captured; kernel reaper started on its dedicated stack; init address space, user frames and Finished task record were reclaimed; QEMU exited with status 33.
+- Feature-specific build gates now keep loader, Ring 3, syscall and shell-only code out of unrelated smoke configurations. The complete CI build matrix is warning-free.
 
 ### Ближайшая задача
 
-P7.1: подключить общий `exhi-task::Scheduler` к production process runtime. Реализовать реальные task contexts для user processes, диспетчеризацию `Yield`, смену CR3/kernel stack/FX state/TSS.RSP0 и безопасный exit/reap через kernel reaper. Отдельный QEMU сценарий должен доказать работу именно production path. Не подменять этот результат тестовым P5.6 adapter.
+P7.1: довести production runtime от одного init до нескольких user processes. Следующий этап — process registry/creation path, отдельные LoadedProcess/address-space/kernel-stack/FX/context state для каждого процесса, общая dispatch/termination логика без привязки к `INIT_PROCESS`, и реальное переключение двух production user tasks через `Yield`. Отдельный QEMU сценарий должен проверить два user processes, capability-gated services, CR3/TSS/GS/FX switching, exit/fault и reaper reclamation.

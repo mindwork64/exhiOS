@@ -19,30 +19,30 @@
 - Не считать один только compile/build доказательством runtime корректности.
 
 ## Текущая подтверждённая точка — 2026-11-09
-- HEAD main: [b80c4c2](https://github.com/mindwork64/exhiOS/commit/b80c4c2802434ccb150927f8ee1cda2d3193ef40).
-- Последний CI [#453](https://github.com/mindwork64/exhiOS/actions/runs/42592065020): build и QEMU runtime jobs — success; все 21 runtime scenario прошли. CI #452 проверил предыдущий docs checkpoint; #451 прошёл на предыдущем code HEAD.
+- HEAD main: [8f0b4bf](https://github.com/mindwork64/exhiOS/commit/8f0b4bf5f854b06b2f4d9452b408baf5a0a719d9).
+- Последний полный CI [#484](https://github.com/mindwork64/exhiOS/actions/runs/42597997791): build job — success (50 шагов, 0 Rust warnings); QEMU job — success (27 завершённых job steps, в том числе все 21 runtime scenario).
 - P0–P6 закрыты по применимым host/build/QEMU evidence.
-- P5.1–P5.7: Ring 3 entry/isolation, common SYSCALL, pointer validation/safe-copy, двухзадачный user lifecycle и default-deny capabilities приняты полным runtime suite в [CI #405](https://github.com/mindwork64/exhiOS/actions/runs/42434078573). Scope BSP/single-CPU.
-- P6: bounded allocator-free VFS/RAMFS, операции file/directory и kernel smoke test приняты в [CI #412](https://github.com/mindwork64/exhiOS/actions/runs/42546613316). Userland FS syscalls/persistent disk FS отсутствуют.
-- P7.1: ET_EXEC init loader, private address space, RX/RW+NX mappings, stack guard, Ring 3 entry, syscalls and cleanup after exit/user fault implemented. CI #453 passes all 21 QEMU scenarios. `user::activate_kernel_stack` now keeps TSS.RSP0 and CPL3 exception-frame bounds synchronized with the selected task in the P5.6 adapter. P7.1 remains open because production runtime is still single-process and `Yield` resumes the same init; production process scheduler/reaper dispatch is not integrated.
+- P5.1–P5.7: Ring 3 entry/isolation, common SYSCALL, pointer validation/safe-copy, отдельный двухзадачный scheduler lifecycle и default-deny capabilities приняты runtime suite. Scope BSP/single-CPU.
+- P6: bounded allocator-free VFS/RAMFS, file/directory operations and kernel smoke test accepted. Userland FS syscalls/persistent disk FS are absent.
+- P7.1: production runtime now registers init and a blocked kernel-reaper task in `exhi-task::Scheduler`. Init `Exit` and validated CPL3 #UD fault both switch away to the reaper; IDT fault path explicitly executes `SWAPGS`; reaper restores kernel CR3, releases process mappings/frames and reaps the Finished task record on its dedicated guarded stack. CI #484 verifies both paths.
+- P7.1 remains open only for the next layer: the production manager still registers one user process; there is no process-spawn/registry and no production multi-user dispatch yet. `Yield` returns scheduler `Continue` while no other user task is Ready.
 - P7.2: `libexhi` wrappers for console_write/read, yield_now and exit are implemented and tested (CI #435).
 - P7.3: interactive Ring 3 serial shell and QEMU serial input tests passed (CI #447).
-- P7.4: bounded `key=value` parser; embedded hostname/prompt/version config is applied and displayed. Persistent VFS config load is not implemented.
+- P7.4: bounded `key=value` parser and embedded hostname/prompt/version config are implemented. Persistent VFS config loading remains open.
 
-## Ближайшая задача: закрытие P7.1
-Интегрировать общий `exhi-task::Scheduler` в production process runtime, а не переиспользовать только smoke adapter:
-1. Process/task control block владеет private address space, user/kernel stacks, saved syscall/interrupt frame, FX state и capability grants.
-2. Реальная `Yield` сохраняет контекст и переключает к другой Ready process; при dispatch синхронно меняет CR3, trusted GS kernel-stack/FX pointers и TSS.RSP0.
-3. `Exit` и user exception переводят process в Finished; отдельный kernel reaper выполняется уже на собственном kernel stack и освобождает user mappings, page tables, frames, FX state и task record только после switch-away.
-4. Не освобождать стек, на котором ещё выполняется код или который может быть восстановлен. Сначала доказать безопасный handoff.
-5. Добавить отдельный QEMU runtime test именно для production manager: не менее двух Ring 3 процессов, реальное yield-переключение, exit/fault, reaper, capability denial/no side effects, корректный CR3/TSS/FX и полная reclamation.
-6. Все P5/P6 и базовые P7 сценарии сохранить в CI как регрессии. После успешного локально-эквивалентного QEMU CI сразу переходить к следующей запланированной задаче без ожидания отдельного одобрения.
+## Ближайшая задача: production multi-process support for P7.1
+1. Replace init-specific singleton ownership with a process registry/manager holding each process's LoadedProcess/address space, saved user frame, guarded kernel stack, FXSAVE state, and capabilities.
+2. Generalize `select_process_context` and syscall services to resolve the currently selected user task. Remove the hard-coded `INIT_TASK_ID`/ `INIT_PROCESS` assumptions from ConsoleRead/ConsoleWrite and process termination paths.
+3. Add a second production user process with independent CR3, user/kernel stacks, FX state and saved context; prove that `Yield` switches between both Ready processes.
+4. Generalize Exit and CPL3 fault handling so any user process becomes Finished and the kernel reaper reclaims it only after switch-away. Preserve the explicit IDT-originated `SWAPGS` handling and BSP-only assumptions.
+5. Add a QEMU production-runtime test covering two user processes, capability denial/no side effects, yield/exit/fault, CR3/TSS/GS/FX switching, reaper reclamation and Finished task-record removal.
+6. Keep the existing P5/P6 and P7.1 init/shell/fault scenarios as regressions. Continue after successful CI/QEMU validation without waiting for a separate approval.
 
 ## Платформенные ограничения, которые нельзя скрывать
 - BSP/single-CPU only: AP-local GS setup, SMP process scheduling and TLB shootdown not implemented.
 - User TLS is not implemented. NMI/exception handling during SWAPGS transition window is not claimed.
 - RAMFS is in-memory; userland filesystem syscalls and persistent storage are future work.
-- Production init currently has one process; `Yield` is a same-process resume until P7.1 scheduler integration is completed.
+- Production init currently registers one user process plus a kernel reaper. `Yield` goes through the scheduler but resumes init when no other user task is Ready; multi-process creation/dispatch is the remaining P7.1 work.
 
 ## Правила общения/работы
 - Общение на русском.
