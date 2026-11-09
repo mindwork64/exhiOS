@@ -963,7 +963,9 @@ fn handoff_to_kernel_reaper() -> ! {
     let current_id = unsafe { (*scheduler).current().map(|task| task.id()) };
     let reaper_id = unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) };
     if current_id.is_none() || current_id != reaper_id {
-        init_runtime_failure(b"P7.1: direct reaper handoff selected the wrong scheduler task.\\r\\n");
+        init_runtime_failure(
+            b"P7.1: direct reaper handoff selected the wrong scheduler task.\\r\\n",
+        );
     }
 
     let Some((_, stack_top)) = reaper_kernel_stack_bounds() else {
@@ -973,10 +975,7 @@ fn handoff_to_kernel_reaper() -> ! {
         || user::clear_active_kernel_stack().is_err()
         || !gdt::set_rsp0(stack_top)
         || gdt::read_rsp0() != stack_top
-        || !syscall::update_current_task_context(
-            stack_top,
-            ptr::addr_of!(REAPER_FX_STATE) as usize,
-        )
+        || !syscall::update_current_task_context(stack_top, ptr::addr_of!(REAPER_FX_STATE) as usize)
     {
         init_runtime_failure(b"P7.1: could not prepare the direct kernel-reaper context.\\r\\n");
     }
