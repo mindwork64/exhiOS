@@ -1079,7 +1079,9 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
             if address_space::restore_kernel().is_err()
                 || user::clear_active_kernel_stack().is_err()
             {
-                init_runtime_failure(b"P7.1: could not restore kernel mappings between processes.\r\n");
+                init_runtime_failure(
+                    b"P7.1: could not restore kernel mappings between processes.\r\n",
+                );
             }
         }
         let image = if slot == 0 {
@@ -1089,8 +1091,8 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
                 init_runtime_failure(b"P7.1: second process image is missing.\r\n")
             })
         };
-        let process = LoadedProcess::load(image)
-            .unwrap_or_else(|error| init_runtime_failure_fmt(error));
+        let process =
+            LoadedProcess::load(image).unwrap_or_else(|error| init_runtime_failure_fmt(error));
         let process_slot = process_object_pointer(slot);
         unsafe {
             ptr::write(process_slot, Some(process));
@@ -1124,11 +1126,15 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
             process.entry_point(),
             process.user_stack_pointer(),
         )
-        .unwrap_or_else(|_| init_runtime_failure(b"P7.1: process user-entry validation failed.\r\n"));
+        .unwrap_or_else(|_| {
+            init_runtime_failure(b"P7.1: process user-entry validation failed.\r\n")
+        });
 
         let frame_address = stack_top
             .checked_sub(size_of::<user::UserEntryFrame>() as u64)
-            .unwrap_or_else(|| init_runtime_failure(b"P7.1: process kernel stack is too small.\r\n"));
+            .unwrap_or_else(|| {
+                init_runtime_failure(b"P7.1: process kernel stack is too small.\r\n")
+            });
         if frame_address & 0xF != 0 {
             init_runtime_failure(b"P7.1: process entry frame is misaligned.\r\n");
         }
@@ -1152,7 +1158,9 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
                     TaskContext::new(frame_address as usize),
                     UserTaskMetadata::new_with_capabilities(
                         process.root_address().unwrap_or_else(|_| {
-                            init_runtime_failure(b"P7.1: process address-space root is unavailable.\r\n")
+                            init_runtime_failure(
+                                b"P7.1: process address-space root is unavailable.\r\n",
+                            )
                         }),
                         process.user_stack_pointer(),
                         stack_top,
@@ -1160,7 +1168,9 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
                         capabilities,
                     ),
                 )
-                .unwrap_or_else(|_| init_runtime_failure(b"P7.1: could not register user process.\r\n"))
+                .unwrap_or_else(|_| {
+                    init_runtime_failure(b"P7.1: could not register user process.\r\n")
+                })
         };
         if !register_process_record(
             task_id,
@@ -1179,9 +1189,7 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
     let Some((reaper_stack_bottom, reaper_stack_top)) = reaper_kernel_stack_bounds() else {
         init_runtime_failure(b"P7.1: reaper kernel stack bounds are invalid.\r\n");
     };
-    if address_space::restore_kernel().is_err()
-        || user::clear_active_kernel_stack().is_err()
-    {
+    if address_space::restore_kernel().is_err() || user::clear_active_kernel_stack().is_err() {
         init_runtime_failure(b"P7.1: could not restore kernel mappings before reaper setup.\r\n");
     }
     let reaper_stack_storage =
@@ -1220,8 +1228,9 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
         ptr::write(ptr::addr_of_mut!(REAPER_TASK_ID), Some(reaper_task));
     }
 
-    let first_record = process_record_for_task(first_task_id)
-        .unwrap_or_else(|| init_runtime_failure(b"P7.1: first process resources are not registered.\r\n"));
+    let first_record = process_record_for_task(first_task_id).unwrap_or_else(|| {
+        init_runtime_failure(b"P7.1: first process resources are not registered.\r\n")
+    });
     if !syscall::initialize_cpu_local(
         first_record.kernel_stack_top,
         first_record.fx_state,
@@ -1237,7 +1246,9 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
     let frame = unsafe { &*(frame as *const user::UserEntryFrame) };
     let fx_state = unsafe { &*(first_record.fx_state as *const user::FxState) };
     match user::enter_user(frame, fx_state) {
-        Ok(()) => init_runtime_failure(b"P7.1: first user process IRETQ entry unexpectedly returned.\r\n"),
+        Ok(()) => {
+            init_runtime_failure(b"P7.1: first user process IRETQ entry unexpectedly returned.\r\n")
+        }
         Err(_) => init_runtime_failure(b"P7.1: first user process IRETQ handoff failed.\r\n"),
     }
 }
@@ -1281,7 +1292,8 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
         };
         if !destroyed {
             cleanup_ok = false;
-            serial::COM1.write(b"ExhiOS: process resource reclamation failed; process retained.\r\n");
+            serial::COM1
+                .write(b"ExhiOS: process resource reclamation failed; process retained.\r\n");
             continue;
         }
 
@@ -1293,11 +1305,14 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
             reaped_count += 1;
         } else {
             task_reaped = false;
-            serial::COM1.write(b"ExhiOS: process resources reclaimed but task record reaping failed.\r\n");
+            serial::COM1
+                .write(b"ExhiOS: process resources reclaimed but task record reaping failed.\r\n");
         }
     }
     if cleanup_ok && task_reaped && reaped_count != 0 {
-        serial::COM1.write(b"ExhiOS: finished process address spaces, user frames and task records reclaimed.\r\n");
+        serial::COM1.write(
+            b"ExhiOS: finished process address spaces, user frames and task records reclaimed.\r\n",
+        );
     }
     let _task_reaped = cleanup_ok && task_reaped;
     #[cfg(any(
@@ -1359,9 +1374,8 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
                 b"P7.1: two production Ring 3 processes yielded to each other, exited and were reaped.\r\n",
             );
         } else {
-            serial::COM1.write(
-                b"P7.1: production multi-process lifecycle verification failed.\r\n",
-            );
+            serial::COM1
+                .write(b"P7.1: production multi-process lifecycle verification failed.\r\n");
         }
         unsafe {
             core::arch::asm!(
@@ -1411,8 +1425,9 @@ fn handoff_faulting_process_to_scheduler() -> ! {
         core::arch::asm!("cli", options(nomem, nostack, preserves_flags));
     }
     let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
-    let current_id = unsafe { (*scheduler).current().map(|task| task.id()) }
-        .unwrap_or_else(|| init_runtime_failure(b"P7.1: user fault arrived without a current task.\r\n"));
+    let current_id = unsafe { (*scheduler).current().map(|task| task.id()) }.unwrap_or_else(|| {
+        init_runtime_failure(b"P7.1: user fault arrived without a current task.\r\n")
+    });
     if process_record_for_task(current_id).is_none() {
         init_runtime_failure(b"P7.1: user faulting task has no process record.\r\n");
     }
@@ -1421,8 +1436,9 @@ fn handoff_faulting_process_to_scheduler() -> ! {
             init_runtime_failure(b"P7.1: reaper task id is unavailable during fault handoff.\r\n")
         });
 
-    let next = unsafe { (*scheduler).finish_current() }
-        .unwrap_or_else(|_| init_runtime_failure(b"P7.1: could not finish faulting user process.\r\n"));
+    let next = unsafe { (*scheduler).finish_current() }.unwrap_or_else(|_| {
+        init_runtime_failure(b"P7.1: could not finish faulting user process.\r\n")
+    });
     let selected = if let Some(next) = next {
         next
     } else {
