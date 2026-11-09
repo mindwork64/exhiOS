@@ -1,0 +1,31 @@
+#![no_main]
+#![no_std]
+
+use core::hint::spin_loop;
+use core::panic::PanicInfo;
+
+use libexhi::{console_write, exit, yield_now};
+
+#[no_mangle]
+pub extern "sysv64" fn _start() -> ! {
+    if console_write(b"ExhiOS worker: second Ring 3 process started.\r\n").is_err() {
+        exit();
+    }
+
+    for _ in 0..4 {
+        if yield_now().is_err() {
+            exit();
+        }
+    }
+
+    let _ = console_write(b"ExhiOS worker: completed yield sequence; exiting.\r\n");
+    exit();
+}
+
+#[panic_handler]
+fn panic(_info: &PanicInfo<'_>) -> ! {
+    let _ = console_write(b"ExhiOS worker: panic.\r\n");
+    loop {
+        spin_loop();
+    }
+}

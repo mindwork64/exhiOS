@@ -7,5 +7,9 @@ fn main() {
         "cargo:rustc-link-arg-bin=exhi-init=-T{}",
         linker_script.display()
     );
+    println!(
+        "cargo:rustc-link-arg-bin=exhi-worker=-T{}",
+        linker_script.display()
+    );
     println!("cargo:rerun-if-changed=linker.ld");
 }

@@ -18,3 +18,9 @@ user-fault-smoke-test = []
 [dependencies]
 libexhi.workspace = true
 exhi-config.workspace = true
+
+[[bin]]
+name = "exhi-worker"
+path = "src/worker.rs"
+test = false
+bench = false
