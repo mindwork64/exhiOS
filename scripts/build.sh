@@ -358,7 +358,14 @@ if [[ "${EXHIOS_VFS_TEST:-0}" == "1" ]]; then
     echo "Building the kernel with the VFS/RAMFS runtime smoke test."
 fi
 
-if [[ "${EXHIOS_PROCESS_RUN_TEST:-0}" == "1" ]]; then
+if [[ "${EXHIOS_PROCESS_SHELL_TEST:-0}" == "1" ]]; then
+    if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]]; then
+        echo "EXHIOS_PROCESS_SHELL_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2
+        exit 1
+    fi
+    KERNEL_FEATURES+=(process-shell-smoke-test)
+    echo "Building the kernel with the interactive Ring 3 serial shell smoke test."
+elif [[ "${EXHIOS_PROCESS_RUN_TEST:-0}" == "1" ]]; then
     if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]]; then
         echo "EXHIOS_PROCESS_RUN_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2
         exit 1

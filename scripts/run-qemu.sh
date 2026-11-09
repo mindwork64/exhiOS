@@ -26,6 +26,8 @@ PAGING_ROLLBACK_TEST="${EXHIOS_PAGING_ROLLBACK_TEST:-0}"
 VFS_TEST="${EXHIOS_VFS_TEST:-0}"
 PROCESS_LOAD_TEST="${EXHIOS_PROCESS_LOAD_TEST:-0}"
 PROCESS_RUN_TEST="${EXHIOS_PROCESS_RUN_TEST:-0}"
+PROCESS_SHELL_TEST="${EXHIOS_PROCESS_SHELL_TEST:-0}"
+SHELL_SOCKET="$ROOT_DIR/target/exhios-shell-qemu.sock"
 QMP_SOCKET="$ROOT_DIR/target/exhios-keyboard-qmp.sock"
 
 if [[ "$EXCEPTION_TEST" == "1" && "$QEMU_EXIT_TEST" == "1" ]]; then
@@ -35,6 +37,14 @@ fi
 
 if [[ "$VFS_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
     echo "EXHIOS_VFS_TEST requires EXHIOS_QEMU_EXIT_TEST=1 for controlled QEMU shutdown." >&2
+    exit 1
+fi
+if [[ "$PROCESS_SHELL_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
+    echo "EXHIOS_PROCESS_SHELL_TEST requires EXHIOS_QEMU_EXIT_TEST=1 for controlled QEMU shutdown." >&2
+    exit 1
+fi
+if [[ "$PROCESS_SHELL_TEST" == "1" && ( "$PROCESS_RUN_TEST" == "1" || "$PROCESS_LOAD_TEST" == "1" ) ]]; then
+    echo "EXHIOS_PROCESS_SHELL_TEST cannot be combined with other process smoke modes." >&2
     exit 1
 fi
 if [[ "$PROCESS_RUN_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
@@ -260,9 +270,15 @@ QEMU_ARGS=(
     -device qemu-xhci,id=xhci
     -device usb-storage,bus=xhci.0,drive=esp,bootindex=1
     -net none
-    -serial stdio
     -no-reboot
 )
+
+if [[ "$PROCESS_SHELL_TEST" == "1" ]]; then
+    rm -f "$SHELL_SOCKET"
+    QEMU_ARGS+=(-serial "unix:$SHELL_SOCKET,server=on,wait=off")
+else
+    QEMU_ARGS+=(-serial stdio)
+fi
 
 if [[ "$HEADLESS_TEST" == "1" ]]; then
     QEMU_ARGS+=(-display none -monitor none)
@@ -273,7 +289,10 @@ if [[ "$KEYBOARD_TEST" == "1" ]]; then
     QEMU_ARGS+=(-qmp "unix:$QMP_SOCKET,server=on,wait=off")
 fi
 
-if [[ "$PROCESS_RUN_TEST" == "1" ]]; then
+if [[ "$PROCESS_SHELL_TEST" == "1" ]]; then
+    echo "Starting ExhiOS interactive Ring 3 serial shell smoke test."
+    QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
+elif [[ "$PROCESS_RUN_TEST" == "1" ]]; then
     echo "Starting ExhiOS first Ring 3 init process execution smoke test."
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
 elif [[ "$PROCESS_LOAD_TEST" == "1" ]]; then
@@ -344,7 +363,22 @@ fi
 echo "EFI application and kernel ELF are on the same GPT EFI System Partition."
 
 set +e
-if [[ "$KEYBOARD_TEST" == "1" ]]; then
+if [[ "$PROCESS_SHELL_TEST" == "1" ]]; then
+    timeout --foreground 40s qemu-system-x86_64 "${QEMU_ARGS[@]}" &
+    QEMU_PID=$!
+    python3 scripts/qemu-send-shell-smoke.py "$SHELL_SOCKET"
+    INJECTOR_STATUS=$?
+    if [[ "$INJECTOR_STATUS" -ne 0 ]]; then
+        kill "$QEMU_PID" 2>/dev/null || true
+    fi
+    wait "$QEMU_PID"
+    QEMU_STATUS=$?
+    rm -f "$SHELL_SOCKET"
+    if [[ "$INJECTOR_STATUS" -ne 0 ]]; then
+        echo "ERROR: serial shell QEMU interaction test failed." >&2
+        exit 1
+    fi
+elif [[ "$KEYBOARD_TEST" == "1" ]]; then
     timeout --foreground 20s qemu-system-x86_64 "${QEMU_ARGS[@]}" &
     QEMU_PID=$!
     python3 scripts/qemu-send-keyboard-smoke.py "$QMP_SOCKET"

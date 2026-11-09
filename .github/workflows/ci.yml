@@ -109,6 +109,9 @@ jobs:
       - name: Build kernel Ring 3 init execution smoke-test variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features process-run-smoke-test
 
+      - name: Build kernel interactive serial shell smoke-test variant
+        run: cargo build -p exhi-kernel --target x86_64-unknown-none --features process-shell-smoke-test
+
       - name: Build kernel QEMU debug-exit variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features qemu-debug-exit-smoke-test
 
@@ -195,6 +198,9 @@ jobs:
 
       - name: Run headless Ring 3 init process syscall smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PROCESS_RUN_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run interactive Ring 3 serial shell smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PROCESS_SHELL_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
 
       - name: Run headless page-table CR3 rollback smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PAGING_ROLLBACK_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh

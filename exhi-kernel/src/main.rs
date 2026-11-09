@@ -683,10 +683,17 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         arch::x86_64::process::run_init(EMBEDDED_INIT_ELF);
     }
 
+    #[cfg(feature = "process-shell-smoke-test")]
+    {
+        serial::COM1.write(b"P7.3: starting interactive serial shell in Ring 3.\r\n");
+        arch::x86_64::process::run_init(EMBEDDED_INIT_ELF);
+    }
+
     #[cfg(all(
         feature = "process-runtime",
         not(any(
             feature = "process-run-smoke-test",
+            feature = "process-shell-smoke-test",
             feature = "process-load-smoke-test"
         ))
     ))]

@@ -579,7 +579,20 @@ impl SyscallServices for InitServices {
             }
         }
 
-        #[cfg(not(feature = "process-run-smoke-test"))]
+        #[cfg(feature = "process-shell-smoke-test")]
+        {
+            serial::COM1.write(b"P7.3: interactive serial shell smoke test passed.\r\n");
+            unsafe {
+                core::arch::asm!(
+                    "out dx, eax",
+                    in("dx") crate::QEMU_DEBUG_EXIT_PORT,
+                    in("eax") crate::QEMU_DEBUG_EXIT_VALUE,
+                    options(nomem, nostack, preserves_flags)
+                );
+            }
+        }
+
+        #[cfg(not(any(feature = "process-run-smoke-test", feature = "process-shell-smoke-test")))]
         {
             serial::COM1.write(b"ExhiOS: init exited; reclaiming its address space.\r\n");
             let process_slot = ptr::addr_of_mut!(INIT_PROCESS);
@@ -785,7 +798,7 @@ pub fn run_init(image: &[u8]) -> ! {
 #[cfg(feature = "process-runtime")]
 fn init_runtime_failure(message: &[u8]) -> ! {
     serial::COM1.write(message);
-    #[cfg(feature = "process-run-smoke-test")]
+    #[cfg(any(feature = "process-run-smoke-test", feature = "process-shell-smoke-test"))]
     unsafe {
         core::arch::asm!(
             "out dx, eax",
