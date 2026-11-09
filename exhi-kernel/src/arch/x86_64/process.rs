@@ -1240,8 +1240,39 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
         init_runtime_failure(b"P7.1: could not initialize process syscall MSRs.\r\n");
     }
 
-    let frame = select_process_context(first_task_id);
-    let frame = unsafe { &*(frame as *const user::UserEntryFrame) };
+    let first_process = unsafe { (*first_record.process).as_ref() }
+        .unwrap_or_else(|| init_runtime_failure(b"P7.1: first process object is missing.\\r\\n"));
+    if first_process.activate().is_err() {
+        init_runtime_failure(b"P7.1: could not activate the first process address space.\\r\\n");
+    }
+    let first_space = first_process
+        .address_space()
+        .unwrap_or_else(|_| init_runtime_failure(b"P7.1: first process address space is unavailable.\\r\\n"));
+    if user::activate_kernel_stack(
+        first_space,
+        first_record.kernel_stack_bottom,
+        first_record.kernel_stack_top,
+    )
+    .is_err()
+    {
+        init_runtime_failure(b"P7.1: could not activate the first process kernel stack.\\r\\n");
+    }
+    let first_frame_address = unsafe {
+        (*scheduler)
+            .get(first_task_id)
+            .map(|task| task.context().saved_stack_pointer())
+    }
+    .unwrap_or_else(|| init_runtime_failure(b"P7.1: first process entry frame is missing.\\r\\n"));
+    if first_frame_address == 0
+        || first_frame_address & 0xF != 0
+        || (first_frame_address as u64) < first_record.kernel_stack_bottom
+        || (first_frame_address as u64)
+            .checked_add(size_of::<user::UserEntryFrame>() as u64)
+            .map_or(true, |end| end > first_record.kernel_stack_top)
+    {
+        init_runtime_failure(b"P7.1: first process entry frame is outside its kernel stack.\\r\\n");
+    }
+    let frame = unsafe { &*(first_frame_address as *const user::UserEntryFrame) };
     let fx_state = unsafe { &*(first_record.fx_state as *const user::FxState) };
     match user::enter_user(frame, fx_state) {
         Ok(()) => {
