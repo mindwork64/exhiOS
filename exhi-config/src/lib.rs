@@ -1,12 +1,12 @@
 #![no_std]
 
-#[cfg(test)]
-extern crate std;
-
 //! Bounded parser for the initial ExhiOS key=value configuration format.
 //!
 //! Lines are UTF-8, comments begin with '#', and the first '=' separates key
 //! from value. Parsing never allocates and rejects oversized or malformed input.
+
+#[cfg(test)]
+extern crate std;
 
 pub const MAX_LINE_BYTES: usize = 128;
 pub const MAX_KEY_BYTES: usize = 32;
