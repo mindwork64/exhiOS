@@ -17,7 +17,8 @@ use exhi_memory::MemoryError;
 use exhi_syscall::{dispatch as dispatch_syscall, DispatchOutcome, SyscallServices};
 #[cfg(feature = "process-runtime")]
 use exhi_task::{
-    Capability, CapabilitySet, ScheduleDecision, Scheduler, TaskContext, TaskId, UserTaskMetadata,
+    Capability, CapabilitySet, ScheduleDecision, Scheduler, TaskContext, TaskId, TaskState,
+    UserTaskMetadata,
 };
 
 use crate::memory;
@@ -547,15 +548,19 @@ fn validate_loaded_process(
 struct InitKernelStack([u8; INIT_KERNEL_STACK_BYTES]);
 
 #[cfg(feature = "process-runtime")]
-static mut INIT_KERNEL_STACK: InitKernelStack = InitKernelStack([0; INIT_KERNEL_STACK_BYTES]);
+static mut PROCESS_KERNEL_STACKS: [InitKernelStack; MAX_PROCESS_RECORDS] = [
+    InitKernelStack([0; INIT_KERNEL_STACK_BYTES]),
+    InitKernelStack([0; INIT_KERNEL_STACK_BYTES]),
+];
 #[cfg(feature = "process-runtime")]
 static mut REAPER_KERNEL_STACK: InitKernelStack = InitKernelStack([0; INIT_KERNEL_STACK_BYTES]);
 #[cfg(feature = "process-runtime")]
-static mut INIT_FX_STATE: user::FxState = user::FxState::zeroed();
+static mut PROCESS_FX_STATES: [user::FxState; MAX_PROCESS_RECORDS] =
+    [user::FxState::zeroed(), user::FxState::zeroed()];
 #[cfg(feature = "process-runtime")]
 static mut REAPER_FX_STATE: user::FxState = user::FxState::zeroed();
 #[cfg(feature = "process-runtime")]
-static mut INIT_PROCESS: Option<LoadedProcess> = None;
+static mut PROCESS_OBJECTS: [Option<LoadedProcess>; MAX_PROCESS_RECORDS] = [None, None];
 #[cfg(feature = "process-runtime")]
 static mut PROCESS_SCHEDULER: Scheduler<3> = Scheduler::new();
 #[cfg(feature = "process-runtime")]
@@ -597,9 +602,25 @@ fn runtime_stack_bounds(storage: u64) -> Option<(u64, u64)> {
 }
 
 #[cfg(feature = "process-runtime")]
-fn init_kernel_stack_bounds() -> Option<(u64, u64)> {
-    let storage = unsafe { ptr::addr_of_mut!(INIT_KERNEL_STACK.0).cast::<u8>() as u64 };
+fn process_kernel_stack_bounds(slot: usize) -> Option<(u64, u64)> {
+    if slot >= MAX_PROCESS_RECORDS {
+        return None;
+    }
+    let stacks = ptr::addr_of_mut!(PROCESS_KERNEL_STACKS);
+    let storage = unsafe { (*stacks).as_mut_ptr().add(slot).cast::<u8>() as u64 };
     runtime_stack_bounds(storage)
+}
+
+#[cfg(feature = "process-runtime")]
+fn process_object_pointer(slot: usize) -> *mut Option<LoadedProcess> {
+    let objects = ptr::addr_of_mut!(PROCESS_OBJECTS);
+    unsafe { (*objects).as_mut_ptr().add(slot) }
+}
+
+#[cfg(feature = "process-runtime")]
+fn process_fx_state_pointer(slot: usize) -> *mut user::FxState {
+    let states = ptr::addr_of_mut!(PROCESS_FX_STATES);
+    unsafe { (*states).as_mut_ptr().add(slot) }
 }
 
 #[cfg(feature = "process-runtime")]
@@ -1019,14 +1040,15 @@ pub fn run_init(image: &[u8]) -> ! {
         Ok(process) => process,
         Err(error) => init_runtime_failure_fmt(error),
     };
+    let init_process_slot = process_object_pointer(0);
     unsafe {
-        ptr::write(ptr::addr_of_mut!(INIT_PROCESS), Some(process));
+        ptr::write(init_process_slot, Some(process));
     }
 
-    let Some((init_stack_bottom, init_stack_top)) = init_kernel_stack_bounds() else {
+    let Some((init_stack_bottom, init_stack_top)) = process_kernel_stack_bounds(0) else {
         init_runtime_failure(b"P7.1: init kernel stack bounds are invalid.\r\n");
     };
-    let init_stack_storage = unsafe { ptr::addr_of_mut!(INIT_KERNEL_STACK.0).cast::<u8>() as u64 };
+    let init_stack_storage = init_stack_bottom - PAGE_SIZE;
     if !install_runtime_stack_guard(init_stack_storage, (init_stack_bottom, init_stack_top)) {
         init_runtime_failure(b"P7.1: could not install the init kernel-stack guard.\r\n");
     }
@@ -1043,7 +1065,7 @@ pub fn run_init(image: &[u8]) -> ! {
         init_runtime_failure(b"P7.1: could not install the reaper kernel-stack guard.\r\n");
     }
 
-    let init_fx_pointer = ptr::addr_of_mut!(INIT_FX_STATE);
+    let init_fx_pointer = process_fx_state_pointer(0);
     if unsafe { (*init_fx_pointer).initialize() }.is_err() {
         init_runtime_failure(b"P7.1: could not initialize the init FXSAVE state.\r\n");
     }
@@ -1052,7 +1074,7 @@ pub fn run_init(image: &[u8]) -> ! {
         init_runtime_failure(b"P7.1: could not initialize the reaper FXSAVE state.\r\n");
     }
 
-    let process_slot = ptr::addr_of!(INIT_PROCESS);
+    let process_slot = process_object_pointer(0);
     let process = unsafe { (*process_slot).as_ref() }
         .unwrap_or_else(|| init_runtime_failure(b"P7.1: init process ownership was lost.\r\n"));
     if process.activate().is_err() {
@@ -1132,7 +1154,7 @@ pub fn run_init(image: &[u8]) -> ! {
     }
     if !register_process_record(
         init_task,
-        ptr::addr_of_mut!(INIT_PROCESS),
+        process_object_pointer(0),
         init_stack_bottom,
         init_stack_top,
         init_fx_pointer as usize,
@@ -1161,36 +1183,52 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
     }
     serial::COM1.write(b"ExhiOS: kernel reaper started on its dedicated stack.\r\n");
 
-    let process_slot = ptr::addr_of_mut!(INIT_PROCESS);
-    let cleanup_ok = unsafe {
-        match (*process_slot).as_mut() {
-            Some(process) => process.destroy().is_ok(),
-            None => false,
+    let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
+    let registry = ptr::addr_of!(PROCESS_REGISTRY);
+    let mut cleanup_ok = true;
+    let mut task_reaped = true;
+    let mut reaped_count = 0usize;
+    for slot in 0..MAX_PROCESS_RECORDS {
+        let record = unsafe { ptr::read_volatile((*registry).as_ptr().add(slot)) };
+        let Some(record) = record else {
+            continue;
+        };
+        let finished = unsafe {
+            (*scheduler)
+                .get(record.task_id)
+                .is_some_and(|task| task.state() == TaskState::Finished)
+        };
+        if !finished {
+            continue;
         }
-    };
-    let _task_reaped = if cleanup_ok {
+
+        let destroyed = unsafe {
+            match (*record.process).as_mut() {
+                Some(process) => process.destroy().is_ok(),
+                None => false,
+            }
+        };
+        if !destroyed {
+            cleanup_ok = false;
+            serial::COM1.write(b"ExhiOS: process resource reclamation failed; process retained.\r\n");
+            continue;
+        }
+
         unsafe {
-            ptr::write(process_slot, None);
+            ptr::write(record.process, None);
         }
-        let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
-        let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) };
-        let reaped = init_id.is_some_and(|id| unsafe { (*scheduler).reap(id).is_ok() });
-        if let Some(id) = init_id {
-            let _ = remove_process_record(id);
-        }
-        if !reaped {
-            serial::COM1
-                .write(b"ExhiOS: init resources reclaimed but task record reaping failed.\r\n");
+        if unsafe { (*scheduler).reap(record.task_id).is_ok() } {
+            let _ = remove_process_record(record.task_id);
+            reaped_count += 1;
         } else {
-            serial::COM1.write(
-                b"ExhiOS: init address space, user frames and finished task record reclaimed.\r\n",
-            );
+            task_reaped = false;
+            serial::COM1.write(b"ExhiOS: process resources reclaimed but task record reaping failed.\r\n");
         }
-        reaped
-    } else {
-        serial::COM1.write(b"ExhiOS: init resource reclamation failed; process retained.\r\n");
-        false
-    };
+    }
+    if cleanup_ok && task_reaped && reaped_count != 0 {
+        serial::COM1.write(b"ExhiOS: finished process address spaces, user frames and task records reclaimed.\r\n");
+    }
+    let _task_reaped = cleanup_ok && task_reaped;
     #[cfg(any(
         feature = "process-run-smoke-test",
         feature = "process-shell-smoke-test",
