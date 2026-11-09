@@ -5,8 +5,13 @@
 //! The initial implementation is single-CPU; per-CPU syscall state and task
 //! fault scheduling are separate milestones.
 
-use core::arch::{asm, global_asm};
-
+use core::arch::asm;
+#[cfg(feature = "process-runtime")]
+use core::arch::global_asm;
+#[cfg(any(
+    feature = "process-runtime",
+    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+))]
 use core::mem::size_of;
 use core::ptr;
 
@@ -14,18 +19,42 @@ use super::address_space::{AddressSpace, AddressSpaceError};
 use super::{gdt, vmm};
 
 const PAGE_SIZE: u64 = 4096;
+#[cfg(feature = "process-runtime")]
 const FX_STATE_SIZE: usize = 512;
+#[cfg(feature = "process-runtime")]
 const DEFAULT_MXCSR: u32 = 0x1F80;
+#[cfg(any(
+    feature = "process-runtime",
+    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+))]
 const USER_CANONICAL_LIMIT: u64 = 0x0000_8000_0000_0000;
 const RFLAGS_IF: u64 = 1 << 9;
+#[cfg(any(
+    feature = "process-runtime",
+    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+))]
 const RFLAGS_RESERVED_ONE: u64 = 1 << 1;
+#[cfg(any(
+    feature = "process-runtime",
+    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+))]
 const RFLAGS_IOPL: u64 = 3 << 12;
+#[cfg(any(
+    feature = "process-runtime",
+    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+))]
 const RFLAGS_NT: u64 = 1 << 14;
+#[cfg(any(
+    feature = "process-runtime",
+    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+))]
 const RFLAGS_VM: u64 = 1 << 17;
 
+#[cfg(feature = "process-runtime")]
 #[repr(C, align(16))]
 pub struct FxState([u8; FX_STATE_SIZE]);
 
+#[cfg(feature = "process-runtime")]
 impl FxState {
     pub const fn zeroed() -> Self {
         Self([0; FX_STATE_SIZE])
@@ -91,6 +120,10 @@ impl FxState {
 }
 
 /// Stable register image consumed by the assembly IRETQ entry routine.
+#[cfg(any(
+    feature = "process-runtime",
+    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+))]
 #[repr(C, align(16))]
 pub struct UserEntryFrame {
     pub(crate) r15: u64,
@@ -114,6 +147,10 @@ pub struct UserEntryFrame {
     pub(crate) rsp: u64,
     pub(crate) ss: u64,
 }
+#[cfg(any(
+    feature = "process-runtime",
+    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+))]
 const _: [(); 20 * size_of::<u64>()] = [(); size_of::<UserEntryFrame>()];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -131,10 +168,16 @@ pub enum UserEntryError {
     EntryFrameMappingRejected,
     TssStackRejected,
     InvalidExceptionFrame,
+    #[cfg(feature = "process-runtime")]
     FxStateUnsupported,
+    #[cfg(feature = "process-runtime")]
     ExtendedXstateUnsupported,
 }
 
+#[cfg(any(
+    feature = "process-runtime",
+    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct UserException {
     pub vector: u64,
@@ -199,6 +242,7 @@ pub fn activate_kernel_stack(
 
 /// Clears the active user-entry stack when execution is handed to a kernel-only
 /// context. A future user dispatch must install its own bounds again.
+#[cfg(feature = "process-runtime")]
 pub fn clear_active_kernel_stack() -> Result<(), UserEntryError> {
     if interrupts_enabled() {
         return Err(UserEntryError::InterruptsEnabled);
@@ -213,11 +257,16 @@ pub fn clear_active_kernel_stack() -> Result<(), UserEntryError> {
     Ok(())
 }
 
+#[cfg(feature = "process-runtime")]
 unsafe extern "sysv64" {
     fn exhi_user_iret_entry(frame: *const UserEntryFrame, fx_state: *const FxState) -> !;
 }
 
 /// Validates user mappings and installs the stack used on CPL3-to-CPL0 entry.
+#[cfg(any(
+    feature = "process-runtime",
+    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+))]
 pub fn prepare_entry(
     address_space: &AddressSpace,
     kernel_stack_bottom: u64,
@@ -241,12 +290,13 @@ pub fn prepare_entry(
         return Err(UserEntryError::InvalidUserStackPointer);
     }
 
-    let code = address_space
-        .translate(user_instruction_pointer)
-        .map_err(|_| UserEntryError::CodeMappingRejected)?;
-    if !code.user || !code.executable || code.writable {
-        return Err(UserEntryError::CodeMappingRejected);
-    }
+    validate_user_range(
+        address_space,
+        user_instruction_pointer,
+        1,
+        UserAccess::Execute,
+    )
+    .map_err(|_| UserEntryError::CodeMappingRejected)?;
     let stack = address_space
         .translate(user_stack_pointer - 1)
         .map_err(|_| UserEntryError::StackMappingRejected)?;
@@ -282,6 +332,7 @@ pub fn prepare_entry(
 
 /// Restores the initialized user FX image and performs the CPL3 IRETQ.
 /// A successful call transfers control to user mode and never returns here.
+#[cfg(feature = "process-runtime")]
 pub fn enter_user(frame: &UserEntryFrame, fx_state: &FxState) -> Result<(), UserEntryError> {
     let frame_pointer = frame as *const UserEntryFrame as u64;
     let fx_pointer = fx_state as *const FxState as u64;
@@ -306,6 +357,10 @@ pub fn enter_user(frame: &UserEntryFrame, fx_state: &FxState) -> Result<(), User
 
 /// Validates the full seven-qword hardware privilege-return frame before
 /// dereferencing it. The pointer must lie on the stack installed by prepare_entry.
+#[cfg(any(
+    feature = "process-runtime",
+    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+))]
 pub fn capture_exception(
     vector: u64,
     error_code: u64,
@@ -363,6 +418,7 @@ pub fn capture_exception(
     })
 }
 
+#[allow(dead_code)] // Variants are exercised by distinct user-pointer/copy feature sets.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UserAccess {
     Read,
@@ -370,6 +426,7 @@ pub enum UserAccess {
     Execute,
 }
 
+#[allow(dead_code)] // Copy-context errors only occur in copy-capable feature sets.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UserRangeError {
     AddressOverflow,
@@ -414,7 +471,7 @@ pub fn validate_user_range(
         let permitted = match access {
             UserAccess::Read => true,
             UserAccess::Write => mapping.writable,
-            UserAccess::Execute => mapping.executable,
+            UserAccess::Execute => mapping.executable && !mapping.writable,
         };
         if !permitted {
             return Err(UserRangeError::PermissionDenied);
@@ -429,6 +486,11 @@ pub fn validate_user_range(
     Ok(())
 }
 
+#[cfg(any(
+    feature = "process-runtime",
+    feature = "user-copy-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
+))]
 /// Copies a user buffer into a kernel-owned slice after validating every page.
 /// IF must be clear and the address space active so it cannot be switched while
 /// the validated mapping is accessed.
@@ -458,6 +520,7 @@ pub fn copy_from_user(
 
 /// Copies a kernel-owned slice into user memory only after the whole destination
 /// range has been validated. No partial writes occur for rejected ranges.
+#[cfg(any(feature = "process-runtime", feature = "user-copy-smoke-test"))]
 pub fn copy_to_user(
     space: &AddressSpace,
     user_destination: u64,
@@ -482,6 +545,11 @@ pub fn copy_to_user(
     Ok(())
 }
 
+#[cfg(any(
+    feature = "process-runtime",
+    feature = "user-copy-smoke-test",
+    feature = "user-task-lifecycle-smoke-test"
+))]
 fn ensure_user_copy_context(space: &AddressSpace) -> Result<(), UserRangeError> {
     if interrupts_enabled() {
         return Err(UserRangeError::InterruptsEnabled);
@@ -514,6 +582,10 @@ fn validate_kernel_range(start: u64, end: u64) -> Result<(), ()> {
     Ok(())
 }
 
+#[cfg(any(
+    feature = "process-runtime",
+    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+))]
 fn is_user_address(address: u64) -> bool {
     address != 0 && address < USER_CANONICAL_LIMIT
 }
@@ -530,6 +602,7 @@ fn interrupts_enabled() -> bool {
     flags & RFLAGS_IF != 0
 }
 
+#[cfg(feature = "process-runtime")]
 global_asm!(
     r#"
     .section .text
