@@ -37,9 +37,10 @@ fn load_shell_config(source: &str) -> Result<ShellConfig<'_>, ()> {
             "hostname" => {
                 if hostname_seen
                     || entry.value.is_empty()
-                    || !entry.value.bytes().all(|byte| {
-                        byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'.'
-                    })
+                    || !entry
+                        .value
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'.')
                 {
                     return Err(());
                 }
