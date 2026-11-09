@@ -394,34 +394,96 @@ pub fn smoke_test(image: &[u8]) -> Result<ProcessLoadReport, ProcessLoadError> {
         stack_pages: USER_STACK_PAGES,
     };
 
-    let validation = validate_loaded_process(&process);
+    let elf = ElfFile::parse(image)?;
+    let validation = validate_loaded_process(&process, image, &elf);
     let cleanup = process.destroy();
     validation?;
     cleanup?;
+    if process.translate(report.entry_point).is_ok() {
+        return Err(ProcessLoadError::MappingMismatch);
+    }
     Ok(report)
 }
 
-fn validate_loaded_process(process: &LoadedProcess) -> Result<(), ProcessLoadError> {
+fn validate_loaded_process(
+    process: &LoadedProcess,
+    image: &[u8],
+    elf: &ElfFile<'_>,
+) -> Result<(), ProcessLoadError> {
     let entry = process.translate(process.entry_point())?;
     if !entry.user || !entry.executable || entry.writable {
         return Err(ProcessLoadError::MappingMismatch);
     }
 
-    let stack = process.translate(process.user_stack_pointer() - 1)?;
-    if !stack.user || !stack.writable || stack.executable {
+    let entry_header = elf
+        .program_headers()
+        .find(|header| {
+            header.kind == PT_LOAD
+                && header.is_executable()
+                && process.entry_point() >= header.virtual_address
+                && process.entry_point() < header.virtual_address + header.memory_size
+        })
+        .ok_or(ProcessLoadError::MappingMismatch)?;
+    let entry_file_offset = entry_header
+        .offset
+        .checked_add(process.entry_point() - entry_header.virtual_address)
+        .and_then(|offset| usize::try_from(offset).ok())
+        .ok_or(ProcessLoadError::FileRangeOutOfBounds)?;
+    let expected_opcode = *image
+        .get(entry_file_offset)
+        .ok_or(ProcessLoadError::FileRangeOutOfBounds)?;
+    let entry_offset = process.entry_point() & PAGE_MASK;
+    let loaded_opcode = unsafe {
+        ptr::read_volatile((entry.physical_page + entry_offset) as *const u8)
+    };
+    if loaded_opcode != expected_opcode {
         return Err(ProcessLoadError::MappingMismatch);
+    }
+
+    for header in elf.program_headers() {
+        if header.kind != PT_LOAD {
+            continue;
+        }
+        let first = process.translate(header.virtual_address)?;
+        let last_address = header.virtual_address + header.memory_size - 1;
+        let last = process.translate(last_address)?;
+        let expected_writable = header.is_writable();
+        let expected_executable = header.is_executable();
+        if !first.user
+            || !last.user
+            || first.writable != expected_writable
+            || last.writable != expected_writable
+            || first.executable != expected_executable
+            || last.executable != expected_executable
+        {
+            return Err(ProcessLoadError::MappingMismatch);
+        }
+
+        if header.file_size < header.memory_size {
+            let bss_start = header
+                .virtual_address
+                .checked_add(header.file_size)
+                .ok_or(ProcessLoadError::InvalidSegmentRange)?;
+            let bss = process.translate(bss_start)?;
+            let bss_offset = bss_start & PAGE_MASK;
+            let bss_byte = unsafe {
+                ptr::read_volatile((bss.physical_page + bss_offset) as *const u8)
+            };
+            if bss_byte != 0 {
+                return Err(ProcessLoadError::MappingMismatch);
+            }
+        }
+    }
+
+    for stack_index in [0, USER_STACK_PAGES - 1] {
+        let stack_address = USER_STACK_BASE + stack_index as u64 * PAGE_SIZE;
+        let stack = process.translate(stack_address)?;
+        if !stack.user || !stack.writable || stack.executable {
+            return Err(ProcessLoadError::MappingMismatch);
+        }
     }
 
     if process.translate(USER_STACK_GUARD).is_ok() {
-        return Err(ProcessLoadError::MappingMismatch);
-    }
-
-    // Validate that the ELF entry bytes are actually present in the allocated
-    // physical page while preserving the process inactive CR3.
-    let entry_offset = process.entry_point() & PAGE_MASK;
-    let first_opcode =
-        unsafe { ptr::read_volatile((entry.physical_page + entry_offset) as *const u8) };
-    if first_opcode == 0 {
         return Err(ProcessLoadError::MappingMismatch);
     }
 
