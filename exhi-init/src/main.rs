@@ -6,10 +6,10 @@ use core::panic::PanicInfo;
 
 #[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 use exhi_config::ConfigParser;
-#[cfg(not(feature = "user-fault-smoke-test"))]
-use libexhi::{console_read, yield_now};
 #[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 use libexhi::file_read;
+#[cfg(not(feature = "user-fault-smoke-test"))]
+use libexhi::{console_read, yield_now};
 use libexhi::{console_write, exit};
 
 #[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]

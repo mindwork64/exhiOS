@@ -577,9 +577,8 @@ static mut REAPER_FX_STATE: user::FxState = user::FxState::zeroed();
 #[cfg(feature = "process-runtime")]
 static mut PROCESS_OBJECTS: [Option<LoadedProcess>; MAX_PROCESS_RECORDS] = [None, None];
 #[cfg(feature = "process-runtime")]
-static mut USERLAND_FILESYSTEM: Option<
-    RamFs<USERLAND_FS_NODE_COUNT, USERLAND_FS_FILE_CAPACITY>,
-> = None;
+static mut USERLAND_FILESYSTEM: Option<RamFs<USERLAND_FS_NODE_COUNT, USERLAND_FS_FILE_CAPACITY>> =
+    None;
 #[cfg(feature = "process-runtime")]
 static mut PROCESS_SCHEDULER: Scheduler<3> = Scheduler::new();
 #[cfg(feature = "process-runtime")]
@@ -989,7 +988,12 @@ impl SyscallServices for InitServices {
         let filesystem = unsafe { (*filesystem_slot).as_ref() }.ok_or(SyscallError::Io)?;
         let node =
             resolve_path(filesystem, filesystem.root(), path).map_err(|_| SyscallError::Io)?;
-        if filesystem.metadata(node).map_err(|_| SyscallError::Io)?.kind != NodeKind::File {
+        if filesystem
+            .metadata(node)
+            .map_err(|_| SyscallError::Io)?
+            .kind
+            != NodeKind::File
+        {
             return Err(SyscallError::InvalidArgument);
         }
 

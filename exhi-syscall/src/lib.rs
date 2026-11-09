@@ -334,7 +334,10 @@ mod tests {
             SyscallNumber::FileRead as u64,
             [0x2000, 13, 4, 0x3000, 64, 0],
         );
-        assert_eq!(dispatch(request, &mut services), DispatchOutcome::Return(17));
+        assert_eq!(
+            dispatch(request, &mut services),
+            DispatchOutcome::Return(17)
+        );
         assert_eq!(services.file_read_calls, 1);
         assert_eq!(services.last_file_read, Some((0x2000, 13, 4, 0x3000, 64)));
     }

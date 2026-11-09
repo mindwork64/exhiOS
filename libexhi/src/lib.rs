@@ -58,11 +58,7 @@ pub fn console_read(bytes: &mut [u8]) -> Result<usize, SyscallError> {
 /// Returns zero at EOF. The kernel checks the FileRead capability before
 /// validating pointers or looking up the path.
 #[inline]
-pub fn file_read(
-    path: &str,
-    offset: usize,
-    destination: &mut [u8],
-) -> Result<usize, SyscallError> {
+pub fn file_read(path: &str, offset: usize, destination: &mut [u8]) -> Result<usize, SyscallError> {
     let count = decode_return(raw_syscall(
         SyscallNumber::FileRead as u64,
         [
