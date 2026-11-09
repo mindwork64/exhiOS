@@ -1150,7 +1150,7 @@ pub extern "sysv64" fn exhi_exception_handler(
                 Ok(exception) => exception,
                 Err(_) => {
                     serial::COM1.write(
-                        b"User exception frame is outside the active kernel stack or malformed.\\r\\n",
+                        b"User exception frame is outside the active kernel stack or malformed.\r\n",
                     );
                     halt_forever();
                 }
@@ -1172,7 +1172,7 @@ pub extern "sysv64" fn exhi_exception_handler(
         )))]
         {
             serial::COM1
-                .write(b"CPL3 exception received in a build without user-mode support.\\r\\n");
+                .write(b"CPL3 exception received in a build without user-mode support.\r\n");
             halt_forever();
         }
     }
