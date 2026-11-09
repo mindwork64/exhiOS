@@ -56,9 +56,7 @@ fn decode_return(value: u64) -> Result<u64, SyscallError> {
         value if value == SyscallError::InvalidArgument as i64 => {
             Err(SyscallError::InvalidArgument)
         }
-        value if value == SyscallError::NotImplemented as i64 => {
-            Err(SyscallError::NotImplemented)
-        }
+        value if value == SyscallError::NotImplemented as i64 => Err(SyscallError::NotImplemented),
         value if value == SyscallError::Io as i64 => Err(SyscallError::Io),
         _ => Ok(value),
     }
@@ -92,8 +90,14 @@ mod tests {
     #[test]
     fn decodes_all_defined_kernel_errors() {
         assert_eq!(decode_return(u64::MAX), Err(SyscallError::AccessDenied));
-        assert_eq!(decode_return(u64::MAX - 1), Err(SyscallError::InvalidArgument));
-        assert_eq!(decode_return(u64::MAX - 2), Err(SyscallError::NotImplemented));
+        assert_eq!(
+            decode_return(u64::MAX - 1),
+            Err(SyscallError::InvalidArgument)
+        );
+        assert_eq!(
+            decode_return(u64::MAX - 2),
+            Err(SyscallError::NotImplemented)
+        );
         assert_eq!(decode_return(u64::MAX - 3), Err(SyscallError::Io));
         assert_eq!(decode_return(0), Ok(0));
         assert_eq!(decode_return(128), Ok(128));

@@ -8,7 +8,7 @@ use libexhi::{console_write, yield_now};
 
 #[no_mangle]
 pub extern "sysv64" fn _start() -> ! {
-    let _ = console_write(b"ExhiOS init: first Ring 3 process is running.\\r\\n");
+    let _ = console_write(b"ExhiOS init: first Ring 3 process is running.\r\n");
     loop {
         if yield_now().is_err() {
             spin_loop();
@@ -18,7 +18,7 @@ pub extern "sysv64" fn _start() -> ! {
 
 #[panic_handler]
 fn panic(_info: &PanicInfo<'_>) -> ! {
-    let _ = console_write(b"ExhiOS init: panic.\\r\\n");
+    let _ = console_write(b"ExhiOS init: panic.\r\n");
     loop {
         spin_loop();
     }
