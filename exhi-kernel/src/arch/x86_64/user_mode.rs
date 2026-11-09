@@ -4,10 +4,7 @@
 //! the production user-process runtime.
 
 use core::arch::asm;
-#[cfg(any(
-    feature = "ring3-syscall-smoke-test",
-    feature = "user-task-lifecycle-smoke-test"
-))]
+#[cfg(feature = "user-task-lifecycle-smoke-test")]
 use core::arch::global_asm;
 use core::mem::size_of;
 use core::ptr;
@@ -40,8 +37,7 @@ pub use super::user::copy_from_user;
 pub use super::user::copy_to_user;
 #[cfg(any(
     feature = "user-pointer-range-smoke-test",
-    feature = "user-copy-smoke-test",
-    feature = "user-task-lifecycle-smoke-test"
+    feature = "user-copy-smoke-test"
 ))]
 pub use super::user::UserRangeError;
 #[cfg(feature = "user-pointer-range-smoke-test")]
@@ -80,7 +76,6 @@ static mut RING3_EXPECTED_ERROR_MASK: u64 = u64::MAX;
 static mut RING3_EXPECTED_ERROR_VALUE: u64 = 0;
 static mut RING3_EXPECTED_RIP: u64 = 0;
 static mut RING3_EXPECTED_FAULT_ADDRESS: u64 = 0;
-#[no_mangle]
 #[no_mangle]
 static mut RING3_FX_STATE: usize = 0;
 static mut RING3_SYSCALL_CALLS: u64 = 0;
@@ -141,6 +136,7 @@ static mut RING3_ADDRESS_SPACE: Option<AddressSpace> = None;
 static mut RING3_CODE_FRAME: u64 = 0;
 static mut RING3_STACK_FRAME: u64 = 0;
 
+#[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
 unsafe extern "sysv64" {
     fn exhi_interrupt_context_start(initial_rsp: usize, fx_state: usize) -> !;
 }
