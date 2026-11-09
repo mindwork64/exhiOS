@@ -251,7 +251,8 @@ cargo test -p exhi-memory
 cargo test -p exhi-console
 cargo build -p exhi-boot --target x86_64-unknown-uefi
 cargo test -p libexhi
-cargo build -p exhi-init --target x86_64-unknown-none
+RUSTFLAGS="-C relocation-model=static -C code-model=large" \
+    cargo build -p exhi-init --target x86_64-unknown-none
 
 INIT_ELF="$ROOT_DIR/target/x86_64-unknown-none/debug/exhi-init"
 echo

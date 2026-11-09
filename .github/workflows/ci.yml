@@ -75,7 +75,7 @@ jobs:
         run: cargo test -p libexhi
 
       - name: Build first user process ELF
-        run: cargo build -p exhi-init --target x86_64-unknown-none
+        run: RUSTFLAGS="-C relocation-model=static -C code-model=large" cargo build -p exhi-init --target x86_64-unknown-none
 
       - name: Verify fixed-address init image
         run: |
