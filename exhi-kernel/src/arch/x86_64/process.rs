@@ -433,9 +433,8 @@ fn validate_loaded_process(
         .get(entry_file_offset)
         .ok_or(ProcessLoadError::FileRangeOutOfBounds)?;
     let entry_offset = process.entry_point() & PAGE_MASK;
-    let loaded_opcode = unsafe {
-        ptr::read_volatile((entry.physical_page + entry_offset) as *const u8)
-    };
+    let loaded_opcode =
+        unsafe { ptr::read_volatile((entry.physical_page + entry_offset) as *const u8) };
     if loaded_opcode != expected_opcode {
         return Err(ProcessLoadError::MappingMismatch);
     }
@@ -466,9 +465,8 @@ fn validate_loaded_process(
                 .ok_or(ProcessLoadError::InvalidSegmentRange)?;
             let bss = process.translate(bss_start)?;
             let bss_offset = bss_start & PAGE_MASK;
-            let bss_byte = unsafe {
-                ptr::read_volatile((bss.physical_page + bss_offset) as *const u8)
-            };
+            let bss_byte =
+                unsafe { ptr::read_volatile((bss.physical_page + bss_offset) as *const u8) };
             if bss_byte != 0 {
                 return Err(ProcessLoadError::MappingMismatch);
             }

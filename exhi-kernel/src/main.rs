@@ -695,10 +695,8 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                 QEMU_DEBUG_EXIT_VALUE
             }
             Err(error) => {
-                kernel_console.write_fmt(format_args!(
-                    "P7.1: init ELF load failed: {:?}.\r\n",
-                    error
-                ));
+                kernel_console
+                    .write_fmt(format_args!("P7.1: init ELF load failed: {:?}.\r\n", error));
                 QEMU_DEBUG_EXIT_VALUE + 1
             }
         };
