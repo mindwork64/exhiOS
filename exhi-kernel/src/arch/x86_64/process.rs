@@ -1107,8 +1107,10 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
     {
         let yields = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_YIELD_COUNT)) };
         let syscalls = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_SYSCALL_COUNT)) };
-        let success =
-            cleanup_ok && task_reaped && yields == INIT_YIELD_EXPECTED && syscalls == INIT_SYSCALL_EXPECTED;
+        let success = cleanup_ok
+            && task_reaped
+            && yields == INIT_YIELD_EXPECTED
+            && syscalls == INIT_SYSCALL_EXPECTED;
         if success {
             serial::COM1.write(
                 b"P7.2: init executed ConsoleWrite, ConsoleRead, three Yield calls and Exit through libexhi; kernel reaper reclaimed the process.\r\n",
@@ -1149,9 +1151,8 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
                 b"P7.1: Ring 3 invalid-opcode fault captured; reaper reclaimed init and task record.\r\n",
             );
         } else {
-            serial::COM1.write(
-                b"P7.1: user-fault termination or reaper cleanup verification failed.\r\n",
-            );
+            serial::COM1
+                .write(b"P7.1: user-fault termination or reaper cleanup verification failed.\r\n");
         }
         unsafe {
             core::arch::asm!(
@@ -1179,28 +1180,38 @@ fn handoff_faulting_init_to_reaper() -> ! {
         core::arch::asm!("cli", options(nomem, nostack, preserves_flags));
     }
     let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
-    let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) }
-        .unwrap_or_else(|| init_runtime_failure(b"P7.1: init task id is unavailable during fault handoff.\r\n"));
-    let reaper_id = unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) }
-        .unwrap_or_else(|| init_runtime_failure(b"P7.1: reaper task id is unavailable during fault handoff.\r\n"));
+    let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) }.unwrap_or_else(|| {
+        init_runtime_failure(b"P7.1: init task id is unavailable during fault handoff.\r\n")
+    });
+    let reaper_id =
+        unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) }.unwrap_or_else(|| {
+            init_runtime_failure(b"P7.1: reaper task id is unavailable during fault handoff.\r\n")
+        });
     let current_id = unsafe { (*scheduler).current().map(|task| task.id()) };
     if current_id != Some(init_id) {
         init_runtime_failure(b"P7.1: user fault did not originate from the running init task.\r\n");
     }
 
-    let next = unsafe { (*scheduler).finish_current() }
-        .unwrap_or_else(|_| init_runtime_failure(b"P7.1: could not finish faulting init task.\r\n"));
+    let next = unsafe { (*scheduler).finish_current() }.unwrap_or_else(|_| {
+        init_runtime_failure(b"P7.1: could not finish faulting init task.\r\n")
+    });
     if next.is_some() {
-        init_runtime_failure(b"P7.1: unexpected runnable peer during single-process fault handoff.\r\n");
+        init_runtime_failure(
+            b"P7.1: unexpected runnable peer during single-process fault handoff.\r\n",
+        );
     }
     unsafe {
-        (*scheduler)
-            .wake(reaper_id)
-            .unwrap_or_else(|_| init_runtime_failure(b"P7.1: could not wake kernel reaper after user fault.\r\n"));
+        (*scheduler).wake(reaper_id).unwrap_or_else(|_| {
+            init_runtime_failure(b"P7.1: could not wake kernel reaper after user fault.\r\n")
+        });
     }
     let selected = unsafe { (*scheduler).schedule_from_idle() }
-        .unwrap_or_else(|_| init_runtime_failure(b"P7.1: could not schedule kernel reaper after user fault.\r\n"))
-        .unwrap_or_else(|| init_runtime_failure(b"P7.1: scheduler did not select reaper after user fault.\r\n"));
+        .unwrap_or_else(|_| {
+            init_runtime_failure(b"P7.1: could not schedule kernel reaper after user fault.\r\n")
+        })
+        .unwrap_or_else(|| {
+            init_runtime_failure(b"P7.1: scheduler did not select reaper after user fault.\r\n")
+        });
     if selected != reaper_id {
         init_runtime_failure(b"P7.1: scheduler selected the wrong task after user fault.\r\n");
     }
