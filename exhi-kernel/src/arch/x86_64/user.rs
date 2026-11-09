@@ -203,9 +203,37 @@ const _: [(); 20 * size_of::<u64>()] = [(); size_of::<UserEntryFrame>()];
 pub enum UserEntryError {
     InterruptsEnabled,
     AddressSpaceNotActive,
+    #[cfg(any(
+        feature = "process-runtime",
+        all(
+            feature = "ring3-smoke-test",
+            not(feature = "user-task-lifecycle-smoke-test")
+        )
+    ))]
     InvalidInstructionPointer,
+    #[cfg(any(
+        feature = "process-runtime",
+        all(
+            feature = "ring3-smoke-test",
+            not(feature = "user-task-lifecycle-smoke-test")
+        )
+    ))]
     InvalidUserStackPointer,
+    #[cfg(any(
+        feature = "process-runtime",
+        all(
+            feature = "ring3-smoke-test",
+            not(feature = "user-task-lifecycle-smoke-test")
+        )
+    ))]
     CodeMappingRejected,
+    #[cfg(any(
+        feature = "process-runtime",
+        all(
+            feature = "ring3-smoke-test",
+            not(feature = "user-task-lifecycle-smoke-test")
+        )
+    ))]
     StackMappingRejected,
     InvalidKernelStack,
     KernelStackMappingRejected,
