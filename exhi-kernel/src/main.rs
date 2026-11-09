@@ -995,9 +995,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         feature = "process-run-smoke-test",
         feature = "process-shell-smoke-test",
         feature = "process-fault-smoke-test",
-        feature = "process-runtime",
-        feature = "paging-rollback-smoke-test",
-        feature = "vfs-smoke-test"
+        feature = "process-runtime"
     )))]
     {
         #[cfg(feature = "qemu-debug-exit-smoke-test")]
