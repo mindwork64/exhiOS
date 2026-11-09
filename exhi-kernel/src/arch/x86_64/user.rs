@@ -6,7 +6,13 @@
 //! fault scheduling are separate milestones.
 
 use core::arch::asm;
-#[cfg(feature = "process-runtime")]
+#[cfg(any(
+    feature = "process-runtime",
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
+))]
 use core::arch::global_asm;
 #[cfg(any(
     feature = "process-runtime",
@@ -22,7 +28,13 @@ use super::address_space::{AddressSpace, AddressSpaceError};
 use super::{gdt, vmm};
 
 const PAGE_SIZE: u64 = 4096;
-#[cfg(feature = "process-runtime")]
+#[cfg(any(
+    feature = "process-runtime",
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
+))]
 const FX_STATE_SIZE: usize = 512;
 #[cfg(feature = "process-runtime")]
 const DEFAULT_MXCSR: u32 = 0x1F80;
@@ -42,6 +54,7 @@ const RFLAGS_IF: u64 = 1 << 9;
         not(feature = "user-task-lifecycle-smoke-test")
     )
 ))]
+#[cfg(feature = "process-runtime")]
 const RFLAGS_RESERVED_ONE: u64 = 1 << 1;
 #[cfg(any(
     feature = "process-runtime",
@@ -50,6 +63,7 @@ const RFLAGS_RESERVED_ONE: u64 = 1 << 1;
         not(feature = "user-task-lifecycle-smoke-test")
     )
 ))]
+#[cfg(feature = "process-runtime")]
 const RFLAGS_IOPL: u64 = 3 << 12;
 #[cfg(any(
     feature = "process-runtime",
@@ -58,6 +72,7 @@ const RFLAGS_IOPL: u64 = 3 << 12;
         not(feature = "user-task-lifecycle-smoke-test")
     )
 ))]
+#[cfg(feature = "process-runtime")]
 const RFLAGS_NT: u64 = 1 << 14;
 #[cfg(any(
     feature = "process-runtime",
@@ -66,9 +81,16 @@ const RFLAGS_NT: u64 = 1 << 14;
         not(feature = "user-task-lifecycle-smoke-test")
     )
 ))]
+#[cfg(feature = "process-runtime")]
 const RFLAGS_VM: u64 = 1 << 17;
 
-#[cfg(feature = "process-runtime")]
+#[cfg(any(
+    feature = "process-runtime",
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
+))]
 #[repr(C, align(16))]
 pub struct FxState([u8; FX_STATE_SIZE]);
 
@@ -187,10 +209,32 @@ pub enum UserEntryError {
     StackMappingRejected,
     InvalidKernelStack,
     KernelStackMappingRejected,
-    InvalidFxState,
-    FxMappingRejected,
-    EntryFrameMappingRejected,
+    #[cfg(any(
+        feature = "process-runtime",
+        all(
+            feature = "ring3-smoke-test",
+            not(feature = "user-task-lifecycle-smoke-test")
+        )
+    ))]
+InvalidFxState,
+    #[cfg(any(
+        feature = "process-runtime",
+        all(
+            feature = "ring3-smoke-test",
+            not(feature = "user-task-lifecycle-smoke-test")
+        )
+    ))]
+FxMappingRejected,
+    #[cfg(any(
+        feature = "process-runtime",
+        all(
+            feature = "ring3-smoke-test",
+            not(feature = "user-task-lifecycle-smoke-test")
+        )
+    ))]
+EntryFrameMappingRejected,
     TssStackRejected,
+    #[cfg(feature = "process-runtime")]
     InvalidExceptionFrame,
     #[cfg(feature = "process-runtime")]
     FxStateUnsupported,
@@ -198,13 +242,7 @@ pub enum UserEntryError {
     ExtendedXstateUnsupported,
 }
 
-#[cfg(any(
-    feature = "process-runtime",
-    all(
-        feature = "ring3-smoke-test",
-        not(feature = "user-task-lifecycle-smoke-test")
-    )
-))]
+#[cfg(feature = "process-runtime")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct UserException {
     pub vector: u64,
@@ -284,7 +322,13 @@ pub fn clear_active_kernel_stack() -> Result<(), UserEntryError> {
     Ok(())
 }
 
-#[cfg(feature = "process-runtime")]
+#[cfg(any(
+    feature = "process-runtime",
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
+))]
 unsafe extern "sysv64" {
     fn exhi_user_iret_entry(frame: *const UserEntryFrame, fx_state: *const FxState) -> !;
 }
@@ -362,7 +406,13 @@ pub fn prepare_entry(
 
 /// Restores the initialized user FX image and performs the CPL3 IRETQ.
 /// A successful call transfers control to user mode and never returns here.
-#[cfg(feature = "process-runtime")]
+#[cfg(any(
+    feature = "process-runtime",
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
+))]
 pub fn enter_user(frame: &UserEntryFrame, fx_state: &FxState) -> Result<(), UserEntryError> {
     let frame_pointer = frame as *const UserEntryFrame as u64;
     let fx_pointer = fx_state as *const FxState as u64;
@@ -387,13 +437,7 @@ pub fn enter_user(frame: &UserEntryFrame, fx_state: &FxState) -> Result<(), User
 
 /// Validates the full seven-qword hardware privilege-return frame before
 /// dereferencing it. The pointer must lie on the stack installed by prepare_entry.
-#[cfg(any(
-    feature = "process-runtime",
-    all(
-        feature = "ring3-smoke-test",
-        not(feature = "user-task-lifecycle-smoke-test")
-    )
-))]
+#[cfg(feature = "process-runtime")]
 pub fn capture_exception(
     vector: u64,
     error_code: u64,
@@ -638,7 +682,13 @@ fn interrupts_enabled() -> bool {
     flags & RFLAGS_IF != 0
 }
 
-#[cfg(feature = "process-runtime")]
+#[cfg(any(
+    feature = "process-runtime",
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
+))]
 global_asm!(
     r#"
     .section .text

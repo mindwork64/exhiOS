@@ -1121,8 +1121,22 @@ pub extern "sysv64" fn exhi_exception_handler(
         );
 
         #[cfg(all(
+            feature = "ring3-smoke-test",
             not(feature = "user-task-lifecycle-smoke-test"),
-            any(feature = "process-runtime", feature = "ring3-smoke-test")
+            not(feature = "process-runtime")
+        ))]
+        arch::x86_64::user_mode::handle_user_exception(
+            vector,
+            error_code,
+            instruction_pointer,
+            code_selector,
+            flags,
+            exception_stack_pointer,
+        );
+
+        #[cfg(all(
+            feature = "process-runtime",
+            not(feature = "user-task-lifecycle-smoke-test")
         ))]
         {
             let user_exception = match arch::x86_64::user::capture_exception(
@@ -1136,7 +1150,7 @@ pub extern "sysv64" fn exhi_exception_handler(
                 Ok(exception) => exception,
                 Err(_) => {
                     serial::COM1.write(
-                        b"User exception frame is outside the active kernel stack or malformed.\r\n",
+                        b"User exception frame is outside the active kernel stack or malformed.\\r\\n",
                     );
                     halt_forever();
                 }
@@ -1147,26 +1161,8 @@ pub extern "sysv64" fn exhi_exception_handler(
             serial::COM1.write_hex(user_exception.user_stack_pointer);
             serial::COM1.write(b" error=0x");
             serial::COM1.write_hex(user_exception.error_code);
-            serial::COM1.write(b"\r\n");
-
-            #[cfg(feature = "ring3-smoke-test")]
-            arch::x86_64::user_mode::handle_user_exception(
-                vector,
-                error_code,
-                instruction_pointer,
-                code_selector,
-                flags,
-                exception_stack_pointer,
-            );
-
-            #[cfg(feature = "process-runtime")]
+            serial::COM1.write(b"\\r\\n");
             arch::x86_64::process::terminate_init_after_user_exception(vector, user_exception);
-
-            #[cfg(not(feature = "process-runtime"))]
-            {
-                serial::COM1.write(b"No user-task fault termination policy is installed.\r\n");
-                halt_forever();
-            }
         }
 
         #[cfg(not(any(
@@ -1176,7 +1172,7 @@ pub extern "sysv64" fn exhi_exception_handler(
         )))]
         {
             serial::COM1
-                .write(b"CPL3 exception received in a build without user-mode support.\r\n");
+                .write(b"CPL3 exception received in a build without user-mode support.\\r\\n");
             halt_forever();
         }
     }
