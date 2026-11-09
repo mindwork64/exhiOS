@@ -809,7 +809,7 @@ pub fn terminate_init_after_user_exception(vector: u64, exception: user::UserExc
     serial::COM1.write_hex(exception.instruction_pointer);
     serial::COM1.write(b" user RSP=0x");
     serial::COM1.write_hex(exception.user_stack_pointer);
-    serial::COM1.write(b".\\r\\n");
+    serial::COM1.write(b".\r\n");
 
     let process_slot = ptr::addr_of_mut!(INIT_PROCESS);
     let cleanup_ok = unsafe {
@@ -823,10 +823,10 @@ pub fn terminate_init_after_user_exception(vector: u64, exception: user::UserExc
             ptr::write(process_slot, None);
         }
         serial::COM1.write(
-            b"ExhiOS: init address space, user stack and all owned frames reclaimed.\\r\\n",
+            b"ExhiOS: init address space, user stack and all owned frames reclaimed.\r\n",
         );
     } else {
-        serial::COM1.write(b"ExhiOS: init resource reclamation failed; process retained for diagnosis.\\r\\n");
+        serial::COM1.write(b"ExhiOS: init resource reclamation failed; process retained for diagnosis.\r\n");
     }
 
     #[cfg(any(
@@ -838,10 +838,10 @@ pub fn terminate_init_after_user_exception(vector: u64, exception: user::UserExc
         let expected_fault = cfg!(feature = "process-fault-smoke-test") && vector == 6 && cleanup_ok;
         if expected_fault {
             serial::COM1.write(
-                b"P7.1: Ring 3 invalid-opcode fault captured; init resources reclaimed successfully.\\r\\n",
+                b"P7.1: Ring 3 invalid-opcode fault captured; init resources reclaimed successfully.\r\n",
             );
         } else {
-            serial::COM1.write(b"P7.1: unexpected user fault or failed process cleanup.\\r\\n");
+            serial::COM1.write(b"P7.1: unexpected user fault or failed process cleanup.\r\n");
         }
         unsafe {
             core::arch::asm!(
