@@ -798,8 +798,6 @@ pub fn run_init(image: &[u8]) -> ! {
     }
 }
 
-
-
 /// Terminates the single active init process after a validated Ring 3 exception.
 /// The active address space is switched back to the kernel root before its
 /// user mappings, data frames and private page tables are reclaimed.
@@ -822,11 +820,12 @@ pub fn terminate_init_after_user_exception(vector: u64, exception: user::UserExc
         unsafe {
             ptr::write(process_slot, None);
         }
-        serial::COM1.write(
-            b"ExhiOS: init address space, user stack and all owned frames reclaimed.\r\n",
-        );
+        serial::COM1
+            .write(b"ExhiOS: init address space, user stack and all owned frames reclaimed.\r\n");
     } else {
-        serial::COM1.write(b"ExhiOS: init resource reclamation failed; process retained for diagnosis.\r\n");
+        serial::COM1.write(
+            b"ExhiOS: init resource reclamation failed; process retained for diagnosis.\r\n",
+        );
     }
 
     #[cfg(any(
@@ -835,7 +834,8 @@ pub fn terminate_init_after_user_exception(vector: u64, exception: user::UserExc
         feature = "process-fault-smoke-test"
     ))]
     {
-        let expected_fault = cfg!(feature = "process-fault-smoke-test") && vector == 6 && cleanup_ok;
+        let expected_fault =
+            cfg!(feature = "process-fault-smoke-test") && vector == 6 && cleanup_ok;
         if expected_fault {
             serial::COM1.write(
                 b"P7.1: Ring 3 invalid-opcode fault captured; init resources reclaimed successfully.\r\n",
