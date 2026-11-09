@@ -685,7 +685,10 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
 
     #[cfg(all(
         feature = "process-runtime",
-        not(any(feature = "process-run-smoke-test", feature = "process-load-smoke-test"))
+        not(any(
+            feature = "process-run-smoke-test",
+            feature = "process-load-smoke-test"
+        ))
     ))]
     {
         kernel_console.write(b"P7: starting init in Ring 3.\r\n");

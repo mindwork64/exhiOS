@@ -566,9 +566,8 @@ impl SyscallServices for InitServices {
                     b"P7.2: init executed ConsoleWrite, ConsoleRead, three Yield calls and Exit through libexhi.\r\n",
                 );
             } else {
-                serial::COM1.write(
-                    b"P7.2: init syscall sequence counters did not match expectations.\r\n",
-                );
+                serial::COM1
+                    .write(b"P7.2: init syscall sequence counters did not match expectations.\r\n");
             }
             unsafe {
                 core::arch::asm!(
@@ -591,7 +590,9 @@ impl SyscallServices for InitServices {
                 }
             };
             if cleanup.is_err() {
-                serial::COM1.write(b"ExhiOS: init cleanup failed; stopping on the kernel address space.\r\n");
+                serial::COM1.write(
+                    b"ExhiOS: init cleanup failed; stopping on the kernel address space.\r\n",
+                );
             } else {
                 serial::COM1.write(b"ExhiOS: init address space and user frames reclaimed.\r\n");
             }
