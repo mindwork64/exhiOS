@@ -240,6 +240,7 @@ exhi_load_gdt:
 );
 
 /// Updates the TSS RSP0 field for the currently active kernel task.
+#[cfg(any(feature = "process-runtime", feature = "ring3-smoke-test"))]
 ///
 /// Zero clears the field for the early boot context. Non-zero values must be
 /// canonical and 16-byte aligned; the caller must ensure the complete kernel
@@ -266,6 +267,7 @@ pub fn set_rsp0(stack_top: u64) -> bool {
 }
 
 /// Reads the current TSS RSP0 value for boot diagnostics and user-entry setup.
+#[cfg(any(feature = "process-runtime", feature = "ring3-smoke-test"))]
 pub fn read_rsp0() -> u64 {
     let rsp0_pointer = unsafe {
         ptr::addr_of!(TSS.0)
@@ -277,6 +279,7 @@ pub fn read_rsp0() -> u64 {
     unsafe { ptr::read_unaligned(rsp0_pointer) }
 }
 
+#[cfg(any(feature = "process-runtime", feature = "ring3-smoke-test"))]
 const fn is_canonical_address(address: u64) -> bool {
     address >> 47 == 0 || address >> 47 == 0x1_FFFF
 }
