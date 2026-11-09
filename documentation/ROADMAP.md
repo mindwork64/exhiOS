@@ -167,11 +167,18 @@ P5.1–P5.7 are implemented and accepted by the full self-hosted build and headl
 
 - [ ] First user process (`init`).
   - Implemented: bounded ET_EXEC ELF loader in `arch::x86_64::process`; fixed-address PT_LOAD mapping into private address spaces; RX/RW+NX permissions; zero-filled BSS; four-page user stack with an unmapped guard page; reverse-order rollback and owned-frame/page-table reclamation.
-  - QEMU evidence: CI #430 completed successfully. The loader smoke reported entry `0x0000000200001C20`, three image pages and four stack pages, and verified entry bytes, segment permissions, BSS, guard page and complete frame reclamation.
-  - Implemented as a separate runtime proof: the embedded `init` entered Ring 3 through IRETQ, emitted `ExhiOS init: first Ring 3 process is running.`, executed `ConsoleWrite`, three `Yield` calls and `Exit` through `libexhi`; the kernel checked the exact syscall/yield counts and QEMU exited with status 33.
-  - Still open: normal boot does not yet launch `init`; the current execution test uses a single-process smoke adapter. Production scheduler integration, per-process capability/lifecycle management, process fault/exit cleanup and boot-time launch remain to be completed.
+  - The default `scripts/build.sh` configuration selects `process-runtime` when no optional smoke-test feature is requested and enters the embedded `init` ELF in Ring 3.
+  - QEMU evidence: CI #430 verified loader entry bytes, segment permissions, zeroed BSS, guard page and complete page/frame reclamation. The init runtime test verified IRETQ entry and `ConsoleWrite`, `ConsoleRead`, three `Yield` calls and `Exit` through `libexhi` (CI #435).
+  - Still open: the current production runtime is single-process and its `Yield` keeps the same process running; the general P5 scheduler is not yet the production process scheduler. User-mode exception termination/reaping is also pending. These are required before closing P7.1.
 - [x] System-call support library (`libexhi`).
-  - `no_std` wrappers for the complete currently assigned syscall ABI: `console_write`, `yield_now` and `exit`; error decoding and two unit tests.
-  - QEMU integration evidence in CI #430: the real user ELF used all three wrappers successfully over the x86-64 SYSCALL entry.
-- [ ] Serial shell.
-- [ ] Basic utilities and configuration format.
+  - `no_std` wrappers for the current ABI: `console_write`, non-blocking `console_read`, `yield_now` and `exit`; kernel errors are decoded into stable Rust results.
+  - CI #435 passed unit tests and the Ring 3 QEMU sequence using all four wrappers over the x86-64 SYSCALL entry.
+- [x] Serial shell.
+  - Ring 3 `init` reads COM1 through capability-gated, non-blocking `ConsoleRead`; writes through validated `ConsoleWrite`; supports CR/LF/CRLF, backspace/DEL, Ctrl+C, Ctrl+D, bounded 127-byte command lines and overflow bell.
+  - Commands: `help`, `hostname`, `version`, `echo`, `clear`, `config` and `exit`.
+  - CI #447 passed QEMU interaction over the serial socket, including line editing, Ctrl+C, command output, configuration display and clean shell exit.
+- [x] Basic utilities and configuration format.
+  - `exhi-config` provides a bounded, allocation-free UTF-8 `key=value` parser with whole-line comments, whitespace trimming, CRLF support, line/key/value limits and structured line-numbered errors.
+  - `init` applies parsed `hostname`, `prompt` and `version` values to the shell; duplicate or malformed known settings cause a safe fallback to built-in defaults. The `config` command prints active settings.
+  - CI #447 passed the parser unit suite and QEMU checks for `hostname`, `version` and `config`.
+  - The initial configuration is embedded in the init image; persistent configuration-file loading via a userland filesystem syscall is not implemented yet.
