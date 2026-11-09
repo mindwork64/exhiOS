@@ -747,39 +747,6 @@ fn init_runtime_failure(message: &[u8]) -> ! {
 }
 
 #[cfg(feature = "process-run-smoke-test")]
-fn init_runtime_failure_fmt(error: ProcessLoadError) -> ! {
-    use core::fmt::Write;
-
-    let mut message = InitErrorMessage([0; 128]);
-    let _ = write!(&mut message, "P7.2: init process load failed: {:?}.\r\n", error);
-    serial::COM1.write(message.as_bytes());
-    init_runtime_failure(b"P7.2: init process startup aborted.\r\n")
-}
-
-#[cfg(feature = "process-run-smoke-test")]
-struct InitErrorMessage([u8; 128]);
-
-#[cfg(feature = "process-run-smoke-test")]
-impl InitErrorMessage {
-    fn as_bytes(&self) -> &[u8] {
-        let length = self.0.iter().position(|byte| *byte == 0).unwrap_or(self.0.len());
-        &self.0[..length]
-    }
-}
-
-#[cfg(feature = "process-run-smoke-test")]
-impl core::fmt::Write for InitErrorMessage {
-    fn write_str(&mut self, value: &str) -> core::fmt::Result {
-        static mut LENGTH: usize = 0;
-        let length = unsafe { ptr::read_volatile(ptr::addr_of!(LENGTH)) };
-        let end = length.saturating_add(value.len());
-        if end > self.0.len() {
-            return Err(core::fmt::Error);
-        }
-        self.0[length..end].copy_from_slice(value.as_bytes());
-        unsafe {
-            ptr::write_volatile(ptr::addr_of_mut!(LENGTH), end);
-        }
-        Ok(())
-    }
+fn init_runtime_failure_fmt(_error: ProcessLoadError) -> ! {
+    init_runtime_failure(b"P7.2: init process load failed.\r\n")
 }
