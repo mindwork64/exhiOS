@@ -122,14 +122,14 @@ fn run_shell() -> ! {
             Some(config) => config,
             None => {
                 let _ = console_write(
-                    b"ExhiOS init: invalid VFS configuration; using defaults.\\r\\n",
+                    b"ExhiOS init: invalid VFS configuration; using defaults.\r\n",
                 );
                 DEFAULT_CONFIG
             }
         },
         Err(_) => {
             let _ = console_write(
-                b"ExhiOS init: configuration read failed; using defaults.\\r\\n",
+                b"ExhiOS init: configuration read failed; using defaults.\r\n",
             );
             DEFAULT_CONFIG
         }

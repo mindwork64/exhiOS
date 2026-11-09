@@ -69,7 +69,7 @@ const USERLAND_FS_NODE_COUNT: usize = 8;
 const USERLAND_FS_FILE_CAPACITY: usize = 256;
 #[cfg(feature = "process-runtime")]
 const USERLAND_CONFIG_CONTENT: &[u8] =
-    b"# ExhiOS system configuration\\nhostname=exhios\\nprompt=exhios>\\nversion=0.1\\n";
+    b"# ExhiOS system configuration\nhostname=exhios\nprompt=exhios>\nversion=0.1\n";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessLoadError {
@@ -614,17 +614,17 @@ static mut PROCESS_MULTI_SWITCH_COUNT: u64 = 0;
 fn initialize_userland_filesystem() {
     let mut filesystem =
         RamFs::<USERLAND_FS_NODE_COUNT, USERLAND_FS_FILE_CAPACITY>::new()
-            .unwrap_or_else(|_| init_runtime_failure(b"P7.4: could not create userland RAMFS.\\r\\n"));
+            .unwrap_or_else(|_| init_runtime_failure(b"P7.4: could not create userland RAMFS.\\r\n"));
     let root = filesystem.root();
     if create_directory_path(&mut filesystem, root, "/etc").is_err() {
-        init_runtime_failure(b"P7.4: could not create /etc in userland RAMFS.\\r\\n");
+        init_runtime_failure(b"P7.4: could not create /etc in userland RAMFS.\\r\n");
     }
     let config = create_file_path(&mut filesystem, root, "/etc/exhi.conf")
-        .unwrap_or_else(|_| init_runtime_failure(b"P7.4: could not create /etc/exhi.conf.\\r\\n"));
+        .unwrap_or_else(|_| init_runtime_failure(b"P7.4: could not create /etc/exhi.conf.\\r\n"));
     if filesystem.write(config, 0, USERLAND_CONFIG_CONTENT).ok()
         != Some(USERLAND_CONFIG_CONTENT.len())
     {
-        init_runtime_failure(b"P7.4: could not populate /etc/exhi.conf.\\r\\n");
+        init_runtime_failure(b"P7.4: could not populate /etc/exhi.conf.\\r\n");
     }
     unsafe {
         ptr::write(ptr::addr_of_mut!(USERLAND_FILESYSTEM), Some(filesystem));
@@ -1083,12 +1083,12 @@ fn handoff_to_kernel_reaper() -> ! {
     let reaper_id = unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) };
     if current_id.is_none() || current_id != reaper_id {
         init_runtime_failure(
-            b"P7.1: direct reaper handoff selected the wrong scheduler task.\\r\\n",
+            b"P7.1: direct reaper handoff selected the wrong scheduler task.\\r\n",
         );
     }
 
     let Some((_, stack_top)) = reaper_kernel_stack_bounds() else {
-        init_runtime_failure(b"P7.1: reaper stack bounds are invalid during handoff.\\r\\n");
+        init_runtime_failure(b"P7.1: reaper stack bounds are invalid during handoff.\\r\n");
     };
     if address_space::restore_kernel().is_err()
         || user::clear_active_kernel_stack().is_err()
@@ -1096,7 +1096,7 @@ fn handoff_to_kernel_reaper() -> ! {
         || gdt::read_rsp0() != stack_top
         || !syscall::update_current_task_context(stack_top, ptr::addr_of!(REAPER_FX_STATE) as usize)
     {
-        init_runtime_failure(b"P7.1: could not prepare the direct kernel-reaper context.\\r\\n");
+        init_runtime_failure(b"P7.1: could not prepare the direct kernel-reaper context.\\r\n");
     }
 
     unsafe {
@@ -1414,12 +1414,12 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
     }
 
     let first_process = unsafe { (*first_record.process).as_ref() }
-        .unwrap_or_else(|| init_runtime_failure(b"P7.1: first process object is missing.\\r\\n"));
+        .unwrap_or_else(|| init_runtime_failure(b"P7.1: first process object is missing.\\r\n"));
     if first_process.activate().is_err() {
-        init_runtime_failure(b"P7.1: could not activate the first process address space.\\r\\n");
+        init_runtime_failure(b"P7.1: could not activate the first process address space.\\r\n");
     }
     let first_space = first_process.address_space().unwrap_or_else(|_| {
-        init_runtime_failure(b"P7.1: first process address space is unavailable.\\r\\n")
+        init_runtime_failure(b"P7.1: first process address space is unavailable.\\r\n")
     });
     if user::activate_kernel_stack(
         first_space,
@@ -1428,14 +1428,14 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
     )
     .is_err()
     {
-        init_runtime_failure(b"P7.1: could not activate the first process kernel stack.\\r\\n");
+        init_runtime_failure(b"P7.1: could not activate the first process kernel stack.\\r\n");
     }
     let first_frame_address = unsafe {
         (*scheduler)
             .get(first_task_id)
             .map(|task| task.context().saved_stack_pointer())
     }
-    .unwrap_or_else(|| init_runtime_failure(b"P7.1: first process entry frame is missing.\\r\\n"));
+    .unwrap_or_else(|| init_runtime_failure(b"P7.1: first process entry frame is missing.\\r\n"));
     if first_frame_address == 0
         || first_frame_address & 0xF != 0
         || (first_frame_address as u64) < first_record.kernel_stack_bottom
@@ -1443,7 +1443,7 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
             .checked_add(size_of::<user::UserEntryFrame>() as u64)
             .map_or(true, |end| end > first_record.kernel_stack_top)
     {
-        init_runtime_failure(b"P7.1: first process entry frame is outside its kernel stack.\\r\\n");
+        init_runtime_failure(b"P7.1: first process entry frame is outside its kernel stack.\\r\n");
     }
     let frame = unsafe { &*(first_frame_address as *const user::UserEntryFrame) };
     let fx_state = unsafe { &*(first_record.fx_state as *const user::FxState) };
