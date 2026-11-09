@@ -704,10 +704,10 @@ impl SyscallServices for InitServices {
         if self.scheduler.is_null() {
             return Err(SyscallError::Io);
         }
-        let current = unsafe { (*self.scheduler).current().map(|task| task.id()) }
-            .ok_or(SyscallError::Io)?;
-        let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) }
-            .ok_or(SyscallError::Io)?;
+        let current =
+            unsafe { (*self.scheduler).current().map(|task| task.id()) }.ok_or(SyscallError::Io)?;
+        let init_id =
+            unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) }.ok_or(SyscallError::Io)?;
         if current != init_id {
             return Err(SyscallError::AccessDenied);
         }
