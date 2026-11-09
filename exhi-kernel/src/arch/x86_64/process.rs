@@ -5,9 +5,9 @@
 //! only after all user mappings have been removed and their frames returned.
 //! The first implementation is single-CPU and requires IF=0 for all operations.
 
-use core::ptr;
 #[cfg(feature = "process-runtime")]
 use core::arch::global_asm;
+use core::ptr;
 
 #[cfg(feature = "process-runtime")]
 use exhi_abi::{SyscallError, SyscallRequest};
@@ -17,8 +17,7 @@ use exhi_memory::MemoryError;
 use exhi_syscall::{dispatch as dispatch_syscall, DispatchOutcome, SyscallServices};
 #[cfg(feature = "process-runtime")]
 use exhi_task::{
-    Capability, CapabilitySet, ScheduleDecision, Scheduler, TaskContext, TaskId,
-    UserTaskMetadata,
+    Capability, CapabilitySet, ScheduleDecision, Scheduler, TaskContext, TaskId, UserTaskMetadata,
 };
 
 use crate::memory;
@@ -624,8 +623,8 @@ impl SyscallServices for InitServices {
         if self.scheduler.is_null() {
             return Err(SyscallError::Io);
         }
-        let decision = unsafe { (*self.scheduler).yield_current() }
-            .map_err(|_| SyscallError::Io)?;
+        let decision =
+            unsafe { (*self.scheduler).yield_current() }.map_err(|_| SyscallError::Io)?;
         #[cfg(feature = "process-run-smoke-test")]
         unsafe {
             let count = ptr::read_volatile(ptr::addr_of!(INIT_YIELD_COUNT));
@@ -643,16 +642,16 @@ impl SyscallServices for InitServices {
             return Err(SyscallError::Io);
         }
 
-        if let Some(next) = unsafe { (*scheduler).finish_current() }
-            .map_err(|_| SyscallError::Io)?
+        if let Some(next) =
+            unsafe { (*scheduler).finish_current() }.map_err(|_| SyscallError::Io)?
         {
             return Ok(next);
         }
 
         // When the last user process exits, finish_current enters idle because
         // the kernel reaper is Blocked. Wake it and transfer to its own stack.
-        let reaper = unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) }
-            .ok_or(SyscallError::Io)?;
+        let reaper =
+            unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) }.ok_or(SyscallError::Io)?;
         unsafe {
             (*scheduler).wake(reaper).map_err(|_| SyscallError::Io)?;
             (*scheduler)
@@ -666,10 +665,10 @@ impl SyscallServices for InitServices {
         if self.scheduler.is_null() {
             return Err(SyscallError::Io);
         }
-        let current = unsafe { (*self.scheduler).current().map(|task| task.id()) }
-            .ok_or(SyscallError::Io)?;
-        let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) }
-            .ok_or(SyscallError::Io)?;
+        let current =
+            unsafe { (*self.scheduler).current().map(|task| task.id()) }.ok_or(SyscallError::Io)?;
+        let init_id =
+            unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) }.ok_or(SyscallError::Io)?;
         if current != init_id {
             return Err(SyscallError::AccessDenied);
         }
@@ -766,8 +765,8 @@ fn select_process_context(id: TaskId) -> usize {
         let Some((bottom, top)) = init_kernel_stack_bounds() else {
             init_runtime_failure(b"P7.1: init kernel stack bounds are invalid.\r\n");
         };
-        let frame_end = (frame as u64)
-            .checked_add(size_of::<syscall::UserTaskSyscallFrame>() as u64);
+        let frame_end =
+            (frame as u64).checked_add(size_of::<syscall::UserTaskSyscallFrame>() as u64);
         if (frame as u64) < bottom
             || frame_end.map_or(true, |end| end > top)
             || metadata.kernel_stack_top() != top
@@ -776,16 +775,17 @@ fn select_process_context(id: TaskId) -> usize {
         }
 
         let process_slot = ptr::addr_of!(INIT_PROCESS);
-        let process = unsafe { (*process_slot).as_ref() }
-            .unwrap_or_else(|| init_runtime_failure(b"P7.1: selected init process is missing.\r\n"));
+        let process = unsafe { (*process_slot).as_ref() }.unwrap_or_else(|| {
+            init_runtime_failure(b"P7.1: selected init process is missing.\r\n")
+        });
         if process.root_address().ok() != Some(metadata.address_space_root())
             || process.activate().is_err()
         {
             init_runtime_failure(b"P7.1: failed to activate selected init address space.\r\n");
         }
-        let space = process
-            .address_space()
-            .unwrap_or_else(|_| init_runtime_failure(b"P7.1: init address space is unavailable.\r\n"));
+        let space = process.address_space().unwrap_or_else(|_| {
+            init_runtime_failure(b"P7.1: init address space is unavailable.\r\n")
+        });
         if user::activate_kernel_stack(space, bottom, top).is_err()
             || !syscall::update_current_task_context(top, metadata.fx_state_pointer())
         {
@@ -800,11 +800,9 @@ fn select_process_context(id: TaskId) -> usize {
         let Some((bottom, top)) = reaper_kernel_stack_bounds() else {
             init_runtime_failure(b"P7.1: reaper kernel stack bounds are invalid.\r\n");
         };
-        let frame_end = (frame as u64)
-            .checked_add(size_of::<syscall::UserTaskSyscallFrame>() as u64);
-        if (frame as u64) < bottom
-            || frame_end.map_or(true, |end| end > top)
-        {
+        let frame_end =
+            (frame as u64).checked_add(size_of::<syscall::UserTaskSyscallFrame>() as u64);
+        if (frame as u64) < bottom || frame_end.map_or(true, |end| end > top) {
             init_runtime_failure(b"P7.1: reaper frame escaped its kernel stack.\r\n");
         }
         if address_space::restore_kernel().is_err()
@@ -836,8 +834,9 @@ extern "sysv64" fn exhi_init_syscall_dispatch(frame: *mut syscall::UserTaskSysca
     }
     let frame_ref = unsafe { &mut *frame };
     let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
-    let current_id = unsafe { (*scheduler).current().map(|task| task.id()) }
-        .unwrap_or_else(|| init_runtime_failure(b"P7.1: syscall arrived without a current task.\r\n"));
+    let current_id = unsafe { (*scheduler).current().map(|task| task.id()) }.unwrap_or_else(|| {
+        init_runtime_failure(b"P7.1: syscall arrived without a current task.\r\n")
+    });
     let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) }
         .unwrap_or_else(|| init_runtime_failure(b"P7.1: init task id is unavailable.\r\n"));
     if current_id != init_id {
@@ -847,8 +846,8 @@ extern "sysv64" fn exhi_init_syscall_dispatch(frame: *mut syscall::UserTaskSysca
         init_runtime_failure(b"P7.1: init kernel stack bounds are invalid.\r\n");
     };
     let frame_address = frame as usize;
-    let frame_end = (frame_address as u64)
-        .checked_add(size_of::<syscall::UserTaskSyscallFrame>() as u64);
+    let frame_end =
+        (frame_address as u64).checked_add(size_of::<syscall::UserTaskSyscallFrame>() as u64);
     if frame_address == 0
         || frame_address & 0xF != 0
         || (frame_address as u64) < bottom
@@ -858,9 +857,9 @@ extern "sysv64" fn exhi_init_syscall_dispatch(frame: *mut syscall::UserTaskSysca
     }
 
     unsafe {
-        let task = (*scheduler)
-            .get_mut(current_id)
-            .unwrap_or_else(|| init_runtime_failure(b"P7.1: active init task record is missing.\r\n"));
+        let task = (*scheduler).get_mut(current_id).unwrap_or_else(|| {
+            init_runtime_failure(b"P7.1: active init task record is missing.\r\n")
+        });
         task.context_mut().set_saved_stack_pointer(frame_address);
         let user_rsp = ptr::read_volatile(ptr::addr_of!((*frame).rsp));
         task.user_metadata_mut()
@@ -947,8 +946,7 @@ pub fn run_init(image: &[u8]) -> ! {
     let Some((init_stack_bottom, init_stack_top)) = init_kernel_stack_bounds() else {
         init_runtime_failure(b"P7.1: init kernel stack bounds are invalid.\r\n");
     };
-    let init_stack_storage =
-        unsafe { ptr::addr_of_mut!(INIT_KERNEL_STACK.0).cast::<u8>() as u64 };
+    let init_stack_storage = unsafe { ptr::addr_of_mut!(INIT_KERNEL_STACK.0).cast::<u8>() as u64 };
     if !install_runtime_stack_guard(init_stack_storage, (init_stack_bottom, init_stack_top)) {
         init_runtime_failure(b"P7.1: could not install the init kernel-stack guard.\r\n");
     }
@@ -1029,11 +1027,10 @@ pub fn run_init(image: &[u8]) -> ! {
     };
     let reaper_task = unsafe {
         (*scheduler)
-            .spawn(
-                "kernel-reaper",
-                TaskContext::new(reaper_frame as usize),
-            )
-            .unwrap_or_else(|_| init_runtime_failure(b"P7.1: could not register kernel reaper.\r\n"))
+            .spawn("kernel-reaper", TaskContext::new(reaper_frame as usize))
+            .unwrap_or_else(|_| {
+                init_runtime_failure(b"P7.1: could not register kernel reaper.\r\n")
+            })
     };
     if unsafe { (*scheduler).block_ready(reaper_task) }.is_err() {
         init_runtime_failure(b"P7.1: could not block the idle kernel reaper.\r\n");
@@ -1089,7 +1086,8 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
         let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
         let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) };
         if init_id.is_none_or(|id| unsafe { (*scheduler).reap(id).is_err() }) {
-            serial::COM1.write(b"ExhiOS: init resources reclaimed but task record reaping failed.\r\n");
+            serial::COM1
+                .write(b"ExhiOS: init resources reclaimed but task record reaping failed.\r\n");
         } else {
             serial::COM1.write(
                 b"ExhiOS: init address space, user frames and finished task record reclaimed.\r\n",
@@ -1103,13 +1101,16 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
     {
         let yields = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_YIELD_COUNT)) };
         let syscalls = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_SYSCALL_COUNT)) };
-        let success = cleanup_ok && yields == INIT_YIELD_EXPECTED && syscalls == INIT_SYSCALL_EXPECTED;
+        let success =
+            cleanup_ok && yields == INIT_YIELD_EXPECTED && syscalls == INIT_SYSCALL_EXPECTED;
         if success {
             serial::COM1.write(
                 b"P7.2: init executed ConsoleWrite, ConsoleRead, three Yield calls and Exit through libexhi; kernel reaper reclaimed the process.\r\n",
             );
         } else {
-            serial::COM1.write(b"P7.2: syscall sequence or kernel reaper cleanup did not match expectations.\r\n");
+            serial::COM1.write(
+                b"P7.2: syscall sequence or kernel reaper cleanup did not match expectations.\r\n",
+            );
         }
         unsafe {
             core::arch::asm!(
@@ -1123,7 +1124,9 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
 
     #[cfg(feature = "process-shell-smoke-test")]
     unsafe {
-        serial::COM1.write(b"P7.3: interactive serial shell smoke test passed; kernel reaper reclaimed init.\r\n");
+        serial::COM1.write(
+            b"P7.3: interactive serial shell smoke test passed; kernel reaper reclaimed init.\r\n",
+        );
         core::arch::asm!(
             "out dx, eax",
             in("dx") crate::QEMU_DEBUG_EXIT_PORT,
