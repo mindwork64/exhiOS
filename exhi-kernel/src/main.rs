@@ -1036,7 +1036,7 @@ fn vfs_storage_smoke_test() -> Result<(), exhi_vfs::VfsError> {
     let root = filesystem.root();
     let etc = create_directory_path(&mut filesystem, root, "/etc")?;
     let config = create_file_path(&mut filesystem, root, "/etc/exhi.conf")?;
-    let data = b"boot.mode=ramfs\\nconsole=serial\\n";
+    let data = b"boot.mode=ramfs\nconsole=serial\n";
     if filesystem.write(config, 0, data)? != data.len() {
         return Err(VfsError::FileTooLarge);
     }
@@ -1162,7 +1162,7 @@ pub extern "sysv64" fn exhi_exception_handler(
             serial::COM1.write_hex(user_exception.user_stack_pointer);
             serial::COM1.write(b" error=0x");
             serial::COM1.write_hex(user_exception.error_code);
-            serial::COM1.write(b"\\r\\n");
+            serial::COM1.write(b"\r\n");
             arch::x86_64::process::terminate_init_after_user_exception(vector, user_exception);
         }
 
@@ -1316,7 +1316,7 @@ fn keyboard_smoke_test(console: &mut KernelConsole, drivers: &mut DriverRegistry
         .set_state(keyboard::DRIVER.id(), DriverState::Initialized)
         .is_err()
     {
-        console.write(b"P3.5: PS/2 driver registry transition failed.\\r\\n");
+        console.write(b"P3.5: PS/2 driver registry transition failed.\r\n");
         halt_forever();
     }
     console.write_fmt(format_args!(

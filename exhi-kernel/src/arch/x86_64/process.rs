@@ -1252,6 +1252,12 @@ fn handoff_faulting_init_to_reaper() -> ! {
 
 #[cfg(feature = "process-runtime")]
 pub fn terminate_init_after_user_exception(_vector: u64, exception: user::UserException) -> ! {
+    // IDT entry from CPL3 does not execute SWAPGS automatically. Unlike the
+    // SYSCALL path, this fault path must establish the trusted kernel GS base
+    // before updating the scheduler-selected syscall entry context.
+    unsafe {
+        core::arch::asm!("swapgs", options(nomem, nostack, preserves_flags));
+    }
     serial::COM1.write(b"ExhiOS: terminating init after user-mode exception; RIP=0x");
     serial::COM1.write_hex(exception.instruction_pointer);
     serial::COM1.write(b" user RSP=0x");
