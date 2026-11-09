@@ -990,7 +990,15 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         feature = "task-accounting-smoke-test",
         feature = "timer-preemption-smoke-test",
         feature = "idle-wakeup-smoke-test",
-        feature = "process-run-smoke-test"
+        feature = "ring3-smoke-test",
+        feature = "process-load-smoke-test",
+        feature = "process-run-smoke-test",
+        feature = "process-shell-smoke-test",
+        feature = "process-fault-smoke-test",
+        feature = "process-runtime",
+        feature = "paging-rollback-smoke-test",
+        feature = "vfs-smoke-test",
+        feature = "timer-smoke-test"
     )))]
     {
         #[cfg(feature = "qemu-debug-exit-smoke-test")]

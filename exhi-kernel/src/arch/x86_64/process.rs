@@ -22,7 +22,9 @@ use exhi_task::{
 
 use crate::memory;
 
-use super::address_space::{self, AddressSpace, AddressSpaceError, PageMapping, UserPageFlags};
+use super::address_space::{self, AddressSpace, AddressSpaceError, UserPageFlags};
+#[cfg(feature = "process-load-smoke-test")]
+use super::address_space::PageMapping;
 #[cfg(feature = "process-runtime")]
 use super::{gdt, serial, stack_guard, syscall, user};
 
@@ -39,8 +41,6 @@ const MAX_IMAGE_PAGES: usize = 256;
 const MAX_OWNED_PAGES: usize = MAX_IMAGE_PAGES + USER_STACK_PAGES;
 #[cfg(feature = "process-runtime")]
 const INIT_KERNEL_STACK_PAGES: usize = 5;
-#[cfg(feature = "process-runtime")]
-const INIT_KERNEL_STACK_USABLE_PAGES: usize = INIT_KERNEL_STACK_PAGES - 1;
 #[cfg(feature = "process-runtime")]
 const INIT_KERNEL_STACK_BYTES: usize = INIT_KERNEL_STACK_PAGES * PAGE_SIZE as usize;
 #[cfg(feature = "process-run-smoke-test")]
@@ -93,6 +93,7 @@ struct OwnedPage {
     mapped: bool,
 }
 
+#[cfg(feature = "process-load-smoke-test")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProcessLoadReport {
     pub entry_point: u64,
@@ -161,14 +162,12 @@ impl LoadedProcess {
         self.user_stack_pointer
     }
 
+    #[cfg(feature = "process-load-smoke-test")]
     pub const fn image_page_count(&self) -> usize {
         self.image_page_count
     }
 
-    pub const fn total_page_count(&self) -> usize {
-        self.page_count
-    }
-
+    #[cfg(feature = "process-runtime")]
     pub fn root_address(&self) -> Result<u64, ProcessLoadError> {
         self.address_space
             .as_ref()
@@ -176,12 +175,14 @@ impl LoadedProcess {
             .ok_or(ProcessLoadError::AddressSpace(AddressSpaceError::Destroyed))
     }
 
+    #[cfg(feature = "process-runtime")]
     pub fn address_space(&self) -> Result<&AddressSpace, ProcessLoadError> {
         self.address_space
             .as_ref()
             .ok_or(ProcessLoadError::AddressSpace(AddressSpaceError::Destroyed))
     }
 
+    #[cfg(feature = "process-load-smoke-test")]
     pub fn translate(&self, address: u64) -> Result<PageMapping, ProcessLoadError> {
         self.address_space
             .as_ref()
@@ -190,6 +191,7 @@ impl LoadedProcess {
             .map_err(ProcessLoadError::AddressSpace)
     }
 
+    #[cfg(feature = "process-runtime")]
     pub fn activate(&self) -> Result<(), ProcessLoadError> {
         self.address_space
             .as_ref()
@@ -417,6 +419,7 @@ fn align_up(address: u64) -> Option<u64> {
 
 /// Exercises the loader against the embedded first user executable and then
 /// destroys it again. This is a loader test, not a process scheduling test.
+#[cfg(feature = "process-load-smoke-test")]
 pub fn smoke_test(image: &[u8]) -> Result<ProcessLoadReport, ProcessLoadError> {
     let mut process = LoadedProcess::load(image)?;
     let report = ProcessLoadReport {
@@ -437,6 +440,7 @@ pub fn smoke_test(image: &[u8]) -> Result<ProcessLoadReport, ProcessLoadError> {
     Ok(report)
 }
 
+#[cfg(feature = "process-load-smoke-test")]
 fn validate_loaded_process(
     process: &LoadedProcess,
     image: &[u8],
@@ -809,9 +813,7 @@ fn select_process_context(id: TaskId) -> usize {
             || user::clear_active_kernel_stack().is_err()
             || !gdt::set_rsp0(top)
             || gdt::read_rsp0() != top
-            || !syscall::update_current_task_context(top, unsafe {
-                ptr::addr_of!(REAPER_FX_STATE) as usize
-            })
+            || !syscall::update_current_task_context(top, ptr::addr_of!(REAPER_FX_STATE) as usize)
         {
             init_runtime_failure(b"P7.1: failed to activate the kernel reaper context.\r\n");
         }
@@ -1142,7 +1144,7 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
 }
 
 #[cfg(feature = "process-runtime")]
-pub fn terminate_init_after_user_exception(vector: u64, exception: user::UserException) -> ! {
+pub fn terminate_init_after_user_exception(_vector: u64, exception: user::UserException) -> ! {
     serial::COM1.write(b"ExhiOS: terminating init after user-mode exception; RIP=0x");
     serial::COM1.write_hex(exception.instruction_pointer);
     serial::COM1.write(b" user RSP=0x");
@@ -1175,7 +1177,7 @@ pub fn terminate_init_after_user_exception(vector: u64, exception: user::UserExc
     ))]
     {
         let expected_fault =
-            cfg!(feature = "process-fault-smoke-test") && vector == 6 && cleanup_ok;
+            cfg!(feature = "process-fault-smoke-test") && _vector == 6 && cleanup_ok;
         if expected_fault {
             serial::COM1.write(
                 b"P7.1: Ring 3 invalid-opcode fault captured; init resources reclaimed successfully.\r\n",
