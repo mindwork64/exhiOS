@@ -14,12 +14,20 @@ pub struct NodeId {
     generation: u64,
 }
 impl NodeId {
-    pub const fn slot(self) -> usize { self.slot }
-    pub const fn generation(self) -> u64 { self.generation }
+    pub const fn slot(self) -> usize {
+        self.slot
+    }
+
+    pub const fn generation(self) -> u64 {
+        self.generation
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NodeKind { File, Directory }
+pub enum NodeKind {
+    File,
+    Directory,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Name {
@@ -33,18 +41,24 @@ impl Name {
             || bytes.len() > MAX_NAME_BYTES
             || value == "."
             || value == ".."
-            || bytes.iter().any(|byte| {
-                *byte == b'/' || *byte == 0 || *byte < 0x20 || *byte == 0x7F
-            })
+            || bytes
+                .iter()
+                .any(|byte| *byte == b'/' || *byte == 0 || *byte < 0x20 || *byte == 0x7F)
         {
             return Err(VfsError::InvalidName);
         }
-        let mut name = Self { bytes: [0; MAX_NAME_BYTES], length: bytes.len() as u8 };
+        let mut name = Self {
+            bytes: [0; MAX_NAME_BYTES],
+            length: bytes.len() as u8,
+        };
         name.bytes[..bytes.len()].copy_from_slice(bytes);
         Ok(name)
     }
     const fn root() -> Self {
-        Self { bytes: [0; MAX_NAME_BYTES], length: 0 }
+        Self {
+            bytes: [0; MAX_NAME_BYTES],
+            length: 0,
+        }
     }
     pub fn as_str(&self) -> &str {
         core::str::from_utf8(&self.bytes[..usize::from(self.length)])
@@ -150,7 +164,10 @@ impl<const NODE_COUNT: usize, const FILE_CAPACITY: usize> RamFs<NODE_COUNT, FILE
         if NODE_COUNT == 0 || FILE_CAPACITY == 0 {
             return Err(VfsError::InvalidCapacity);
         }
-        let root = NodeId { slot: 0, generation: 1 };
+        let root = NodeId {
+            slot: 0,
+            generation: 1,
+        };
         let root_node = Node {
             id: root,
             parent: root,
@@ -163,7 +180,11 @@ impl<const NODE_COUNT: usize, const FILE_CAPACITY: usize> RamFs<NODE_COUNT, FILE
         nodes[0] = Some(root_node);
         let mut generations = [0; NODE_COUNT];
         generations[0] = 1;
-        Ok(Self { nodes, generations, root })
+        Ok(Self {
+            nodes,
+            generations,
+            root,
+        })
     }
 
     fn node(&self, id: NodeId) -> Result<&Node<FILE_CAPACITY>, VfsError> {
@@ -192,12 +213,19 @@ impl<const NODE_COUNT: usize, const FILE_CAPACITY: usize> RamFs<NODE_COUNT, FILE
         if self.node(parent)?.kind != NodeKind::Directory {
             return Err(VfsError::NotDirectory);
         }
-        if self.nodes.iter().flatten().any(|node| {
-            node.parent == parent && node.name == name
-        }) {
+        if self
+            .nodes
+            .iter()
+            .flatten()
+            .any(|node| node.parent == parent && node.name == name)
+        {
             return Err(VfsError::AlreadyExists);
         }
-        let slot = self.nodes.iter().position(Option::is_none).ok_or(VfsError::NoSpace)?;
+        let slot = self
+            .nodes
+            .iter()
+            .position(Option::is_none)
+            .ok_or(VfsError::NoSpace)?;
         let generation = self.generations[slot]
             .checked_add(1)
             .ok_or(VfsError::GenerationExhausted)?;
@@ -225,14 +253,18 @@ impl<const NODE_COUNT: usize, const FILE_CAPACITY: usize> RamFs<NODE_COUNT, FILE
 impl<const NODE_COUNT: usize, const FILE_CAPACITY: usize> FileSystem
     for RamFs<NODE_COUNT, FILE_CAPACITY>
 {
-    fn root(&self) -> NodeId { self.root }
+    fn root(&self) -> NodeId {
+        self.root
+    }
 
     fn lookup(&self, parent: NodeId, name: &str) -> Result<NodeId, VfsError> {
         if self.node(parent)?.kind != NodeKind::Directory {
             return Err(VfsError::NotDirectory);
         }
         let name = Name::new(name)?;
-        self.nodes.iter().flatten()
+        self.nodes
+            .iter()
+            .flatten()
             .find(|node| node.parent == parent && node.name == name)
             .map(|node| node.id)
             .ok_or(VfsError::NotFound)
@@ -271,7 +303,9 @@ impl<const NODE_COUNT: usize, const FILE_CAPACITY: usize> FileSystem
     }
 
     fn write(&mut self, file: NodeId, offset: usize, source: &[u8]) -> Result<usize, VfsError> {
-        let end = offset.checked_add(source.len()).ok_or(VfsError::OffsetOverflow)?;
+        let end = offset
+            .checked_add(source.len())
+            .ok_or(VfsError::OffsetOverflow)?;
         if end > FILE_CAPACITY || offset > FILE_CAPACITY {
             return Err(VfsError::FileTooLarge);
         }
@@ -403,7 +437,9 @@ mod tests {
 
     type TestFs = RamFs<8, 16>;
 
-    fn fs() -> TestFs { TestFs::new().unwrap() }
+    fn fs() -> TestFs {
+        TestFs::new().unwrap()
+    }
 
     #[test]
     fn creates_and_resolves_nested_paths() {
@@ -411,8 +447,14 @@ mod tests {
         let root = filesystem.root();
         let etc = create_directory_path(&mut filesystem, root, "/etc").unwrap();
         let config = create_file_path(&mut filesystem, root, "/etc/exhi.conf").unwrap();
-        assert_eq!(resolve_path(&filesystem, root, "/etc//./exhi.conf").unwrap(), config);
-        assert_eq!(resolve_path(&filesystem, etc, "../etc/exhi.conf").unwrap(), config);
+        assert_eq!(
+            resolve_path(&filesystem, root, "/etc//./exhi.conf").unwrap(),
+            config
+        );
+        assert_eq!(
+            resolve_path(&filesystem, etc, "../etc/exhi.conf").unwrap(),
+            config
+        );
         assert_eq!(filesystem.metadata(config).unwrap().kind, NodeKind::File);
         assert_eq!(filesystem.lookup(root, "missing"), Err(VfsError::NotFound));
     }
@@ -420,7 +462,9 @@ mod tests {
     #[test]
     fn reads_and_writes_binary_data_with_sparse_zero_fill() {
         let mut filesystem = fs();
-        let file = filesystem.create_file(filesystem.root(), "data.bin").unwrap();
+        let file = filesystem
+            .create_file(filesystem.root(), "data.bin")
+            .unwrap();
         assert_eq!(filesystem.write(file, 2, &[0x00, 0xFF, 0x80]), Ok(3));
         let mut bytes = [0xAA; 8];
         assert_eq!(filesystem.read(file, 0, &mut bytes), Ok(5));
@@ -434,7 +478,10 @@ mod tests {
         let mut filesystem = fs();
         let file = filesystem.create_file(filesystem.root(), "data").unwrap();
         filesystem.write(file, 0, b"stable").unwrap();
-        assert_eq!(filesystem.write(file, 14, b"four"), Err(VfsError::FileTooLarge));
+        assert_eq!(
+            filesystem.write(file, 14, b"four"),
+            Err(VfsError::FileTooLarge)
+        );
         let mut bytes = [0; 8];
         assert_eq!(filesystem.read(file, 0, &mut bytes), Ok(6));
         assert_eq!(&bytes[..6], b"stable");
@@ -456,13 +503,22 @@ mod tests {
             size: 0,
         };
         let mut first = [placeholder; 2];
-        assert_eq!(filesystem.read_directory(root, &mut cursor, &mut first), Ok(2));
+        assert_eq!(
+            filesystem.read_directory(root, &mut cursor, &mut first),
+            Ok(2)
+        );
         assert_eq!(first[0].name.as_str(), "one");
         assert_eq!(first[1].name.as_str(), "two");
         let mut second = [first[0]; 2];
-        assert_eq!(filesystem.read_directory(root, &mut cursor, &mut second), Ok(1));
+        assert_eq!(
+            filesystem.read_directory(root, &mut cursor, &mut second),
+            Ok(1)
+        );
         assert_eq!(second[0].name.as_str(), "three");
-        assert_eq!(filesystem.read_directory(root, &mut cursor, &mut second), Ok(0));
+        assert_eq!(
+            filesystem.read_directory(root, &mut cursor, &mut second),
+            Ok(0)
+        );
     }
 
     #[test]
@@ -470,14 +526,26 @@ mod tests {
         let mut filesystem = fs();
         let root = filesystem.root();
         let file = filesystem.create_file(root, "file").unwrap();
-        assert_eq!(filesystem.create_file(file, "child"), Err(VfsError::NotDirectory));
+        assert_eq!(
+            filesystem.create_file(file, "child"),
+            Err(VfsError::NotDirectory)
+        );
         let mut cursor = 0;
-        assert_eq!(filesystem.read_directory(file, &mut cursor, &mut []), Err(VfsError::NotDirectory));
+        assert_eq!(
+            filesystem.read_directory(file, &mut cursor, &mut []),
+            Err(VfsError::NotDirectory)
+        );
         let directory = filesystem.create_directory(root, "dir").unwrap();
         filesystem.create_file(directory, "child").unwrap();
-        assert_eq!(filesystem.remove(directory), Err(VfsError::DirectoryNotEmpty));
+        assert_eq!(
+            filesystem.remove(directory),
+            Err(VfsError::DirectoryNotEmpty)
+        );
         assert_eq!(filesystem.remove(root), Err(VfsError::RootRemovalDenied));
-        assert_eq!(filesystem.read(directory, 0, &mut []), Err(VfsError::IsDirectory));
+        assert_eq!(
+            filesystem.read(directory, 0, &mut []),
+            Err(VfsError::IsDirectory)
+        );
     }
 
     #[test]
@@ -498,10 +566,19 @@ mod tests {
         let mut filesystem = RamFs::<2, 8>::new().unwrap();
         let root = filesystem.root();
         filesystem.create_file(root, "ok").unwrap();
-        assert_eq!(filesystem.create_file(root, "second"), Err(VfsError::NoSpace));
-        assert_eq!(filesystem.create_file(root, "../bad"), Err(VfsError::InvalidName));
+        assert_eq!(
+            filesystem.create_file(root, "second"),
+            Err(VfsError::NoSpace)
+        );
+        assert_eq!(
+            filesystem.create_file(root, "../bad"),
+            Err(VfsError::InvalidName)
+        );
         let long_name = "x".repeat(MAX_NAME_BYTES + 1);
-        assert_eq!(filesystem.create_file(root, &long_name), Err(VfsError::InvalidName));
+        assert_eq!(
+            filesystem.create_file(root, &long_name),
+            Err(VfsError::InvalidName)
+        );
     }
 
     #[test]
