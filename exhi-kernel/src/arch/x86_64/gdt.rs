@@ -1,15 +1,33 @@
 use core::arch::{asm, global_asm};
 use core::mem::size_of;
 use core::ptr;
-#[cfg(any(feature = "process-runtime", feature = "ring3-smoke-test"))]
+#[cfg(any(
+    feature = "process-runtime",
+    feature = "ring3-smoke-test",
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 use core::sync::atomic::{compiler_fence, Ordering};
 
 pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
 pub const KERNEL_DATA_SELECTOR: u16 = 0x10;
 pub const TSS_SELECTOR: u16 = 0x18;
-#[cfg(any(feature = "process-runtime", feature = "ring3-smoke-test"))]
+#[cfg(any(
+    feature = "process-runtime",
+    feature = "ring3-smoke-test",
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub const USER_DATA_SELECTOR: u16 = 0x2B;
-#[cfg(any(feature = "process-runtime", feature = "ring3-smoke-test"))]
+#[cfg(any(
+    feature = "process-runtime",
+    feature = "ring3-smoke-test",
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub const USER_CODE_SELECTOR: u16 = 0x33;
 
 const GDT_NULL: u64 = 0;
@@ -243,7 +261,13 @@ exhi_load_gdt:
 );
 
 /// Updates the TSS RSP0 field for the currently active kernel task.
-#[cfg(any(feature = "process-runtime", feature = "ring3-smoke-test"))]
+#[cfg(any(
+    feature = "process-runtime",
+    feature = "ring3-smoke-test",
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 ///
 /// Zero clears the field for the early boot context. Non-zero values must be
 /// canonical and 16-byte aligned; the caller must ensure the complete kernel
@@ -270,7 +294,13 @@ pub fn set_rsp0(stack_top: u64) -> bool {
 }
 
 /// Reads the current TSS RSP0 value for boot diagnostics and user-entry setup.
-#[cfg(any(feature = "process-runtime", feature = "ring3-smoke-test"))]
+#[cfg(any(
+    feature = "process-runtime",
+    feature = "ring3-smoke-test",
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 pub fn read_rsp0() -> u64 {
     let rsp0_pointer = unsafe {
         ptr::addr_of!(TSS.0)
@@ -282,7 +312,13 @@ pub fn read_rsp0() -> u64 {
     unsafe { ptr::read_unaligned(rsp0_pointer) }
 }
 
-#[cfg(any(feature = "process-runtime", feature = "ring3-smoke-test"))]
+#[cfg(any(
+    feature = "process-runtime",
+    feature = "ring3-smoke-test",
+    feature = "context-switch-smoke-test",
+    feature = "task-accounting-smoke-test",
+    feature = "timer-preemption-smoke-test"
+))]
 const fn is_canonical_address(address: u64) -> bool {
     address >> 47 == 0 || address >> 47 == 0x1_FFFF
 }
