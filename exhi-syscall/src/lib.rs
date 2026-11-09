@@ -238,7 +238,10 @@ mod tests {
         );
         assert_eq!(dispatch(request, &mut services), DispatchOutcome::Return(3));
         assert_eq!(services.console_read_calls, 1);
-        assert_eq!(services.last_console_read_range, Some((0x0000_0002_0000_0080, 32)));
+        assert_eq!(
+            services.last_console_read_range,
+            Some((0x0000_0002_0000_0080, 32))
+        );
     }
 
     #[test]
