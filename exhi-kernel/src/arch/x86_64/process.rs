@@ -709,6 +709,7 @@ fn install_runtime_stack_guard(storage: u64, bounds: (u64, u64)) -> bool {
 #[cfg(feature = "process-runtime")]
 unsafe extern "sysv64" {
     fn exhi_process_reaper_bootstrap() -> !;
+    fn exhi_process_reaper_enter(kernel_stack_top: u64) -> !;
 }
 
 #[cfg(feature = "process-runtime")]
@@ -721,6 +722,15 @@ exhi_process_reaper_bootstrap:
     # A same-CPL IRETQ consumes RIP/CS/RFLAGS only. Skip the synthetic RSP/SS
     # tail, align for the SysV call, then enter the reaper on its own stack.
     add rsp, 16
+    and rsp, -16
+    call exhi_process_reaper_main
+    ud2
+
+    .global exhi_process_reaper_enter
+    .type exhi_process_reaper_enter, @function
+exhi_process_reaper_enter:
+    cli
+    mov rsp, rdi
     and rsp, -16
     call exhi_process_reaper_main
     ud2
@@ -791,25 +801,17 @@ impl SyscallServices for InitServices {
         }
 
         // When the last user process exits, finish_current enters idle because
-        // the kernel reaper is Blocked. Wake it and transfer to its own stack.
-        #[cfg(feature = "process-shell-smoke-test")]
-        serial::COM1.write(b"P7 TRACE: last user task finished; waking reaper.\r\n");
+        // the kernel reaper is Blocked. Wake it; the dispatcher transfers directly
+        // to its dedicated kernel stack without an artificial same-CPL IRETQ.
         let reaper =
             unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) }.ok_or(SyscallError::Io)?;
         unsafe {
             (*scheduler).wake(reaper).map_err(|_| SyscallError::Io)?;
-        }
-        #[cfg(feature = "process-shell-smoke-test")]
-        serial::COM1.write(b"P7 TRACE: reaper is Ready.\r\n");
-        let selected = unsafe {
             (*scheduler)
                 .schedule_from_idle()
                 .map_err(|_| SyscallError::Io)?
-                .ok_or(SyscallError::Io)?
-        };
-        #[cfg(feature = "process-shell-smoke-test")]
-        serial::COM1.write(b"P7 TRACE: scheduler selected reaper.\r\n");
-        Ok(selected)
+                .ok_or(SyscallError::Io)
+        }
     }
 
     fn console_write(&mut self, user_address: u64, length: u64) -> Result<u64, SyscallError> {
@@ -948,11 +950,45 @@ fn select_process_context(id: TaskId) -> usize {
         {
             init_runtime_failure(b"P7.1: failed to activate the kernel reaper context.\r\n");
         }
-        #[cfg(feature = "process-shell-smoke-test")]
-        serial::COM1.write(b"P7 TRACE: reaper context frame prepared.\\r\\n");
     }
 
     frame
+}
+
+/// Transfers terminal kernel-reaper execution onto its own stack after all
+/// user processes have switched away from their private address spaces.
+#[cfg(feature = "process-runtime")]
+fn handoff_to_kernel_reaper() -> ! {
+    let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
+    let current_id = unsafe { (*scheduler).current().map(|task| task.id()) };
+    let reaper_id = unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) };
+    if current_id.is_none() || current_id != reaper_id {
+        init_runtime_failure(b"P7.1: direct reaper handoff selected the wrong scheduler task.\\r\\n");
+    }
+
+    let Some((_, stack_top)) = reaper_kernel_stack_bounds() else {
+        init_runtime_failure(b"P7.1: reaper stack bounds are invalid during handoff.\\r\\n");
+    };
+    if address_space::restore_kernel().is_err()
+        || user::clear_active_kernel_stack().is_err()
+        || !gdt::set_rsp0(stack_top)
+        || gdt::read_rsp0() != stack_top
+        || !syscall::update_current_task_context(
+            stack_top,
+            ptr::addr_of!(REAPER_FX_STATE) as usize,
+        )
+    {
+        init_runtime_failure(b"P7.1: could not prepare the direct kernel-reaper context.\\r\\n");
+    }
+
+    unsafe {
+        core::arch::asm!(
+            "fxrstor64 [{}]",
+            in(reg) ptr::addr_of!(REAPER_FX_STATE) as usize,
+            options(nostack, preserves_flags)
+        );
+        exhi_process_reaper_enter(stack_top);
+    }
 }
 
 /// Captures the stable syscall frame, saves the current process context and
@@ -1023,12 +1059,10 @@ extern "sysv64" fn exhi_init_syscall_dispatch(frame: *mut syscall::UserTaskSysca
             frame_address
         }
         DispatchOutcome::Switch(next) => {
-            let selected_frame = select_process_context(next);
-            #[cfg(feature = "process-shell-smoke-test")]
             if Some(next) == unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) } {
-                serial::COM1.write(b"P7 TRACE: dispatcher returning reaper frame.\\r\\n");
+                handoff_to_kernel_reaper();
             }
-            selected_frame
+            select_process_context(next)
         }
     }
 }
@@ -1502,6 +1536,9 @@ fn handoff_faulting_process_to_scheduler() -> ! {
             })
     };
 
+    if selected == reaper_id {
+        handoff_to_kernel_reaper();
+    }
     let frame = select_process_context(selected);
     let frame = unsafe { &*(frame as *const user::UserEntryFrame) };
     let fx_state = if selected == reaper_id {
