@@ -53,6 +53,34 @@ pub fn console_read(bytes: &mut [u8]) -> Result<usize, SyscallError> {
     Ok(count)
 }
 
+/// Reads bytes from a process-visible VFS file into a user-owned buffer.
+///
+/// Returns zero at EOF. The kernel checks the FileRead capability before
+/// validating pointers or looking up the path.
+#[inline]
+pub fn file_read(
+    path: &str,
+    offset: usize,
+    destination: &mut [u8],
+) -> Result<usize, SyscallError> {
+    let count = decode_return(raw_syscall(
+        SyscallNumber::FileRead as u64,
+        [
+            path.as_ptr() as u64,
+            path.len() as u64,
+            offset as u64,
+            destination.as_mut_ptr() as u64,
+            destination.len() as u64,
+            0,
+        ],
+    ))?;
+    let count = usize::try_from(count).map_err(|_| SyscallError::InvalidArgument)?;
+    if count > destination.len() {
+        return Err(SyscallError::Io);
+    }
+    Ok(count)
+}
+
 /// Terminates the current process. A correct kernel implementation does not
 /// return to the caller; spin forever if an exit request is unexpectedly
 /// returned so user code cannot continue after requesting termination.
@@ -124,5 +152,6 @@ mod tests {
         assert_eq!(SyscallNumber::Exit as u64, 2);
         assert_eq!(SyscallNumber::ConsoleWrite as u64, 3);
         assert_eq!(SyscallNumber::ConsoleRead as u64, 4);
+        assert_eq!(SyscallNumber::FileRead as u64, 5);
     }
 }
