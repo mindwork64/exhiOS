@@ -10,7 +10,10 @@ use core::arch::asm;
 use core::arch::global_asm;
 #[cfg(any(
     feature = "process-runtime",
-    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
 ))]
 use core::mem::size_of;
 use core::ptr;
@@ -25,28 +28,43 @@ const FX_STATE_SIZE: usize = 512;
 const DEFAULT_MXCSR: u32 = 0x1F80;
 #[cfg(any(
     feature = "process-runtime",
-    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
 ))]
 const USER_CANONICAL_LIMIT: u64 = 0x0000_8000_0000_0000;
 const RFLAGS_IF: u64 = 1 << 9;
 #[cfg(any(
     feature = "process-runtime",
-    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
 ))]
 const RFLAGS_RESERVED_ONE: u64 = 1 << 1;
 #[cfg(any(
     feature = "process-runtime",
-    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
 ))]
 const RFLAGS_IOPL: u64 = 3 << 12;
 #[cfg(any(
     feature = "process-runtime",
-    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
 ))]
 const RFLAGS_NT: u64 = 1 << 14;
 #[cfg(any(
     feature = "process-runtime",
-    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
 ))]
 const RFLAGS_VM: u64 = 1 << 17;
 
@@ -122,7 +140,10 @@ impl FxState {
 /// Stable register image consumed by the assembly IRETQ entry routine.
 #[cfg(any(
     feature = "process-runtime",
-    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
 ))]
 #[repr(C, align(16))]
 pub struct UserEntryFrame {
@@ -149,7 +170,10 @@ pub struct UserEntryFrame {
 }
 #[cfg(any(
     feature = "process-runtime",
-    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
 ))]
 const _: [(); 20 * size_of::<u64>()] = [(); size_of::<UserEntryFrame>()];
 
@@ -176,7 +200,10 @@ pub enum UserEntryError {
 
 #[cfg(any(
     feature = "process-runtime",
-    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
 ))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct UserException {
@@ -265,7 +292,10 @@ unsafe extern "sysv64" {
 /// Validates user mappings and installs the stack used on CPL3-to-CPL0 entry.
 #[cfg(any(
     feature = "process-runtime",
-    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
 ))]
 pub fn prepare_entry(
     address_space: &AddressSpace,
@@ -359,7 +389,10 @@ pub fn enter_user(frame: &UserEntryFrame, fx_state: &FxState) -> Result<(), User
 /// dereferencing it. The pointer must lie on the stack installed by prepare_entry.
 #[cfg(any(
     feature = "process-runtime",
-    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
 ))]
 pub fn capture_exception(
     vector: u64,
@@ -584,7 +617,10 @@ fn validate_kernel_range(start: u64, end: u64) -> Result<(), ()> {
 
 #[cfg(any(
     feature = "process-runtime",
-    all(feature = "ring3-smoke-test", not(feature = "user-task-lifecycle-smoke-test"))
+    all(
+        feature = "ring3-smoke-test",
+        not(feature = "user-task-lifecycle-smoke-test")
+    )
 ))]
 fn is_user_address(address: u64) -> bool {
     address != 0 && address < USER_CANONICAL_LIMIT

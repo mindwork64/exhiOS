@@ -245,7 +245,10 @@ pub fn initialize_cpu_local(kernel_stack_top: u64, fx_state: usize, dispatcher: 
 }
 
 /// Updates trusted entry state before returning to another scheduled task.
-#[cfg(any(feature = "process-runtime", feature = "user-task-lifecycle-smoke-test"))]
+#[cfg(any(
+    feature = "process-runtime",
+    feature = "user-task-lifecycle-smoke-test"
+))]
 pub fn update_current_task_context(kernel_stack_top: u64, fx_state: usize) -> bool {
     // This function is called from the syscall dispatcher after the entry stub
     // has executed SWAPGS, so the trusted per-CPU base is IA32_GS_BASE here.
@@ -286,7 +289,10 @@ fn boot_cpu_context_is_ready() -> bool {
 }
 
 /// True only while the syscall dispatcher is executing after SWAPGS.
-#[cfg(any(feature = "process-runtime", feature = "user-task-lifecycle-smoke-test"))]
+#[cfg(any(
+    feature = "process-runtime",
+    feature = "user-task-lifecycle-smoke-test"
+))]
 fn boot_cpu_context_is_active() -> bool {
     let local = ptr::addr_of!(BOOT_CPU_SYSCALL_LOCAL) as u64;
     unsafe {

@@ -22,9 +22,9 @@ use exhi_task::{
 
 use crate::memory;
 
-use super::address_space::{self, AddressSpace, AddressSpaceError, UserPageFlags};
 #[cfg(feature = "process-load-smoke-test")]
 use super::address_space::PageMapping;
+use super::address_space::{self, AddressSpace, AddressSpaceError, UserPageFlags};
 #[cfg(feature = "process-runtime")]
 use super::{gdt, serial, stack_guard, syscall, user};
 
