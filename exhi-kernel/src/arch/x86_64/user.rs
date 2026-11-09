@@ -216,7 +216,7 @@ pub enum UserEntryError {
             not(feature = "user-task-lifecycle-smoke-test")
         )
     ))]
-InvalidFxState,
+    InvalidFxState,
     #[cfg(any(
         feature = "process-runtime",
         all(
@@ -224,7 +224,7 @@ InvalidFxState,
             not(feature = "user-task-lifecycle-smoke-test")
         )
     ))]
-FxMappingRejected,
+    FxMappingRejected,
     #[cfg(any(
         feature = "process-runtime",
         all(
@@ -232,7 +232,7 @@ FxMappingRejected,
             not(feature = "user-task-lifecycle-smoke-test")
         )
     ))]
-EntryFrameMappingRejected,
+    EntryFrameMappingRejected,
     TssStackRejected,
     #[cfg(feature = "process-runtime")]
     InvalidExceptionFrame,
