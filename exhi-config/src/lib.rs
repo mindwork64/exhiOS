@@ -1,5 +1,8 @@
 #![no_std]
 
+#[cfg(test)]
+extern crate std;
+
 //! Bounded parser for the initial ExhiOS key=value configuration format.
 //!
 //! Lines are UTF-8, comments begin with '#', and the first '=' separates key
