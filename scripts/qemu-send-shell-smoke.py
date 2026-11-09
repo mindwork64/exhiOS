@@ -47,15 +47,31 @@ def read_until(client: socket.socket, buffer: bytearray, marker: bytes, timeout:
         buffer.extend(chunk)
 
 
-def issue(client: socket.socket, buffer: bytearray, command: bytes, expected: tuple[bytes, ...]) -> None:
-    client.sendall(command + b"\r")
+def issue_input(
+    client: socket.socket,
+    buffer: bytearray,
+    input_bytes: bytes,
+    expected: tuple[bytes, ...],
+) -> None:
+    client.sendall(input_bytes)
     received = bytearray()
     for marker in expected:
         received.extend(read_until(client, buffer, marker))
     received.extend(read_until(client, buffer, b"exhios> "))
     for marker in expected:
         if marker not in received:
-            raise AssertionError(f"command {command!r} did not produce {marker!r}; output={bytes(received)!r}")
+            raise AssertionError(
+                f"input {input_bytes!r} did not produce {marker!r}; output={bytes(received)!r}"
+            )
+
+
+def issue(
+    client: socket.socket,
+    buffer: bytearray,
+    command: bytes,
+    expected: tuple[bytes, ...],
+) -> None:
+    issue_input(client, buffer, command + b"\r", expected)
 
 
 def main() -> int:
@@ -71,10 +87,22 @@ def main() -> int:
                 client,
                 buffer,
                 b"help",
-                (b"commands: help version echo clear config exit\r\n",),
+                (b"commands: help hostname version echo clear config exit\r\n",),
             )
+            issue(client, buffer, b"hostname", (b"exhios\r\n",))
             issue(client, buffer, b"version", (b"ExhiOS userland 0.1\r\n",))
             issue(client, buffer, b"echo ci-pass", (b"ci-pass\r\n",))
+            issue_input(
+                client,
+                buffer,
+                b"echo ci-pasx\x7fs\r",
+                (b"ci-pass\r\n",),
+            )
+            issue(client, buffer, b"clear", (b"\x1B[2J\x1B[H",))
+            issue(client, buffer, b"missing", (b"unknown command: missing\r\n",))
+            client.sendall(b"partial\x03")
+            read_until(client, buffer, b"^C\r\n")
+            read_until(client, buffer, b"exhios> ")
             issue(
                 client,
                 buffer,

@@ -12,6 +12,61 @@ const INPUT_CHUNK: usize = 32;
 const CONFIG_TEXT: &str =
     "# ExhiOS system configuration\nhostname=exhios\nprompt=exhios>\nversion=0.1\n";
 
+#[derive(Clone, Copy)]
+struct ShellConfig<'a> {
+    hostname: &'a str,
+    prompt: &'a str,
+    version: &'a str,
+}
+
+const DEFAULT_CONFIG: ShellConfig<'static> = ShellConfig {
+    hostname: "exhios",
+    prompt: "exhios>",
+    version: "0.1",
+};
+
+fn load_shell_config(source: &str) -> Result<ShellConfig<'_>, ()> {
+    let mut config = DEFAULT_CONFIG;
+    let mut hostname_seen = false;
+    let mut prompt_seen = false;
+    let mut version_seen = false;
+
+    for entry in ConfigParser::new(source) {
+        let entry = entry.map_err(|_| ())?;
+        match entry.key {
+            "hostname" => {
+                if hostname_seen
+                    || entry.value.is_empty()
+                    || !entry.value.bytes().all(|byte| {
+                        byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'.'
+                    })
+                {
+                    return Err(());
+                }
+                config.hostname = entry.value;
+                hostname_seen = true;
+            }
+            "prompt" => {
+                if prompt_seen || entry.value.is_empty() {
+                    return Err(());
+                }
+                config.prompt = entry.value;
+                prompt_seen = true;
+            }
+            "version" => {
+                if version_seen || entry.value.is_empty() {
+                    return Err(());
+                }
+                config.version = entry.value;
+                version_seen = true;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(config)
+}
+
 #[no_mangle]
 pub extern "sysv64" fn _start() -> ! {
     if console_write(b"ExhiOS init: first Ring 3 process is running.\r\n").is_err() {
@@ -38,8 +93,17 @@ pub extern "sysv64" fn _start() -> ! {
 }
 
 fn run_shell() -> ! {
-    let _ = console_write(b"ExhiOS userland 0.1\r\nType 'help' for available commands.\r\n");
-    write_prompt();
+    let config = match load_shell_config(CONFIG_TEXT) {
+        Ok(config) => config,
+        Err(()) => {
+            let _ = console_write(b"ExhiOS init: invalid configuration; using defaults.\r\n");
+            DEFAULT_CONFIG
+        }
+    };
+    let _ = console_write(b"ExhiOS userland ");
+    let _ = console_write(config.version.as_bytes());
+    let _ = console_write(b"\r\nType 'help' for available commands.\r\n");
+    write_prompt(&config);
 
     let mut line = [0u8; LINE_CAPACITY];
     let mut line_length = 0usize;
@@ -74,13 +138,13 @@ fn run_shell() -> ! {
                 b'\r' | b'\n' => {
                     swallow_lf = byte == b'\r';
                     let _ = console_write(b"\r\n");
-                    let should_exit = execute_command(&line[..line_length]);
+                    let should_exit = execute_command(&line[..line_length], &config);
                     line_length = 0;
                     line.fill(0);
                     if should_exit {
                         exit();
                     }
-                    write_prompt();
+                    write_prompt(&config);
                 }
                 0x08 | 0x7F => {
                     if line_length != 0 {
@@ -93,7 +157,7 @@ fn run_shell() -> ! {
                     line_length = 0;
                     line.fill(0);
                     let _ = console_write(b"^C\r\n");
-                    write_prompt();
+                    write_prompt(&config);
                 }
                 0x04 => {
                     if line_length == 0 {
@@ -120,11 +184,12 @@ fn run_shell() -> ! {
     }
 }
 
-fn write_prompt() {
-    let _ = console_write(b"exhios> ");
+fn write_prompt(config: &ShellConfig<'_>) {
+    let _ = console_write(config.prompt.as_bytes());
+    let _ = console_write(b" ");
 }
 
-fn execute_command(line: &[u8]) -> bool {
+fn execute_command(line: &[u8], config: &ShellConfig<'_>) -> bool {
     let Ok(line) = core::str::from_utf8(line) else {
         let _ = console_write(b"error: command is not valid UTF-8.\r\n");
         return false;
@@ -144,10 +209,16 @@ fn execute_command(line: &[u8]) -> bool {
 
     match command {
         "help" => {
-            let _ = console_write(b"commands: help version echo clear config exit\r\n");
+            let _ = console_write(b"commands: help hostname version echo clear config exit\r\n");
+        }
+        "hostname" => {
+            let _ = console_write(config.hostname.as_bytes());
+            let _ = console_write(b"\r\n");
         }
         "version" => {
-            let _ = console_write(b"ExhiOS userland 0.1\r\n");
+            let _ = console_write(b"ExhiOS userland ");
+            let _ = console_write(config.version.as_bytes());
+            let _ = console_write(b"\r\n");
         }
         "echo" => {
             let _ = console_write(arguments.as_bytes());
@@ -156,7 +227,7 @@ fn execute_command(line: &[u8]) -> bool {
         "clear" => {
             let _ = console_write(b"\x1B[2J\x1B[H");
         }
-        "config" => print_config(),
+        "config" => print_config(config),
         "exit" => {
             let _ = console_write(b"ExhiOS init: exiting.\r\n");
             return true;
@@ -170,21 +241,14 @@ fn execute_command(line: &[u8]) -> bool {
     false
 }
 
-fn print_config() {
-    for entry in ConfigParser::new(CONFIG_TEXT) {
-        match entry {
-            Ok(entry) => {
-                let _ = console_write(entry.key.as_bytes());
-                let _ = console_write(b"=");
-                let _ = console_write(entry.value.as_bytes());
-                let _ = console_write(b"\r\n");
-            }
-            Err(_) => {
-                let _ = console_write(b"config: invalid built-in configuration.\r\n");
-                return;
-            }
-        }
-    }
+fn print_config(config: &ShellConfig<'_>) {
+    let _ = console_write(b"hostname=");
+    let _ = console_write(config.hostname.as_bytes());
+    let _ = console_write(b"\r\nprompt=");
+    let _ = console_write(config.prompt.as_bytes());
+    let _ = console_write(b"\r\nversion=");
+    let _ = console_write(config.version.as_bytes());
+    let _ = console_write(b"\r\n");
 }
 
 fn trim_ascii(value: &str) -> &str {
