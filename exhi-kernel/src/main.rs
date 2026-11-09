@@ -1123,7 +1123,10 @@ pub extern "sysv64" fn exhi_exception_handler(
             exception_stack_pointer,
         );
 
-        #[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
+        #[cfg(all(
+            not(feature = "user-task-lifecycle-smoke-test"),
+            any(feature = "process-runtime", feature = "ring3-smoke-test")
+        ))]
         {
             let user_exception = match arch::x86_64::user::capture_exception(
                 vector,
@@ -1167,6 +1170,16 @@ pub extern "sysv64" fn exhi_exception_handler(
                 serial::COM1.write(b"No user-task fault termination policy is installed.\r\n");
                 halt_forever();
             }
+        }
+
+        #[cfg(not(any(
+            feature = "process-runtime",
+            feature = "ring3-smoke-test",
+            feature = "user-task-lifecycle-smoke-test"
+        )))]
+        {
+            serial::COM1.write(b"CPL3 exception received in a build without user-mode support.\\r\\n");
+            halt_forever();
         }
     }
 

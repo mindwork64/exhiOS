@@ -1,6 +1,7 @@
 use core::arch::{asm, global_asm};
 use core::mem::size_of;
 use core::ptr;
+#[cfg(any(feature = "process-runtime", feature = "ring3-smoke-test"))]
 use core::sync::atomic::{compiler_fence, Ordering};
 
 pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
