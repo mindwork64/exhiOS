@@ -798,12 +798,75 @@ pub fn run_init(image: &[u8]) -> ! {
     }
 }
 
+
+
+/// Terminates the single active init process after a validated Ring 3 exception.
+/// The active address space is switched back to the kernel root before its
+/// user mappings, data frames and private page tables are reclaimed.
+#[cfg(feature = "process-runtime")]
+pub fn terminate_init_after_user_exception(vector: u64, exception: user::UserException) -> ! {
+    serial::COM1.write(b"ExhiOS: terminating init after user-mode exception; RIP=0x");
+    serial::COM1.write_hex(exception.instruction_pointer);
+    serial::COM1.write(b" user RSP=0x");
+    serial::COM1.write_hex(exception.user_stack_pointer);
+    serial::COM1.write(b".\\r\\n");
+
+    let process_slot = ptr::addr_of_mut!(INIT_PROCESS);
+    let cleanup_ok = unsafe {
+        match (*process_slot).as_mut() {
+            Some(process) => process.destroy().is_ok(),
+            None => false,
+        }
+    };
+    if cleanup_ok {
+        unsafe {
+            ptr::write(process_slot, None);
+        }
+        serial::COM1.write(
+            b"ExhiOS: init address space, user stack and all owned frames reclaimed.\\r\\n",
+        );
+    } else {
+        serial::COM1.write(b"ExhiOS: init resource reclamation failed; process retained for diagnosis.\\r\\n");
+    }
+
+    #[cfg(any(
+        feature = "process-run-smoke-test",
+        feature = "process-shell-smoke-test",
+        feature = "process-fault-smoke-test"
+    ))]
+    {
+        let expected_fault = cfg!(feature = "process-fault-smoke-test") && vector == 6 && cleanup_ok;
+        if expected_fault {
+            serial::COM1.write(
+                b"P7.1: Ring 3 invalid-opcode fault captured; init resources reclaimed successfully.\\r\\n",
+            );
+        } else {
+            serial::COM1.write(b"P7.1: unexpected user fault or failed process cleanup.\\r\\n");
+        }
+        unsafe {
+            core::arch::asm!(
+                "out dx, eax",
+                in("dx") crate::QEMU_DEBUG_EXIT_PORT,
+                in("eax") if expected_fault { crate::QEMU_DEBUG_EXIT_VALUE } else { crate::QEMU_DEBUG_EXIT_VALUE + 1 },
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+    }
+
+    loop {
+        unsafe {
+            core::arch::asm!("cli", "hlt", options(nomem, nostack));
+        }
+    }
+}
+
 #[cfg(feature = "process-runtime")]
 fn init_runtime_failure(message: &[u8]) -> ! {
     serial::COM1.write(message);
     #[cfg(any(
         feature = "process-run-smoke-test",
-        feature = "process-shell-smoke-test"
+        feature = "process-shell-smoke-test",
+        feature = "process-fault-smoke-test"
     ))]
     unsafe {
         core::arch::asm!(

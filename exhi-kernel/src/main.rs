@@ -613,6 +613,7 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                     feature = "process-load-smoke-test",
                     feature = "process-run-smoke-test",
                     feature = "process-shell-smoke-test",
+                    feature = "process-fault-smoke-test",
                     feature = "process-runtime",
                     feature = "context-switch-smoke-test",
                     feature = "task-accounting-smoke-test",
@@ -692,11 +693,18 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
         arch::x86_64::process::run_init(EMBEDDED_INIT_ELF);
     }
 
+    #[cfg(feature = "process-fault-smoke-test")]
+    {
+        serial::COM1.write(b"P7.1: starting Ring 3 user-fault cleanup smoke test.\r\n");
+        arch::x86_64::process::run_init(EMBEDDED_INIT_ELF);
+    }
+
     #[cfg(all(
         feature = "process-runtime",
         not(any(
             feature = "process-run-smoke-test",
             feature = "process-shell-smoke-test",
+            feature = "process-fault-smoke-test",
             feature = "process-load-smoke-test"
         ))
     ))]
@@ -1143,8 +1151,14 @@ pub extern "sysv64" fn exhi_exception_handler(
                 exception_stack_pointer,
             );
 
-            serial::COM1.write(b"No user-task fault termination policy is installed.\r\n");
-            halt_forever();
+            #[cfg(feature = "process-runtime")]
+            arch::x86_64::process::terminate_init_after_user_exception(vector, user_exception);
+
+            #[cfg(not(feature = "process-runtime"))]
+            {
+                serial::COM1.write(b"No user-task fault termination policy is installed.\r\n");
+                halt_forever();
+            }
         }
     }
 

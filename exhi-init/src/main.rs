@@ -74,6 +74,9 @@ pub extern "sysv64" fn _start() -> ! {
         exit();
     }
 
+    #[cfg(feature = "user-fault-smoke-test")]
+    trigger_user_fault();
+
     #[cfg(feature = "qemu-smoke-test")]
     {
         let mut input = [0u8; 1];
@@ -89,8 +92,16 @@ pub extern "sysv64" fn _start() -> ! {
         exit();
     }
 
-    #[cfg(not(feature = "qemu-smoke-test"))]
+    #[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
     run_shell()
+}
+
+#[cfg(feature = "user-fault-smoke-test")]
+fn trigger_user_fault() -> ! {
+    let _ = console_write(b"ExhiOS init: triggering user-mode invalid opcode.\r\n");
+    unsafe {
+        core::arch::asm!("ud2", options(noreturn));
+    }
 }
 
 fn run_shell() -> ! {
