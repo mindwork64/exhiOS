@@ -577,6 +577,8 @@ static mut REAPER_FX_STATE: user::FxState = user::FxState::zeroed();
 #[cfg(feature = "process-runtime")]
 static mut PROCESS_OBJECTS: [Option<LoadedProcess>; MAX_PROCESS_RECORDS] = [None, None];
 #[cfg(feature = "process-runtime")]
+static mut PROCESS_STACK_GUARDS: [bool; MAX_PROCESS_RECORDS] = [false; MAX_PROCESS_RECORDS];
+#[cfg(feature = "process-runtime")]
 static mut USERLAND_FILESYSTEM: Option<RamFs<USERLAND_FS_NODE_COUNT, USERLAND_FS_FILE_CAPACITY>> =
     None;
 #[cfg(feature = "process-runtime")]
@@ -663,37 +665,35 @@ fn process_fx_state_pointer(slot: usize) -> *mut user::FxState {
 
 #[cfg(feature = "process-runtime")]
 fn register_process_record(
+    slot: usize,
     task_id: TaskId,
     process: *mut Option<LoadedProcess>,
     kernel_stack_bottom: u64,
     kernel_stack_top: u64,
     fx_state: usize,
 ) -> bool {
-    if process.is_null()
+    if slot >= MAX_PROCESS_RECORDS
+        || process.is_null()
         || kernel_stack_bottom == 0
         || kernel_stack_top <= kernel_stack_bottom
         || fx_state == 0
     {
         return false;
     }
+
     let registry = ptr::addr_of_mut!(PROCESS_REGISTRY);
-    for slot in 0..MAX_PROCESS_RECORDS {
-        let entry = unsafe { &mut *(*registry).as_mut_ptr().add(slot) };
-        if entry.is_none() {
-            *entry = Some(ProcessRuntimeRecord {
-                task_id,
-                process,
-                kernel_stack_bottom,
-                kernel_stack_top,
-                fx_state,
-            });
-            return true;
-        }
-        if entry.is_some_and(|record| record.task_id == task_id) {
-            return false;
-        }
+    let entry = unsafe { &mut *(*registry).as_mut_ptr().add(slot) };
+    if entry.is_some() {
+        return false;
     }
-    false
+    *entry = Some(ProcessRuntimeRecord {
+        task_id,
+        process,
+        kernel_stack_bottom,
+        kernel_stack_top,
+        fx_state,
+    });
+    true
 }
 
 #[cfg(feature = "process-runtime")]
@@ -742,6 +742,31 @@ fn install_runtime_stack_guard(storage: u64, bounds: (u64, u64)) -> bool {
         guard_page: storage,
     })
     .is_ok()
+}
+
+#[cfg(feature = "process-runtime")]
+fn ensure_process_stack_guard(slot: usize, bounds: (u64, u64)) -> bool {
+    if slot >= MAX_PROCESS_RECORDS {
+        return false;
+    }
+
+    let stacks = ptr::addr_of_mut!(PROCESS_KERNEL_STACKS);
+    let storage = unsafe { (*stacks).as_mut_ptr().add(slot).cast::<u8>() as u64 };
+    if runtime_stack_bounds(storage) != Some(bounds) {
+        return false;
+    }
+
+    let guards = ptr::addr_of_mut!(PROCESS_STACK_GUARDS);
+    if unsafe { ptr::read_volatile((*guards).as_ptr().add(slot)) } {
+        return true;
+    }
+    if !install_runtime_stack_guard(storage, bounds) {
+        return false;
+    }
+    unsafe {
+        ptr::write_volatile((*guards).as_mut_ptr().add(slot), true);
+    }
+    true
 }
 
 #[cfg(feature = "process-runtime")]
@@ -923,6 +948,10 @@ impl SyscallServices for InitServices {
         Ok(read as u64)
     }
 
+    fn spawn_worker(&mut self) -> Result<u64, SyscallError> {
+        spawn_worker_process(self.scheduler)
+    }
+
     fn file_read(
         &mut self,
         path_address: u64,
@@ -996,6 +1025,127 @@ impl SyscallServices for InitServices {
         }
         Ok(read as u64)
     }
+}
+
+#[cfg(feature = "process-runtime")]
+fn spawn_worker_process(scheduler: *mut Scheduler<3>) -> Result<u64, SyscallError> {
+    if scheduler.is_null() {
+        return Err(SyscallError::Io);
+    }
+
+    let current_id = unsafe { (*scheduler).current().map(|task| task.id()) }
+        .ok_or(SyscallError::Io)?;
+    if unsafe { (*scheduler).current_capabilities() }
+        .authorize(Capability::TaskSpawn)
+        .is_err()
+        || process_record_for_task(current_id).is_none()
+    {
+        return Err(SyscallError::AccessDenied);
+    }
+
+    let registry = ptr::addr_of!(PROCESS_REGISTRY);
+    let mut free_slot = None;
+    for slot in 0..MAX_PROCESS_RECORDS {
+        let record = unsafe { ptr::read_volatile((*registry).as_ptr().add(slot)) };
+        let process_is_empty = unsafe { (*process_object_pointer(slot)).is_none() };
+        if record.is_none() && process_is_empty {
+            free_slot = Some(slot);
+            break;
+        }
+    }
+    let slot = free_slot.ok_or(SyscallError::Io)?;
+    let process_slot = process_object_pointer(slot);
+
+    let setup = (|| {
+        address_space::restore_kernel().map_err(|_| SyscallError::Io)?;
+        user::clear_active_kernel_stack().map_err(|_| SyscallError::Io)?;
+
+        let process =
+            LoadedProcess::load(crate::EMBEDDED_WORKER_ELF).map_err(|_| SyscallError::Io)?;
+        unsafe {
+            ptr::write(process_slot, Some(process));
+        }
+
+        let bounds = process_kernel_stack_bounds(slot).ok_or(SyscallError::Io)?;
+        if !ensure_process_stack_guard(slot, bounds) {
+            return Err(SyscallError::Io);
+        }
+
+        let fx_state = process_fx_state_pointer(slot);
+        unsafe { (*fx_state).initialize() }.map_err(|_| SyscallError::Io)?;
+
+        let process = unsafe { (*process_slot).as_ref() }.ok_or(SyscallError::Io)?;
+        process.activate().map_err(|_| SyscallError::Io)?;
+        let space = process.address_space().map_err(|_| SyscallError::Io)?;
+        let frame = user::prepare_entry(
+            space,
+            bounds.0,
+            bounds.1,
+            process.entry_point(),
+            process.user_stack_pointer(),
+        )
+        .map_err(|_| SyscallError::Io)?;
+
+        let frame_address = bounds
+            .1
+            .checked_sub(size_of::<user::UserEntryFrame>() as u64)
+            .ok_or(SyscallError::Io)?;
+        if frame_address & 0xF != 0 {
+            return Err(SyscallError::Io);
+        }
+        unsafe {
+            ptr::write(frame_address as *mut user::UserEntryFrame, frame);
+        }
+
+        let capabilities = CapabilitySet::EMPTY
+            .with(Capability::TaskYield)
+            .with(Capability::TaskExit)
+            .with(Capability::ConsoleWrite);
+        let task_id = unsafe {
+            (*scheduler)
+                .spawn_user(
+                    "worker",
+                    TaskContext::new(frame_address as usize),
+                    UserTaskMetadata::new_with_capabilities(
+                        process.root_address().map_err(|_| SyscallError::Io)?,
+                        process.user_stack_pointer(),
+                        bounds.1,
+                        fx_state as usize,
+                        capabilities,
+                    ),
+                )
+                .map_err(|_| SyscallError::Io)?
+        };
+        if !register_process_record(
+            slot,
+            task_id,
+            process_slot,
+            bounds.0,
+            bounds.1,
+            fx_state as usize,
+        ) {
+            init_runtime_failure(b"P7.1: could not register spawned worker process.\r\n");
+        }
+        Ok(task_id)
+    })();
+
+    if setup.is_err() {
+        let destroyed = unsafe {
+            match (*process_slot).as_mut() {
+                Some(process) => process.destroy().is_ok(),
+                None => true,
+            }
+        };
+        if !destroyed {
+            init_runtime_failure(b"P7.1: failed to roll back an incomplete worker spawn.\r\n");
+        }
+        unsafe {
+            ptr::write(process_slot, None);
+        }
+    }
+
+    let _ = select_process_context(current_id);
+    setup.map(|task_id| task_id.get())
 }
 
 #[cfg(feature = "process-runtime")]
@@ -1263,8 +1413,7 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
         let Some((stack_bottom, stack_top)) = process_kernel_stack_bounds(slot) else {
             init_runtime_failure(b"P7.1: process kernel stack bounds are invalid.\r\n");
         };
-        let stack_storage = stack_bottom - PAGE_SIZE;
-        if !install_runtime_stack_guard(stack_storage, (stack_bottom, stack_top)) {
+        if !ensure_process_stack_guard(slot, (stack_bottom, stack_top)) {
             init_runtime_failure(b"P7.1: could not install a process kernel-stack guard.\r\n");
         }
 
@@ -1313,7 +1462,8 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
         if slot == 0 {
             capabilities = capabilities
                 .with(Capability::ConsoleRead)
-                .with(Capability::FileRead);
+                .with(Capability::FileRead)
+                .with(Capability::TaskSpawn);
         }
         let task_id = unsafe {
             (*scheduler)
@@ -1337,6 +1487,7 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
                 })
         };
         if !register_process_record(
+            slot,
             task_id,
             process_slot,
             stack_bottom,
@@ -1545,15 +1696,25 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
     }
 
     #[cfg(feature = "process-shell-smoke-test")]
-    unsafe {
-        serial::COM1.write(b"P7.3: interactive serial shell smoke test passed.\r\n");
-        serial::COM1.write(b"ExhiOS: kernel reaper reclaimed init after shell exit.\r\n");
-        core::arch::asm!(
-            "out dx, eax",
-            in("dx") crate::QEMU_DEBUG_EXIT_PORT,
-            in("eax") if cleanup_ok && task_reaped { crate::QEMU_DEBUG_EXIT_VALUE } else { crate::QEMU_DEBUG_EXIT_VALUE + 1 },
-            options(nomem, nostack, preserves_flags)
-        );
+    {
+        let registry_empty = unsafe { (*registry).iter().all(Option::is_none) };
+        let success = cleanup_ok && task_reaped && reaped_count == 2 && registry_empty;
+        if success {
+            serial::COM1.write(
+                b"P7.1: shell-spawned worker and init were both reaped.\r\n",
+            );
+            serial::COM1.write(b"P7.3: interactive serial shell smoke test passed.\r\n");
+        } else {
+            serial::COM1.write(b"P7.1: shell-spawned worker cleanup verification failed.\r\n");
+        }
+        unsafe {
+            core::arch::asm!(
+                "out dx, eax",
+                in("dx") crate::QEMU_DEBUG_EXIT_PORT,
+                in("eax") if success { crate::QEMU_DEBUG_EXIT_VALUE } else { crate::QEMU_DEBUG_EXIT_VALUE + 1 },
+                options(nomem, nostack, preserves_flags)
+            );
+        }
     }
 
     #[cfg(feature = "process-multi-smoke-test")]

@@ -1461,6 +1461,11 @@ impl SyscallServices for UserTaskSyscallServices {
         Err(SyscallError::AccessDenied)
     }
 
+    fn spawn_worker(&mut self) -> Result<u64, SyscallError> {
+        // P5.6 fixtures do not own executable images or process-manager state.
+        Err(SyscallError::AccessDenied)
+    }
+
     fn file_read(
         &mut self,
         _path_address: u64,

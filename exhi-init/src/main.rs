@@ -7,7 +7,7 @@ use core::panic::PanicInfo;
 #[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 use exhi_config::ConfigParser;
 #[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
-use libexhi::file_read;
+use libexhi::{file_read, spawn_worker};
 #[cfg(not(feature = "user-fault-smoke-test"))]
 use libexhi::{console_read, yield_now};
 use libexhi::{console_write, exit};
@@ -242,7 +242,7 @@ fn execute_command(line: &[u8], config: &ShellConfig<'_>) -> bool {
 
     match command {
         "help" => {
-            let _ = console_write(b"commands: help hostname version echo clear config exit\r\n");
+            let _ = console_write(b"commands: help hostname version echo clear config spawn exit\r\n");
         }
         "hostname" => {
             let _ = console_write(config.hostname.as_bytes());
@@ -261,6 +261,14 @@ fn execute_command(line: &[u8], config: &ShellConfig<'_>) -> bool {
             let _ = console_write(b"\x1B[2J\x1B[H");
         }
         "config" => print_config(config),
+        "spawn" => match spawn_worker() {
+            Ok(_) => {
+                let _ = console_write(b"worker process started.\r\n");
+            }
+            Err(_) => {
+                let _ = console_write(b"worker process could not be started.\r\n");
+            }
+        },
         "exit" => {
             let _ = console_write(b"ExhiOS init: exiting.\r\n");
             return true;

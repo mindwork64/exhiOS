@@ -29,8 +29,8 @@ const EMBEDDED_INIT_ELF: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../target/x86_64-unknown-none/debug/exhi-init"
 ));
-#[cfg(feature = "process-multi-smoke-test")]
-const EMBEDDED_WORKER_ELF: &[u8] = include_bytes!(concat!(
+#[cfg(feature = "process-runtime")]
+pub(crate) const EMBEDDED_WORKER_ELF: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../target/x86_64-unknown-none/debug/exhi-worker"
 ));

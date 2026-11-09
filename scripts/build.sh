@@ -257,7 +257,7 @@ if [[ "${EXHIOS_PROCESS_FAULT_TEST:-0}" == "1" ]]; then
 elif [[ "${EXHIOS_PROCESS_RUN_TEST:-0}" == "1" || "${EXHIOS_PROCESS_MULTI_TEST:-0}" == "1" ]]; then
     INIT_FEATURE_ARGS+=(--features qemu-smoke-test)
 fi
-cargo build -p exhi-init --target x86_64-unknown-none "${INIT_FEATURE_ARGS[@]}"
+cargo build -p exhi-init --bin exhi-init --bin exhi-worker --target x86_64-unknown-none "${INIT_FEATURE_ARGS[@]}"
 
 INIT_ELF="$ROOT_DIR/target/x86_64-unknown-none/debug/exhi-init"
 echo
