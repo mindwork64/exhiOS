@@ -26,6 +26,7 @@ PAGING_ROLLBACK_TEST="${EXHIOS_PAGING_ROLLBACK_TEST:-0}"
 VFS_TEST="${EXHIOS_VFS_TEST:-0}"
 PROCESS_LOAD_TEST="${EXHIOS_PROCESS_LOAD_TEST:-0}"
 PROCESS_RUN_TEST="${EXHIOS_PROCESS_RUN_TEST:-0}"
+PROCESS_MULTI_TEST="${EXHIOS_PROCESS_MULTI_TEST:-0}"
 PROCESS_SHELL_TEST="${EXHIOS_PROCESS_SHELL_TEST:-0}"
 PROCESS_FAULT_TEST="${EXHIOS_PROCESS_FAULT_TEST:-0}"
 SHELL_SOCKET="$ROOT_DIR/target/exhios-shell-qemu.sock"
@@ -62,6 +63,14 @@ if [[ "$PROCESS_RUN_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
 fi
 if [[ "$PROCESS_RUN_TEST" == "1" && "$PROCESS_LOAD_TEST" == "1" ]]; then
     echo "EXHIOS_PROCESS_RUN_TEST and EXHIOS_PROCESS_LOAD_TEST are mutually exclusive." >&2
+    exit 1
+fi
+if [[ "$PROCESS_MULTI_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
+    echo "EXHIOS_PROCESS_MULTI_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2
+    exit 1
+fi
+if [[ "$PROCESS_MULTI_TEST" == "1" && ( "$PROCESS_RUN_TEST" == "1" || "$PROCESS_LOAD_TEST" == "1" || "$PROCESS_SHELL_TEST" == "1" || "$PROCESS_FAULT_TEST" == "1" ) ]]; then
+    echo "EXHIOS_PROCESS_MULTI_TEST cannot be combined with other process smoke modes." >&2
     exit 1
 fi
 if [[ "$PROCESS_LOAD_TEST" == "1" && "$QEMU_EXIT_TEST" != "1" ]]; then
@@ -304,6 +313,9 @@ if [[ "$PROCESS_FAULT_TEST" == "1" ]]; then
 elif [[ "$PROCESS_SHELL_TEST" == "1" ]]; then
     echo "Starting ExhiOS interactive Ring 3 serial shell smoke test."
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
+elif [[ "$PROCESS_MULTI_TEST" == "1" ]]; then
+    echo "Starting ExhiOS production two-process Ring 3 lifecycle smoke test."
+    QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
 elif [[ "$PROCESS_RUN_TEST" == "1" ]]; then
     echo "Starting ExhiOS first Ring 3 init process execution smoke test."
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
@@ -405,7 +417,7 @@ elif [[ "$KEYBOARD_TEST" == "1" ]]; then
         echo "ERROR: QMP keyboard input injection failed." >&2
         exit 1
     fi
-elif [[ "$TIMER_PREEMPTION_TEST" == "1" || "$PREEMPTIVE_TASK_EXIT_TEST" == "1" || "$IDLE_WAKEUP_TEST" == "1" || "$RING3_TEST" == "1" || "$RING3_SUPERVISOR_FAULT_TEST" == "1" || "$RING3_SYSCALL_TEST" == "1" || "$USER_POINTER_TEST" == "1" || "$USER_COPY_TEST" == "1" || "$USER_TASK_LIFECYCLE_TEST" == "1" || "$PROCESS_LOAD_TEST" == "1" || "$PROCESS_RUN_TEST" == "1" || "$PROCESS_FAULT_TEST" == "1" ]]; then
+elif [[ "$TIMER_PREEMPTION_TEST" == "1" || "$PREEMPTIVE_TASK_EXIT_TEST" == "1" || "$IDLE_WAKEUP_TEST" == "1" || "$RING3_TEST" == "1" || "$RING3_SUPERVISOR_FAULT_TEST" == "1" || "$RING3_SYSCALL_TEST" == "1" || "$USER_POINTER_TEST" == "1" || "$USER_COPY_TEST" == "1" || "$USER_TASK_LIFECYCLE_TEST" == "1" || "$PROCESS_LOAD_TEST" == "1" || "$PROCESS_RUN_TEST" == "1" || "$PROCESS_MULTI_TEST" == "1" || "$PROCESS_FAULT_TEST" == "1" ]]; then
     timeout --foreground 15s qemu-system-x86_64 "${QEMU_ARGS[@]}"
     QEMU_STATUS=$?
 else

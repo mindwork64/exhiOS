@@ -254,7 +254,7 @@ cargo test -p libexhi
 INIT_FEATURE_ARGS=()
 if [[ "${EXHIOS_PROCESS_FAULT_TEST:-0}" == "1" ]]; then
     INIT_FEATURE_ARGS+=(--features user-fault-smoke-test)
-elif [[ "${EXHIOS_PROCESS_RUN_TEST:-0}" == "1" ]]; then
+elif [[ "${EXHIOS_PROCESS_RUN_TEST:-0}" == "1" || "${EXHIOS_PROCESS_MULTI_TEST:-0}" == "1" ]]; then
     INIT_FEATURE_ARGS+=(--features qemu-smoke-test)
 fi
 cargo build -p exhi-init --target x86_64-unknown-none "${INIT_FEATURE_ARGS[@]}"
@@ -374,6 +374,13 @@ elif [[ "${EXHIOS_PROCESS_SHELL_TEST:-0}" == "1" ]]; then
     fi
     KERNEL_FEATURES+=(process-shell-smoke-test)
     echo "Building the kernel with the interactive Ring 3 serial shell smoke test."
+elif [[ "${EXHIOS_PROCESS_MULTI_TEST:-0}" == "1" ]]; then
+    if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]]; then
+        echo "EXHIOS_PROCESS_MULTI_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2
+        exit 1
+    fi
+    KERNEL_FEATURES+=(process-multi-smoke-test)
+    echo "Building the kernel with two production Ring 3 processes."
 elif [[ "${EXHIOS_PROCESS_RUN_TEST:-0}" == "1" ]]; then
     if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]]; then
         echo "EXHIOS_PROCESS_RUN_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2
