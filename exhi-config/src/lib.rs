@@ -150,7 +150,6 @@ const fn is_key_byte(byte: u8) -> bool {
 mod tests {
     use super::*;
     use std::format;
-    use std::string::String;
 
     #[test]
     fn parses_comments_blank_lines_whitespace_and_crlf() {
@@ -246,7 +245,8 @@ mod tests {
         );
 
         let key = "k".repeat(MAX_KEY_BYTES + 1);
-        let mut parser = ConfigParser::new(&format!("{key}=v\n"));
+        let key_line = format!("{key}=v\n");
+        let mut parser = ConfigParser::new(&key_line);
         assert_eq!(
             parser.next(),
             Some(Err(ConfigError {
@@ -256,7 +256,8 @@ mod tests {
         );
 
         let value = "v".repeat(MAX_VALUE_BYTES + 1);
-        let mut parser = ConfigParser::new(&format!("k={value}\n"));
+        let value_line = format!("k={value}\n");
+        let mut parser = ConfigParser::new(&value_line);
         assert_eq!(
             parser.next(),
             Some(Err(ConfigError {
