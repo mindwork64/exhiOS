@@ -611,6 +611,9 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                     feature = "paging-rollback-smoke-test",
                     feature = "vfs-smoke-test",
                     feature = "process-load-smoke-test",
+                    feature = "process-run-smoke-test",
+                    feature = "process-shell-smoke-test",
+                    feature = "process-runtime",
                     feature = "context-switch-smoke-test",
                     feature = "task-accounting-smoke-test",
                     feature = "timer-preemption-smoke-test"
