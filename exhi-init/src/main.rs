@@ -4,14 +4,19 @@
 use core::hint::spin_loop;
 use core::panic::PanicInfo;
 
+#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 use exhi_config::ConfigParser;
 use libexhi::{console_read, console_write, exit, yield_now};
 
+#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 const LINE_CAPACITY: usize = 128;
+#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 const INPUT_CHUNK: usize = 32;
+#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 const CONFIG_TEXT: &str =
     "# ExhiOS system configuration\nhostname=exhios\nprompt=exhios>\nversion=0.1\n";
 
+#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 #[derive(Clone, Copy)]
 struct ShellConfig<'a> {
     hostname: &'a str,
@@ -19,12 +24,14 @@ struct ShellConfig<'a> {
     version: &'a str,
 }
 
+#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 const DEFAULT_CONFIG: ShellConfig<'static> = ShellConfig {
     hostname: "exhios",
     prompt: "exhios>",
     version: "0.1",
 };
 
+#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 fn load_shell_config(source: &str) -> Result<ShellConfig<'_>, ()> {
     let mut config = DEFAULT_CONFIG;
     let mut hostname_seen = false;
@@ -104,6 +111,7 @@ fn trigger_user_fault() -> ! {
     }
 }
 
+#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 fn run_shell() -> ! {
     let config = match load_shell_config(CONFIG_TEXT) {
         Ok(config) => config,
@@ -196,11 +204,13 @@ fn run_shell() -> ! {
     }
 }
 
+#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 fn write_prompt(config: &ShellConfig<'_>) {
     let _ = console_write(config.prompt.as_bytes());
     let _ = console_write(b" ");
 }
 
+#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 fn execute_command(line: &[u8], config: &ShellConfig<'_>) -> bool {
     let Ok(line) = core::str::from_utf8(line) else {
         let _ = console_write(b"error: command is not valid UTF-8.\r\n");
@@ -253,6 +263,7 @@ fn execute_command(line: &[u8], config: &ShellConfig<'_>) -> bool {
     false
 }
 
+#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 fn print_config(config: &ShellConfig<'_>) {
     let _ = console_write(b"hostname=");
     let _ = console_write(config.hostname.as_bytes());
@@ -263,6 +274,7 @@ fn print_config(config: &ShellConfig<'_>) {
     let _ = console_write(b"\r\n");
 }
 
+#[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]
 fn trim_ascii(value: &str) -> &str {
     let bytes = value.as_bytes();
     let mut start = 0usize;
