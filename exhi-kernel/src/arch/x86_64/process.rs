@@ -510,7 +510,6 @@ fn validate_loaded_process(
     Ok(())
 }
 
-
 #[cfg(feature = "process-run-smoke-test")]
 #[repr(C, align(4096))]
 struct InitKernelStack([u8; INIT_KERNEL_STACK_BYTES]);
