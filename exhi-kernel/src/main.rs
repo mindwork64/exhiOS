@@ -602,6 +602,8 @@ pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
                     feature = "timer-smoke-test",
                     feature = "keyboard-smoke-test",
                     feature = "driver-registry-smoke-test",
+                    feature = "paging-rollback-smoke-test",
+                    feature = "vfs-smoke-test",
                     feature = "context-switch-smoke-test",
                     feature = "task-accounting-smoke-test",
                     feature = "timer-preemption-smoke-test"
