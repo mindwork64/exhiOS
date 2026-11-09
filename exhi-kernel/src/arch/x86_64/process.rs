@@ -561,6 +561,23 @@ static mut PROCESS_SCHEDULER: Scheduler<3> = Scheduler::new();
 #[cfg(feature = "process-runtime")]
 static mut INIT_TASK_ID: Option<TaskId> = None;
 #[cfg(feature = "process-runtime")]
+const MAX_PROCESS_RECORDS: usize = 2;
+
+/// Architecture-owned resources associated with one scheduler user task.
+#[cfg(feature = "process-runtime")]
+#[derive(Clone, Copy)]
+struct ProcessRuntimeRecord {
+    task_id: TaskId,
+    process: *mut Option<LoadedProcess>,
+    kernel_stack_bottom: u64,
+    kernel_stack_top: u64,
+    fx_state: usize,
+}
+
+#[cfg(feature = "process-runtime")]
+static mut PROCESS_REGISTRY: [Option<ProcessRuntimeRecord>; MAX_PROCESS_RECORDS] =
+    [None; MAX_PROCESS_RECORDS];
+#[cfg(feature = "process-runtime")]
 static mut REAPER_TASK_ID: Option<TaskId> = None;
 #[cfg(feature = "process-fault-smoke-test")]
 static mut INIT_FAULT_VECTOR: u64 = u64::MAX;
@@ -583,6 +600,68 @@ fn runtime_stack_bounds(storage: u64) -> Option<(u64, u64)> {
 fn init_kernel_stack_bounds() -> Option<(u64, u64)> {
     let storage = unsafe { ptr::addr_of_mut!(INIT_KERNEL_STACK.0).cast::<u8>() as u64 };
     runtime_stack_bounds(storage)
+}
+
+#[cfg(feature = "process-runtime")]
+fn register_process_record(
+    task_id: TaskId,
+    process: *mut Option<LoadedProcess>,
+    kernel_stack_bottom: u64,
+    kernel_stack_top: u64,
+    fx_state: usize,
+) -> bool {
+    if process.is_null()
+        || kernel_stack_bottom == 0
+        || kernel_stack_top <= kernel_stack_bottom
+        || fx_state == 0
+    {
+        return false;
+    }
+    let registry = ptr::addr_of_mut!(PROCESS_REGISTRY);
+    for slot in 0..MAX_PROCESS_RECORDS {
+        let entry = unsafe { &mut *(*registry).as_mut_ptr().add(slot) };
+        if entry.is_none() {
+            *entry = Some(ProcessRuntimeRecord {
+                task_id,
+                process,
+                kernel_stack_bottom,
+                kernel_stack_top,
+                fx_state,
+            });
+            return true;
+        }
+        if entry.is_some_and(|record| record.task_id == task_id) {
+            return false;
+        }
+    }
+    false
+}
+
+#[cfg(feature = "process-runtime")]
+fn process_record_for_task(task_id: TaskId) -> Option<ProcessRuntimeRecord> {
+    let registry = ptr::addr_of!(PROCESS_REGISTRY);
+    for slot in 0..MAX_PROCESS_RECORDS {
+        let entry = unsafe { ptr::read_volatile((*registry).as_ptr().add(slot)) };
+        if let Some(record) = entry {
+            if record.task_id == task_id {
+                return Some(record);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(feature = "process-runtime")]
+fn remove_process_record(task_id: TaskId) -> bool {
+    let registry = ptr::addr_of_mut!(PROCESS_REGISTRY);
+    for slot in 0..MAX_PROCESS_RECORDS {
+        let entry = unsafe { &mut *(*registry).as_mut_ptr().add(slot) };
+        if entry.is_some_and(|record| record.task_id == task_id) {
+            *entry = None;
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(feature = "process-runtime")]
@@ -691,12 +770,7 @@ impl SyscallServices for InitServices {
         }
         let current =
             unsafe { (*self.scheduler).current().map(|task| task.id()) }.ok_or(SyscallError::Io)?;
-        let init_id =
-            unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) }.ok_or(SyscallError::Io)?;
-        if current != init_id {
-            return Err(SyscallError::AccessDenied);
-        }
-
+        let record = process_record_for_task(current).ok_or(SyscallError::AccessDenied)?;
         let length = usize::try_from(length).map_err(|_| SyscallError::InvalidArgument)?;
         if length > MAX_INIT_CONSOLE_WRITE {
             return Err(SyscallError::InvalidArgument);
@@ -705,10 +779,8 @@ impl SyscallServices for InitServices {
             .checked_add(length as u64)
             .ok_or(SyscallError::InvalidArgument)?;
 
-        let process_slot = ptr::addr_of!(INIT_PROCESS);
-        let process = unsafe { (*process_slot).as_ref() }.ok_or(SyscallError::Io)?;
+        let process = unsafe { (*record.process).as_ref() }.ok_or(SyscallError::Io)?;
         let space = process.address_space().map_err(|_| SyscallError::Io)?;
-
         let mut buffer = [0u8; 256];
         let mut copied = 0usize;
         while copied < length {
@@ -730,12 +802,7 @@ impl SyscallServices for InitServices {
         }
         let current =
             unsafe { (*self.scheduler).current().map(|task| task.id()) }.ok_or(SyscallError::Io)?;
-        let init_id =
-            unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) }.ok_or(SyscallError::Io)?;
-        if current != init_id {
-            return Err(SyscallError::AccessDenied);
-        }
-
+        let record = process_record_for_task(current).ok_or(SyscallError::AccessDenied)?;
         let length = usize::try_from(length).map_err(|_| SyscallError::InvalidArgument)?;
         if length > MAX_INIT_CONSOLE_READ {
             return Err(SyscallError::InvalidArgument);
@@ -747,8 +814,7 @@ impl SyscallServices for InitServices {
             .checked_add(length as u64)
             .ok_or(SyscallError::InvalidArgument)?;
 
-        let process_slot = ptr::addr_of!(INIT_PROCESS);
-        let process = unsafe { (*process_slot).as_ref() }.ok_or(SyscallError::Io)?;
+        let process = unsafe { (*record.process).as_ref() }.ok_or(SyscallError::Io)?;
         let space = process.address_space().map_err(|_| SyscallError::Io)?;
         user::validate_user_range(space, user_address, length, user::UserAccess::Write)
             .map_err(|_| SyscallError::InvalidArgument)?;
@@ -781,37 +847,35 @@ fn select_process_context(id: TaskId) -> usize {
     }
 
     if let Some(metadata) = task.user_metadata() {
-        let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) }
-            .unwrap_or_else(|| init_runtime_failure(b"P7.1: init task id is unavailable.\r\n"));
-        if id != init_id {
-            init_runtime_failure(b"P7.1: scheduler selected an unregistered user process.\r\n");
-        }
-        let Some((bottom, top)) = init_kernel_stack_bounds() else {
-            init_runtime_failure(b"P7.1: init kernel stack bounds are invalid.\r\n");
-        };
+        let record = process_record_for_task(id)
+            .unwrap_or_else(|| init_runtime_failure(b"P7.1: selected user task has no process record.\r\n"));
         let frame_end =
             (frame as u64).checked_add(size_of::<syscall::UserTaskSyscallFrame>() as u64);
-        if (frame as u64) < bottom
-            || frame_end.map_or(true, |end| end > top)
-            || metadata.kernel_stack_top() != top
+        if (frame as u64) < record.kernel_stack_bottom
+            || frame_end.map_or(true, |end| end > record.kernel_stack_top)
+            || metadata.kernel_stack_top() != record.kernel_stack_top
+            || metadata.fx_state_pointer() != record.fx_state
         {
-            init_runtime_failure(b"P7.1: selected init frame escaped its kernel stack.\r\n");
+            init_runtime_failure(b"P7.1: selected process frame or architecture metadata is invalid.\r\n");
         }
 
-        let process_slot = ptr::addr_of!(INIT_PROCESS);
-        let process = unsafe { (*process_slot).as_ref() }.unwrap_or_else(|| {
-            init_runtime_failure(b"P7.1: selected init process is missing.\r\n")
-        });
+        let process = unsafe { (*record.process).as_ref() }
+            .unwrap_or_else(|| init_runtime_failure(b"P7.1: selected process is missing.\r\n"));
         if process.root_address().ok() != Some(metadata.address_space_root())
             || process.activate().is_err()
         {
-            init_runtime_failure(b"P7.1: failed to activate selected init address space.\r\n");
+            init_runtime_failure(b"P7.1: failed to activate selected process address space.\r\n");
         }
         let space = process.address_space().unwrap_or_else(|_| {
-            init_runtime_failure(b"P7.1: init address space is unavailable.\r\n")
+            init_runtime_failure(b"P7.1: selected process address space is unavailable.\r\n")
         });
-        if user::activate_kernel_stack(space, bottom, top).is_err()
-            || !syscall::update_current_task_context(top, metadata.fx_state_pointer())
+        if user::activate_kernel_stack(
+            space,
+            record.kernel_stack_bottom,
+            record.kernel_stack_top,
+        )
+        .is_err()
+            || !syscall::update_current_task_context(record.kernel_stack_top, record.fx_state)
         {
             init_runtime_failure(b"P7.1: failed to update selected user-task entry context.\r\n");
         }
@@ -859,33 +923,27 @@ extern "sysv64" fn exhi_init_syscall_dispatch(frame: *mut syscall::UserTaskSysca
     let current_id = unsafe { (*scheduler).current().map(|task| task.id()) }.unwrap_or_else(|| {
         init_runtime_failure(b"P7.1: syscall arrived without a current task.\r\n")
     });
-    let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) }
-        .unwrap_or_else(|| init_runtime_failure(b"P7.1: init task id is unavailable.\r\n"));
-    if current_id != init_id {
-        init_runtime_failure(b"P7.1: syscall did not originate from the active init process.\r\n");
-    }
-    let Some((bottom, top)) = init_kernel_stack_bounds() else {
-        init_runtime_failure(b"P7.1: init kernel stack bounds are invalid.\r\n");
-    };
+    let record = process_record_for_task(current_id)
+        .unwrap_or_else(|| init_runtime_failure(b"P7.1: syscall has no registered process record.\r\n"));
     let frame_address = frame as usize;
     let frame_end =
         (frame_address as u64).checked_add(size_of::<syscall::UserTaskSyscallFrame>() as u64);
     if frame_address == 0
         || frame_address & 0xF != 0
-        || (frame_address as u64) < bottom
-        || frame_end.map_or(true, |end| end > top)
+        || (frame_address as u64) < record.kernel_stack_bottom
+        || frame_end.map_or(true, |end| end > record.kernel_stack_top)
     {
-        init_runtime_failure(b"P7.1: syscall frame escaped the active init kernel stack.\r\n");
+        init_runtime_failure(b"P7.1: syscall frame escaped the active process kernel stack.\r\n");
     }
 
     unsafe {
         let task = (*scheduler).get_mut(current_id).unwrap_or_else(|| {
-            init_runtime_failure(b"P7.1: active init task record is missing.\r\n")
+            init_runtime_failure(b"P7.1: active process task record is missing.\r\n")
         });
         task.context_mut().set_saved_stack_pointer(frame_address);
         let user_rsp = ptr::read_volatile(ptr::addr_of!((*frame).rsp));
         task.user_metadata_mut()
-            .unwrap_or_else(|| init_runtime_failure(b"P7.1: init task metadata is missing.\r\n"))
+            .unwrap_or_else(|| init_runtime_failure(b"P7.1: process task metadata is missing.\r\n"))
             .set_user_stack_pointer(user_rsp);
     }
 
@@ -1072,6 +1130,15 @@ pub fn run_init(image: &[u8]) -> ! {
     ) {
         init_runtime_failure(b"P7.1: could not initialize the init syscall CPU-local state.\r\n");
     }
+    if !register_process_record(
+        init_task,
+        ptr::addr_of_mut!(INIT_PROCESS),
+        init_stack_bottom,
+        init_stack_top,
+        init_fx_pointer as usize,
+    ) {
+        init_runtime_failure(b"P7.1: could not register init process resources.\r\n");
+    }
     if syscall::initialize(syscall::entry_address()).is_err() {
         init_runtime_failure(b"P7.1: could not initialize init syscall MSRs.\r\n");
     }
@@ -1108,6 +1175,9 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
         let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
         let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) };
         let reaped = init_id.is_some_and(|id| unsafe { (*scheduler).reap(id).is_ok() });
+        if let Some(id) = init_id {
+            let _ = remove_process_record(id);
+        }
         if !reaped {
             serial::COM1
                 .write(b"ExhiOS: init resources reclaimed but task record reaping failed.\r\n");
