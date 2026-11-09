@@ -1,9 +1,10 @@
 # ExhiOS — текущее состояние
 
-Снимок: **2026-11-09**  
-Репозиторий: https://github.com/mindwork64/exhiOS  
-Ветка: `main`  
-Кодовый checkpoint: P0–P6 закрыты по применимым runtime/host evidence; P5.1–P5.7 приняты (#405); P6 VFS/RAMFS принят (#412). P7.2–P7.4 реализованы; P7.1 теперь использует production `exhi-task::Scheduler` для lifecycle init и отдельного kernel reaper, включая cleanup после `Exit` и CPL3 fault. Подтверждённый HEAD `8f0b4bf5f854` прошёл полный build (50 шагов, 0 Rust warnings) и все 21 QEMU runtime сценарий в [CI #484](https://github.com/mindwork64/exhiOS/actions/runs/42597997791). Production runtime пока поддерживает один user process; multi-process creation/dispatch остаётся открытой частью P7.1.
+Снимок: **2026-11-10**
+Репозиторий: https://github.com/mindwork64/exhiOS
+Рабочая ветка: `main` (code-only update; Actions suppressed via `[skip ci]`).
+
+P0–P6 сохранены. P7 code path включает двухслотовый process manager, capability-gated `SpawnWorker`, независимые address space/kernel stack/FX state, deferred reaper cleanup, `FileRead` из kernel RAMFS и shell-команды `config`/`spawn`. Serial QEMU driver расширен проверкой запуска worker и очистки обоих процессов. Эта версия не собиралась и не запускалась в QEMU/CI; `cargo`, `rustfmt` и `clippy-driver` в локальном контейнере отсутствуют.
 
 ## Закрыто и проверено в QEMU
 

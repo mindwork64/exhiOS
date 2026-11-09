@@ -87,7 +87,7 @@ def main() -> int:
                 client,
                 buffer,
                 b"help",
-                (b"commands: help hostname version echo clear config exit\r\n",),
+                (b"commands: help hostname version echo clear config spawn exit\r\n",),
             )
             issue(client, buffer, b"hostname", (b"exhios\r\n",))
             issue(client, buffer, b"version", (b"ExhiOS userland 0.1\r\n",))
@@ -113,6 +113,21 @@ def main() -> int:
                     b"version=0.1\r\n",
                 ),
             )
+            client.sendall(b"spawn\r")
+            read_until(client, buffer, b"worker process started.\r\n")
+            read_until(client, buffer, b"exhios> ")
+            read_until(
+                client,
+                buffer,
+                b"ExhiOS worker: second Ring 3 process started.\r\n",
+            )
+            worker_output = read_until(
+                client,
+                buffer,
+                b"ExhiOS worker: completed yield sequence; exiting.\r\n",
+                timeout=8.0,
+            )
+            print(worker_output.decode("ascii", errors="replace"), end="")
             client.sendall(b"exit\r")
             output = read_until(
                 client,

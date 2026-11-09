@@ -165,22 +165,9 @@ P5.1–P5.7 are implemented and accepted by the full self-hosted build and headl
   - QEMU evidence: [CI run 412](https://github.com/mindwork64/exhiOS/actions/runs/42546613316) completed successfully. The build job and the entire headless QEMU runtime job passed. Its VFS-specific serial output includes `P6: VFS/RAMFS runtime smoke test passed.` and QEMU debug-exit status 33; the P2.6 guard test no longer intercepts this feature path.
 ## P7 — Userland
 
-- [ ] First user process (`init`) — first-process lifecycle is integrated; multi-process support remains open.
-  - Implemented: bounded ET_EXEC ELF loader in `arch::x86_64::process`; fixed-address PT_LOAD mapping into a private address space; RX/RW+NX permissions; zero-filled BSS; four-page user stack with an unmapped guard page; reverse-order rollback and owned-frame/page-table reclamation.
-  - The default `scripts/build.sh` configuration selects `process-runtime`, embeds `exhi-init` and enters it in Ring 3.
-  - Production lifecycle now uses `exhi-task::Scheduler`: `run_init` registers the init user task and a blocked kernel-reaper task. `Yield` delegates to the scheduler; with no other runnable user process, the scheduler returns `Continue` and init resumes. `Exit` marks init Finished, wakes the reaper and switches to its own guarded kernel stack.
-  - Validated CPL3 exceptions use the same deferred-reclamation rule: the IDT fault path explicitly executes `SWAPGS`, marks init Finished, schedules the kernel reaper, and never destroys the current user process on its own stack. The reaper restores the kernel address space, destroys the loaded process and removes the Finished task record only after switch-away.
-  - QEMU evidence: [CI #484](https://github.com/mindwork64/exhiOS/actions/runs/42597997791) passed the complete build matrix (50 build-job steps, zero Rust warning lines) and all 21 headless QEMU runtime scenarios. The user-fault scenario observed vector 6 (#UD), started the kernel reaper on its dedicated stack, verified address-space/frame/task-record reclamation and exited with the expected QEMU status 33. Commit [8f0b4bf](https://github.com/mindwork64/exhiOS/commit/8f0b4bf5f854b06b2f4d9452b408baf5a0a719d9).
-  - Remaining: the production process table still contains only the single init user process. There is no user-process creation/spawn path or general per-process service routing yet; therefore `Yield` has no second Ready user process to switch to. The separate P5.6 two-user-task scenario continues to test scheduler primitives, but is not a production multi-process workload.
-- [x] System-call support library (`libexhi`).
-  - `no_std` wrappers for the current ABI: `console_write`, non-blocking `console_read`, `yield_now` and `exit`; kernel errors are decoded into stable Rust results.
-  - CI #435 passed unit tests and the Ring 3 QEMU sequence using all four wrappers over the x86-64 SYSCALL entry.
-- [x] Serial shell.
-  - Ring 3 `init` reads COM1 through capability-gated, non-blocking `ConsoleRead`; writes through validated `ConsoleWrite`; supports CR/LF/CRLF, backspace/DEL, Ctrl+C, Ctrl+D, bounded 127-byte command lines and overflow bell.
-  - Commands: `help`, `hostname`, `version`, `echo`, `clear`, `config` and `exit`.
-  - CI #447 passed QEMU interaction over the serial socket, including line editing, Ctrl+C, command output, configuration display and clean shell exit.
-- [x] Basic utilities and configuration format.
-  - `exhi-config` provides a bounded, allocation-free UTF-8 `key=value` parser with whole-line comments, whitespace trimming, CRLF support, line/key/value limits and structured line-numbered errors.
-  - `init` applies parsed `hostname`, `prompt` and `version` values to the shell; duplicate or malformed known settings cause a safe fallback to built-in defaults. The `config` command prints active settings.
-  - CI #447 passed the parser unit suite and QEMU checks for `hostname`, `version` and `config`.
-  - The initial configuration is embedded in the init image; persistent configuration-file loading via a userland filesystem syscall is not implemented yet.
+- [ ] **P7.1 — Production process manager:** code now contains a two-slot registry and capability-gated `SpawnWorker`. Init can create one built-in worker process with its own address space, guarded kernel stack, FXSAVE image and scheduler record. `Exit` and validated CPL3 faults defer reclamation to the kernel reaper, which frees every Finished process after switch-away. The shell QEMU driver now issues `spawn`, waits for worker output and requires both records to be reaped. This code-only update has not been built or run.
+- [ ] **P7.2 — libexhi:** wrappers cover `console_write`, `console_read`, `file_read`, `spawn_worker`, `yield_now` and `exit`; dispatcher tests for denied/authorized spawn were authored but not run.
+- [ ] **P7.3 — Serial shell:** the bounded COM1 shell is retained; `spawn` is added. The serial QEMU scenario has been extended but not executed.
+- [ ] **P7.4 — Configuration:** init reads `/etc/exhi.conf` from kernel RAMFS through capability-gated `FileRead`, applies `hostname`, `prompt` and `version`, and falls back to defaults on malformed input. RAMFS is volatile and kernel-populated; persistent storage and FileWrite are outside P7. Runtime validation for this code-only update remains pending.
+
+**Validation:** by request, no GitHub Actions, QEMU, Cargo build, unit tests or Clippy were started. The local container has no `cargo`, `rustfmt` or `clippy-driver`, so Rust linting could not be executed here.

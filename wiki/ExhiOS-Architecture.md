@@ -260,24 +260,24 @@ Userland filesystem syscalls and a persistent on-disk filesystem are not impleme
 
 ## P7 — Userland architecture and runtime
 
-### P7.1 — First process
+### P7.1 — Process manager
 
-The default `scripts/build.sh` builds a fixed-address ET_EXEC `exhi-init`, embeds it into the kernel and starts it in Ring 3. `arch::x86_64::process::LoadedProcess` owns its address space and all mapped frames. The loader bounds PT_LOAD pages, maps RX/RW+NX, zeroes BSS, creates a four-page RW+NX user stack plus an unmapped guard page, and rolls back in reverse order on failure.
+The kernel embeds the `exhi-init` and built-in `exhi-worker` ET_EXEC images. `LoadedProcess` owns each private address space and mapped frames. The loader validates PT_LOAD ranges, maps RX/RW+NX, zeroes BSS, creates a guarded user stack and rolls back partial loads in reverse order.
 
-The current production runtime registers one user task (`init`) and one blocked kernel-reaper task in the general `exhi-task::Scheduler`. The scheduler is already wired into production lifecycle dispatch: `Yield` consumes scheduler decisions; `Exit` finishes init, wakes the reaper and selects it from idle. When no other user process is Ready, `Yield` correctly returns `Continue`; there is not yet a process-creation path that can provide a second production user task.
+The fixed two-slot production registry is aligned with static process-object, kernel-stack and FXSAVE slots. A capability-gated `SpawnWorker` syscall lets init fill the second slot while remaining runnable. The syscall loads the worker image, creates its independent address space and guarded stack, initializes FXSAVE, registers the scheduler task and restores init's CR3/TSS/FX context before returning. Only init receives `TaskSpawn`; the worker receives `TaskYield`, `TaskExit` and `ConsoleWrite`.
 
-Both normal `Exit` and validated CPL3 exceptions defer reclamation until after the user task has switched away. The exception path explicitly executes `SWAPGS` on the IDT-originated CPL3 fault path before touching the trusted GS-relative syscall context. Context selection restores kernel CR3 for the reaper, clears user stack bounds, installs the reaper's TSS.RSP0/FX state and transfers to its dedicated guarded kernel stack. The reaper then destroys the loaded process, releases owned frames/page tables and removes the Finished task record. [CI #484](https://github.com/mindwork64/exhiOS/actions/runs/42597997791) verified both init Exit and #UD fault cleanup in QEMU; the complete build matrix emitted zero Rust warning lines.
-
-**Remaining P7.1 work:** generalize the current init-specific globals and service adapter into a process registry/manager; support creating at least a second production user process with its own address space, kernel stack, FX state and saved context; route console services and termination by current process metadata; and verify real production `Yield` switching/reaping between multiple user processes. The separate P5.6 two-user-task architecture smoke adapter remains useful scheduler evidence, but is not the production multi-process workload.
+All user processes share the production scheduler and deferred reaper. `Exit` and validated CPL3 exceptions mark only the current task Finished. The reaper runs on its own supervisor stack, restores kernel CR3, releases every Finished process's frames/page tables and reaps task records after switch-away. A worker that exits while init remains active is retained until the final reaper pass; this v1 design allows one worker instance per boot.
 
 ### P7.2 — libexhi
 
-The `no_std` `libexhi` crate wraps the current ABI: `console_write`, non-blocking `console_read`, `yield_now` and `exit`. It decodes stable kernel errors. Unit and Ring 3 QEMU sequence passed in CI #435.
+The `no_std` crate wraps `console_write`, `console_read`, `file_read`, `spawn_worker`, `yield_now` and `exit`. The common dispatcher authorizes each operation before the service adapter is entered.
 
 ### P7.3 — serial shell
 
-Ring 3 init implements an interactive COM1 shell over the capability-gated ConsoleRead/ConsoleWrite calls. It supports CR/LF/CRLF, backspace/DEL, Ctrl+C, Ctrl+D, 127-byte bounded input and overflow bell. Commands are `help`, `hostname`, `version`, `echo`, `clear`, `config` and `exit`. Serial-socket interaction passed in CI #447.
+Ring 3 init provides a bounded interactive COM1 shell with CR/LF/CRLF, backspace/DEL, Ctrl+C, Ctrl+D and 127-byte line editing. Commands include `help`, `hostname`, `version`, `echo`, `clear`, `config`, `spawn` and `exit`.
 
 ### P7.4 — configuration
 
-`exhi-config` parses bounded allocation-free UTF-8 `key=value` configuration with comments, whitespace and CRLF handling, strict limits and line-numbered errors. Init applies `hostname`, `prompt` and `version` and falls back to built-in defaults on malformed/duplicate known keys. Configuration is currently embedded in the init image; reading it from VFS through a user syscall is future work.
+`exhi-config` parses bounded allocation-free UTF-8 `key=value` input with comments, whitespace/CRLF handling, strict limits and line-numbered errors. Init reads `/etc/exhi.conf` from kernel RAMFS through capability-gated `FileRead`; the kernel validates both user ranges and copies a bounded read into user memory. Init applies `hostname`, `prompt` and `version` and falls back to defaults on invalid or duplicate known settings.
+
+**Validation status:** this update is code-only; no CI/QEMU/build/test jobs were run.

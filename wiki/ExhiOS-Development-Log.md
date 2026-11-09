@@ -505,3 +505,13 @@ Implementation:
 - CI [#484](https://github.com/mindwork64/exhiOS/actions/runs/42597997791), HEAD [8f0b4bf](https://github.com/mindwork64/exhiOS/commit/8f0b4bf5f854b06b2f4d9452b408baf5a0a719d9): build job passed all 50 steps with zero Rust warning lines; QEMU job passed all 27 job steps, including 21 runtime scenarios. The production user-fault scenario observed #UD vector 6, the reaper start marker, full init address-space/frame/task-record reclamation and expected debug-exit status 33. Normal init Exit and interactive shell reaping also passed.
 - Feature-specific module/API gates were narrowed to the smoke/runtime variants that actually use them. This removes feature-matrix `dead_code` noise without suppressing warnings; the final full build log contains no `warning:` lines.
 - P7.1 remains open for production multi-process support. Current globals/service adapters represent one init process; no spawn/registry for a second production user process exists yet. The separate P5.6 two-user-task runtime remains a scheduler architecture test.
+
+
+## 2026-11-10 — P7 dynamic worker creation and shell coverage
+
+- Added stable `SpawnWorker = 6` and `TaskSpawn = 11`. The shared dispatcher denies spawn before entering the service unless the active process holds the grant.
+- Added `libexhi::spawn_worker()` and the init shell command `spawn`. Init alone receives `TaskSpawn`; the worker receives only yield, exit and console-write capabilities.
+- Kernel worker creation loads the embedded ELF into a free resource slot, creates its private address space, installs and records its guarded kernel stack, initializes FXSAVE, registers the task and restores the caller's process context before returning.
+- Process registry slot selection is aligned with the matching static resource slot. Stack guard installation is tracked per slot to avoid duplicate installation on retry.
+- Updated the build script to build both ELF targets and extended the serial shell driver to verify worker execution and final reaper cleanup of both process records.
+- Updated the P7 roadmap and architecture pages. This was a code-only update: no GitHub Actions, QEMU, Cargo build/tests or Clippy were run. Local Rust formatting tools were unavailable.
