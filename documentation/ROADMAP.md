@@ -166,6 +166,12 @@ P5.1–P5.7 are implemented and accepted by the full self-hosted build and headl
 ## P7 — Userland
 
 - [ ] First user process (`init`).
-- [ ] System-call support library (`libexhi`).
+  - Implemented: bounded ET_EXEC ELF loader in `arch::x86_64::process`; fixed-address PT_LOAD mapping into private address spaces; RX/RW+NX permissions; zero-filled BSS; four-page user stack with an unmapped guard page; reverse-order rollback and owned-frame/page-table reclamation.
+  - QEMU evidence: CI #430 completed successfully. The loader smoke reported entry `0x0000000200001C20`, three image pages and four stack pages, and verified entry bytes, segment permissions, BSS, guard page and complete frame reclamation.
+  - Implemented as a separate runtime proof: the embedded `init` entered Ring 3 through IRETQ, emitted `ExhiOS init: first Ring 3 process is running.`, executed `ConsoleWrite`, three `Yield` calls and `Exit` through `libexhi`; the kernel checked the exact syscall/yield counts and QEMU exited with status 33.
+  - Still open: normal boot does not yet launch `init`; the current execution test uses a single-process smoke adapter. Production scheduler integration, per-process capability/lifecycle management, process fault/exit cleanup and boot-time launch remain to be completed.
+- [x] System-call support library (`libexhi`).
+  - `no_std` wrappers for the complete currently assigned syscall ABI: `console_write`, `yield_now` and `exit`; error decoding and two unit tests.
+  - QEMU integration evidence in CI #430: the real user ELF used all three wrappers successfully over the x86-64 SYSCALL entry.
 - [ ] Serial shell.
 - [ ] Basic utilities and configuration format.

@@ -7,15 +7,19 @@
 
 use core::ptr;
 
+#[cfg(feature = "process-run-smoke-test")]
 use exhi_abi::{SyscallError, SyscallRequest};
 use exhi_elf::{ElfError, ElfFile, ProgramHeader, PT_LOAD};
 use exhi_memory::MemoryError;
+#[cfg(feature = "process-run-smoke-test")]
 use exhi_syscall::{dispatch as dispatch_syscall, DispatchOutcome, SyscallServices};
+#[cfg(feature = "process-run-smoke-test")]
 use exhi_task::{Capability, CapabilitySet};
 
 use crate::memory;
 
 use super::address_space::{self, AddressSpace, AddressSpaceError, PageMapping, UserPageFlags};
+#[cfg(feature = "process-run-smoke-test")]
 use super::{serial, stack_guard, syscall, user};
 
 const PAGE_SIZE: u64 = 4096;
