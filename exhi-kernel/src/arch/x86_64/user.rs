@@ -93,26 +93,26 @@ impl FxState {
 /// Stable register image consumed by the assembly IRETQ entry routine.
 #[repr(C, align(16))]
 pub struct UserEntryFrame {
-    r15: u64,
-    r14: u64,
-    r13: u64,
-    r12: u64,
-    r11: u64,
-    r10: u64,
-    r9: u64,
-    r8: u64,
-    rdi: u64,
-    rsi: u64,
-    rbp: u64,
-    rbx: u64,
-    rdx: u64,
-    rcx: u64,
-    rax: u64,
-    rip: u64,
-    cs: u64,
-    rflags: u64,
-    rsp: u64,
-    ss: u64,
+    pub(crate) r15: u64,
+    pub(crate) r14: u64,
+    pub(crate) r13: u64,
+    pub(crate) r12: u64,
+    pub(crate) r11: u64,
+    pub(crate) r10: u64,
+    pub(crate) r9: u64,
+    pub(crate) r8: u64,
+    pub(crate) rdi: u64,
+    pub(crate) rsi: u64,
+    pub(crate) rbp: u64,
+    pub(crate) rbx: u64,
+    pub(crate) rdx: u64,
+    pub(crate) rcx: u64,
+    pub(crate) rax: u64,
+    pub(crate) rip: u64,
+    pub(crate) cs: u64,
+    pub(crate) rflags: u64,
+    pub(crate) rsp: u64,
+    pub(crate) ss: u64,
 }
 const _: [(); 20 * size_of::<u64>()] = [(); size_of::<UserEntryFrame>()];
 
@@ -146,6 +146,72 @@ pub struct UserException {
 
 static mut ACTIVE_KERNEL_STACK_BOTTOM: u64 = 0;
 static mut ACTIVE_KERNEL_STACK_TOP: u64 = 0;
+
+/// Changes the trusted kernel stack bounds used for the next CPL3-to-CPL0
+/// transition. The address space must already be active; callers serialize
+/// this operation with IF=0 before restoring a user context.
+pub fn activate_kernel_stack(
+    address_space: &AddressSpace,
+    kernel_stack_bottom: u64,
+    kernel_stack_top: u64,
+) -> Result<(), UserEntryError> {
+    if interrupts_enabled() {
+        return Err(UserEntryError::InterruptsEnabled);
+    }
+    if !address_space
+        .is_active()
+        .map_err(|_| UserEntryError::AddressSpaceNotActive)?
+    {
+        return Err(UserEntryError::AddressSpaceNotActive);
+    }
+    if kernel_stack_bottom == 0
+        || kernel_stack_bottom & (PAGE_SIZE - 1) != 0
+        || kernel_stack_top <= kernel_stack_bottom
+        || kernel_stack_top & 0xF != 0
+        || !is_kernel_canonical(kernel_stack_bottom)
+        || !is_kernel_canonical(kernel_stack_top - 1)
+    {
+        return Err(UserEntryError::InvalidKernelStack);
+    }
+    validate_kernel_range(kernel_stack_bottom, kernel_stack_top)
+        .map_err(|_| UserEntryError::KernelStackMappingRejected)?;
+    if !gdt::set_rsp0(kernel_stack_top) || gdt::read_rsp0() != kernel_stack_top {
+        return Err(UserEntryError::TssStackRejected);
+    }
+
+    // The exception-frame validator must follow the process selected by the
+    // scheduler, not retain the first process's stack bounds globally.
+    unsafe {
+        ptr::write_volatile(
+            ptr::addr_of_mut!(ACTIVE_KERNEL_STACK_BOTTOM),
+            kernel_stack_bottom,
+        );
+        ptr::write_volatile(ptr::addr_of_mut!(ACTIVE_KERNEL_STACK_TOP), kernel_stack_top);
+    }
+    core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
+    let bottom = unsafe { ptr::read_volatile(ptr::addr_of!(ACTIVE_KERNEL_STACK_BOTTOM)) };
+    let top = unsafe { ptr::read_volatile(ptr::addr_of!(ACTIVE_KERNEL_STACK_TOP)) };
+    if bottom != kernel_stack_bottom || top != kernel_stack_top {
+        return Err(UserEntryError::InvalidKernelStack);
+    }
+    Ok(())
+}
+
+/// Clears the active user-entry stack when execution is handed to a kernel-only
+/// context. A future user dispatch must install its own bounds again.
+pub fn clear_active_kernel_stack() -> Result<(), UserEntryError> {
+    if interrupts_enabled() {
+        return Err(UserEntryError::InterruptsEnabled);
+    }
+    if !gdt::set_rsp0(0) || gdt::read_rsp0() != 0 {
+        return Err(UserEntryError::TssStackRejected);
+    }
+    unsafe {
+        ptr::write_volatile(ptr::addr_of_mut!(ACTIVE_KERNEL_STACK_BOTTOM), 0);
+        ptr::write_volatile(ptr::addr_of_mut!(ACTIVE_KERNEL_STACK_TOP), 0);
+    }
+    Ok(())
+}
 
 unsafe extern "sysv64" {
     fn exhi_user_iret_entry(frame: *const UserEntryFrame, fx_state: *const FxState) -> !;
@@ -188,29 +254,7 @@ pub fn prepare_entry(
         return Err(UserEntryError::StackMappingRejected);
     }
 
-    if kernel_stack_bottom == 0
-        || kernel_stack_bottom & (PAGE_SIZE - 1) != 0
-        || kernel_stack_top <= kernel_stack_bottom
-        || kernel_stack_top & 0xF != 0
-        || !is_kernel_canonical(kernel_stack_bottom)
-        || !is_kernel_canonical(kernel_stack_top - 1)
-    {
-        return Err(UserEntryError::InvalidKernelStack);
-    }
-    validate_kernel_range(kernel_stack_bottom, kernel_stack_top)
-        .map_err(|_| UserEntryError::KernelStackMappingRejected)?;
-    if !gdt::set_rsp0(kernel_stack_top) || gdt::read_rsp0() != kernel_stack_top {
-        return Err(UserEntryError::TssStackRejected);
-    }
-
-    // The first implementation is boot-CPU-only and called with IF=0.
-    unsafe {
-        ptr::write_volatile(
-            ptr::addr_of_mut!(ACTIVE_KERNEL_STACK_BOTTOM),
-            kernel_stack_bottom,
-        );
-        ptr::write_volatile(ptr::addr_of_mut!(ACTIVE_KERNEL_STACK_TOP), kernel_stack_top);
-    }
+    activate_kernel_stack(address_space, kernel_stack_bottom, kernel_stack_top)?;
 
     Ok(UserEntryFrame {
         r15: 0,

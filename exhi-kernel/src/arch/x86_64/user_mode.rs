@@ -30,7 +30,6 @@ use super::syscall;
     feature = "user-task-lifecycle-smoke-test"
 ))]
 use super::syscall::UserTaskSyscallFrame as UserTaskInterruptFrame;
-#[cfg(not(feature = "user-task-lifecycle-smoke-test"))]
 use super::user;
 #[cfg(any(
     feature = "user-copy-smoke-test",
@@ -1355,14 +1354,16 @@ fn user_task_select_context(id: TaskId) -> usize {
                 b"P5.6: user task metadata does not match owned resources.\r\n",
             );
         }
-        let space_ok = match index {
-            0 => unsafe { (&*ptr::addr_of!(USER_TASK_SPACE_A)).as_ref() }
-                .is_some_and(|space| space.activate().is_ok()),
-            1 => unsafe { (&*ptr::addr_of!(USER_TASK_SPACE_B)).as_ref() }
-                .is_some_and(|space| space.activate().is_ok()),
-            _ => false,
+        let space = match index {
+            0 => unsafe { (&*ptr::addr_of!(USER_TASK_SPACE_A)).as_ref() },
+            1 => unsafe { (&*ptr::addr_of!(USER_TASK_SPACE_B)).as_ref() },
+            _ => None,
         };
-        if !space_ok || !gdt::set_rsp0(top) {
+        let space_ok = space.is_some_and(|space| {
+            space.activate().is_ok()
+                && user::activate_kernel_stack(space, base + PAGE_SIZE, top).is_ok()
+        });
+        if !space_ok {
             user_task_runtime_failed(
                 b"P5.6: failed to activate the selected user address space.\r\n",
             );
