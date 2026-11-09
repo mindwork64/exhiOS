@@ -42,7 +42,7 @@ const INIT_KERNEL_STACK_BYTES: usize = INIT_KERNEL_STACK_PAGES * PAGE_SIZE as us
 #[cfg(feature = "process-run-smoke-test")]
 const INIT_YIELD_EXPECTED: u64 = 3;
 #[cfg(feature = "process-run-smoke-test")]
-const INIT_SYSCALL_EXPECTED: u64 = 5;
+const INIT_SYSCALL_EXPECTED: u64 = 6;
 #[cfg(feature = "process-run-smoke-test")]
 const MAX_INIT_CONSOLE_WRITE: usize = 64 * 1024;
 #[cfg(feature = "process-run-smoke-test")]
@@ -559,7 +559,7 @@ impl SyscallServices for InitServices {
         let syscalls = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_SYSCALL_COUNT)) };
         if yields == INIT_YIELD_EXPECTED && syscalls == INIT_SYSCALL_EXPECTED {
             serial::COM1.write(
-                b"P7.2: init executed ConsoleWrite, three Yield calls and Exit through libexhi.\r\n",
+                b"P7.2: init executed ConsoleWrite, ConsoleRead, three Yield calls and Exit through libexhi.\r\n",
             );
             unsafe {
                 core::arch::asm!(
