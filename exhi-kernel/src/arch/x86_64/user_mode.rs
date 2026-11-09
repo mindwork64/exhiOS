@@ -1460,6 +1460,18 @@ impl SyscallServices for UserTaskSyscallServices {
         // The dispatcher must deny the operation before this adapter is reached.
         Err(SyscallError::AccessDenied)
     }
+
+    fn file_read(
+        &mut self,
+        _path_address: u64,
+        _path_length: u64,
+        _offset: u64,
+        _user_buffer: u64,
+        _buffer_length: u64,
+    ) -> Result<u64, SyscallError> {
+        // P5.6 scheduler fixtures intentionally have no VFS access.
+        Err(SyscallError::AccessDenied)
+    }
 }
 
 #[cfg(feature = "user-task-lifecycle-smoke-test")]
