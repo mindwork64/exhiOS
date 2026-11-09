@@ -1178,7 +1178,8 @@ pub extern "sysv64" fn exhi_exception_handler(
             feature = "user-task-lifecycle-smoke-test"
         )))]
         {
-            serial::COM1.write(b"CPL3 exception received in a build without user-mode support.\r\n");
+            serial::COM1
+                .write(b"CPL3 exception received in a build without user-mode support.\r\n");
             halt_forever();
         }
     }
