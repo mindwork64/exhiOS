@@ -564,8 +564,6 @@ static mut PROCESS_OBJECTS: [Option<LoadedProcess>; MAX_PROCESS_RECORDS] = [None
 #[cfg(feature = "process-runtime")]
 static mut PROCESS_SCHEDULER: Scheduler<3> = Scheduler::new();
 #[cfg(feature = "process-runtime")]
-static mut INIT_TASK_ID: Option<TaskId> = None;
-#[cfg(feature = "process-runtime")]
 const MAX_PROCESS_RECORDS: usize = 2;
 
 /// Architecture-owned resources associated with one scheduler user task.
@@ -1253,10 +1251,9 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
     }
 }
 
-
 /// The kernel reaper always runs after the user task has switched away from
 /// its private kernel stack. Only here is it safe to reclaim the process frames
-/// and address-space page tables owned by the finished init process.
+/// and address-space page tables owned by every finished user process.
 #[cfg(feature = "process-runtime")]
 #[no_mangle]
 extern "sysv64" fn exhi_process_reaper_main() -> ! {
@@ -1500,7 +1497,8 @@ fn init_runtime_failure(message: &[u8]) -> ! {
     #[cfg(any(
         feature = "process-run-smoke-test",
         feature = "process-shell-smoke-test",
-        feature = "process-fault-smoke-test"
+        feature = "process-fault-smoke-test",
+        feature = "process-multi-smoke-test"
     ))]
     unsafe {
         core::arch::asm!(
