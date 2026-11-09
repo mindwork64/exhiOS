@@ -51,7 +51,6 @@ impl SerialPort {
     /// Attempts to receive one byte without waiting.
     ///
     /// Returns None when the UART receive-data-ready bit is clear.
-    #[cfg(feature = "serial-rx-smoke-test")]
     pub fn try_read_byte(&self) -> Option<u8> {
         if unsafe { self.inb(5) } & 0x01 != 0 {
             Some(unsafe { self.inb(0) })

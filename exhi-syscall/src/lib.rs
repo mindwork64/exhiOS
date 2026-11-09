@@ -43,6 +43,12 @@ pub trait SyscallServices {
     /// The adapter must validate the complete user range and copy it into
     /// kernel-owned memory before performing device I/O.
     fn console_write(&mut self, user_address: u64, length: u64) -> Result<u64, SyscallError>;
+
+    /// Reads available console bytes into a user-owned writable range.
+    ///
+    /// The operation is non-blocking: zero means no input is currently ready.
+    /// The adapter must validate the entire destination before consuming input.
+    fn console_read(&mut self, user_address: u64, length: u64) -> Result<u64, SyscallError>;
 }
 
 /// Dispatches one ABI request with default-deny capability enforcement.
@@ -65,6 +71,7 @@ pub fn dispatch<S: SyscallServices>(
         SyscallNumber::Yield => Capability::TaskYield,
         SyscallNumber::Exit => Capability::TaskExit,
         SyscallNumber::ConsoleWrite => Capability::ConsoleWrite,
+        SyscallNumber::ConsoleRead => Capability::ConsoleRead,
     };
     if services
         .current_capabilities()
@@ -91,6 +98,13 @@ pub fn dispatch<S: SyscallServices>(
                 Err(error) => DispatchOutcome::Return(error.as_return_value()),
             }
         }
+        SyscallNumber::ConsoleRead => {
+            let [address, length, ..] = request.arguments;
+            match services.console_read(address, length) {
+                Ok(read) => DispatchOutcome::Return(read),
+                Err(error) => DispatchOutcome::Return(error.as_return_value()),
+            }
+        }
     }
 }
 
@@ -104,10 +118,13 @@ mod tests {
         yield_target: Option<u64>,
         exit_target: Option<u64>,
         console_result: Result<u64, SyscallError>,
+        console_read_result: Result<u64, SyscallError>,
         yield_calls: u8,
         exit_calls: u8,
         console_calls: u8,
+        console_read_calls: u8,
         last_console_range: Option<(u64, u64)>,
+        last_console_read_range: Option<(u64, u64)>,
     }
 
     impl MockServices {
@@ -117,10 +134,13 @@ mod tests {
                 yield_target: None,
                 exit_target: Some(3),
                 console_result: Ok(0),
+                console_read_result: Ok(0),
                 yield_calls: 0,
                 exit_calls: 0,
                 console_calls: 0,
+                console_read_calls: 0,
                 last_console_range: None,
+                last_console_read_range: None,
             }
         }
     }
@@ -147,6 +167,12 @@ mod tests {
             self.last_console_range = Some((user_address, length));
             self.console_result
         }
+
+        fn console_read(&mut self, user_address: u64, length: u64) -> Result<u64, SyscallError> {
+            self.console_read_calls += 1;
+            self.last_console_read_range = Some((user_address, length));
+            self.console_read_result
+        }
     }
 
     #[test]
@@ -169,6 +195,7 @@ mod tests {
             SyscallNumber::Yield,
             SyscallNumber::Exit,
             SyscallNumber::ConsoleWrite,
+            SyscallNumber::ConsoleRead,
         ];
 
         for syscall in cases {
@@ -181,7 +208,37 @@ mod tests {
             assert_eq!(services.yield_calls, 0);
             assert_eq!(services.exit_calls, 0);
             assert_eq!(services.console_calls, 0);
+            assert_eq!(services.console_read_calls, 0);
         }
+    }
+
+    #[test]
+    fn denied_console_read_never_enters_the_service() {
+        let mut services = MockServices::new(CapabilitySet::EMPTY);
+        let request = SyscallRequest::new(
+            SyscallNumber::ConsoleRead as u64,
+            [0x0000_0002_0000_0080, 32, 0, 0, 0, 0],
+        );
+        assert_eq!(
+            dispatch(request, &mut services),
+            DispatchOutcome::Return(SyscallError::AccessDenied.as_return_value())
+        );
+        assert_eq!(services.console_read_calls, 0);
+        assert_eq!(services.last_console_read_range, None);
+    }
+
+    #[test]
+    fn authorized_console_read_receives_the_user_buffer_and_returns_available_bytes() {
+        let capabilities = CapabilitySet::EMPTY.with(Capability::ConsoleRead);
+        let mut services = MockServices::new(capabilities);
+        services.console_read_result = Ok(3);
+        let request = SyscallRequest::new(
+            SyscallNumber::ConsoleRead as u64,
+            [0x0000_0002_0000_0080, 32, 0, 0, 0, 0],
+        );
+        assert_eq!(dispatch(request, &mut services), DispatchOutcome::Return(3));
+        assert_eq!(services.console_read_calls, 1);
+        assert_eq!(services.last_console_read_range, Some((0x0000_0002_0000_0080, 32)));
     }
 
     #[test]
@@ -259,6 +316,7 @@ mod tests {
         assert_eq!(services.yield_calls, 0);
         assert_eq!(services.exit_calls, 0);
         assert_eq!(services.console_calls, 0);
+        assert_eq!(services.console_read_calls, 0);
     }
 
     #[test]

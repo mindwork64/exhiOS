@@ -38,6 +38,21 @@ pub fn console_write(bytes: &[u8]) -> Result<usize, SyscallError> {
     Ok(written)
 }
 
+/// Reads currently available bytes from the serial console into a user buffer.
+/// Returns zero when no input is ready; callers may yield and retry.
+#[inline]
+pub fn console_read(bytes: &mut [u8]) -> Result<usize, SyscallError> {
+    let count = decode_return(raw_syscall(
+        SyscallNumber::ConsoleRead as u64,
+        [bytes.as_mut_ptr() as u64, bytes.len() as u64, 0, 0, 0, 0],
+    ))?;
+    let count = usize::try_from(count).map_err(|_| SyscallError::InvalidArgument)?;
+    if count > bytes.len() {
+        return Err(SyscallError::Io);
+    }
+    Ok(count)
+}
+
 /// Terminates the current process. A correct kernel implementation does not
 /// return to the caller; spin forever if an exit request is unexpectedly
 /// returned so user code cannot continue after requesting termination.
@@ -108,5 +123,6 @@ mod tests {
         assert_eq!(SyscallNumber::Yield as u64, 1);
         assert_eq!(SyscallNumber::Exit as u64, 2);
         assert_eq!(SyscallNumber::ConsoleWrite as u64, 3);
+        assert_eq!(SyscallNumber::ConsoleRead as u64, 4);
     }
 }

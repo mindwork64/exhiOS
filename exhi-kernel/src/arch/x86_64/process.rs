@@ -45,6 +45,8 @@ const INIT_YIELD_EXPECTED: u64 = 3;
 const INIT_SYSCALL_EXPECTED: u64 = 5;
 #[cfg(feature = "process-run-smoke-test")]
 const MAX_INIT_CONSOLE_WRITE: usize = 64 * 1024;
+#[cfg(feature = "process-run-smoke-test")]
+const MAX_INIT_CONSOLE_READ: usize = 256;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessLoadError {
@@ -541,6 +543,7 @@ impl SyscallServices for InitServices {
             .with(Capability::TaskYield)
             .with(Capability::TaskExit)
             .with(Capability::ConsoleWrite)
+            .with(Capability::ConsoleRead)
     }
 
     fn yield_current(&mut self) -> Result<Option<Self::SwitchTarget>, SyscallError> {
@@ -611,6 +614,40 @@ impl SyscallServices for InitServices {
             copied += count;
         }
         Ok(copied as u64)
+    }
+
+    fn console_read(&mut self, user_address: u64, length: u64) -> Result<u64, SyscallError> {
+        let length = usize::try_from(length).map_err(|_| SyscallError::InvalidArgument)?;
+        if length > MAX_INIT_CONSOLE_READ {
+            return Err(SyscallError::InvalidArgument);
+        }
+        if length == 0 {
+            return Ok(0);
+        }
+        user_address
+            .checked_add(length as u64)
+            .ok_or(SyscallError::InvalidArgument)?;
+
+        let process_slot = ptr::addr_of!(INIT_PROCESS);
+        let process = unsafe { (*process_slot).as_ref() }.ok_or(SyscallError::Io)?;
+        let space = process.address_space().map_err(|_| SyscallError::Io)?;
+        user::validate_user_range(space, user_address, length, user::UserAccess::Write)
+            .map_err(|_| SyscallError::InvalidArgument)?;
+
+        let mut buffer = [0u8; MAX_INIT_CONSOLE_READ];
+        let mut read = 0usize;
+        while read < length {
+            let Some(byte) = serial::COM1.try_read_byte() else {
+                break;
+            };
+            buffer[read] = byte;
+            read += 1;
+        }
+        if read != 0 {
+            user::copy_to_user(space, user_address, &buffer[..read])
+                .map_err(|_| SyscallError::InvalidArgument)?;
+        }
+        Ok(read as u64)
     }
 }
 

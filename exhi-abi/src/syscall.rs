@@ -18,6 +18,7 @@ pub enum SyscallNumber {
     Yield = 1,
     Exit = 2,
     ConsoleWrite = 3,
+    ConsoleRead = 4,
 }
 
 impl core::convert::TryFrom<u64> for SyscallNumber {
@@ -28,6 +29,7 @@ impl core::convert::TryFrom<u64> for SyscallNumber {
             value if value == Self::Yield as u64 => Ok(Self::Yield),
             value if value == Self::Exit as u64 => Ok(Self::Exit),
             value if value == Self::ConsoleWrite as u64 => Ok(Self::ConsoleWrite),
+            value if value == Self::ConsoleRead as u64 => Ok(Self::ConsoleRead),
             other => Err(UnknownSyscallNumber(other)),
         }
     }
@@ -91,9 +93,11 @@ mod tests {
         assert_eq!(SyscallNumber::Yield as u64, 1);
         assert_eq!(SyscallNumber::Exit as u64, 2);
         assert_eq!(SyscallNumber::ConsoleWrite as u64, 3);
+        assert_eq!(SyscallNumber::ConsoleRead as u64, 4);
         assert_eq!(SyscallNumber::try_from(1), Ok(SyscallNumber::Yield));
         assert_eq!(SyscallNumber::try_from(2), Ok(SyscallNumber::Exit));
         assert_eq!(SyscallNumber::try_from(3), Ok(SyscallNumber::ConsoleWrite));
+        assert_eq!(SyscallNumber::try_from(4), Ok(SyscallNumber::ConsoleRead));
         assert_eq!(
             SyscallNumber::try_from(0xFFFF),
             Err(UnknownSyscallNumber(0xFFFF))
