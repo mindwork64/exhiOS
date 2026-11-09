@@ -49,6 +49,16 @@ pub trait SyscallServices {
     /// The operation is non-blocking: zero means no input is currently ready.
     /// The adapter must validate the entire destination before consuming input.
     fn console_read(&mut self, user_address: u64, length: u64) -> Result<u64, SyscallError>;
+
+    /// Reads a file into a user-owned buffer after validating both user ranges.
+    fn file_read(
+        &mut self,
+        path_address: u64,
+        path_length: u64,
+        offset: u64,
+        user_buffer: u64,
+        buffer_length: u64,
+    ) -> Result<u64, SyscallError>;
 }
 
 /// Dispatches one ABI request with default-deny capability enforcement.
@@ -72,6 +82,7 @@ pub fn dispatch<S: SyscallServices>(
         SyscallNumber::Exit => Capability::TaskExit,
         SyscallNumber::ConsoleWrite => Capability::ConsoleWrite,
         SyscallNumber::ConsoleRead => Capability::ConsoleRead,
+        SyscallNumber::FileRead => Capability::FileRead,
     };
     if services
         .current_capabilities()
@@ -105,6 +116,13 @@ pub fn dispatch<S: SyscallServices>(
                 Err(error) => DispatchOutcome::Return(error.as_return_value()),
             }
         }
+        SyscallNumber::FileRead => {
+            let [path, path_length, offset, buffer, buffer_length, ..] = request.arguments;
+            match services.file_read(path, path_length, offset, buffer, buffer_length) {
+                Ok(read) => DispatchOutcome::Return(read),
+                Err(error) => DispatchOutcome::Return(error.as_return_value()),
+            }
+        }
     }
 }
 
@@ -119,12 +137,15 @@ mod tests {
         exit_target: Option<u64>,
         console_result: Result<u64, SyscallError>,
         console_read_result: Result<u64, SyscallError>,
+        file_read_result: Result<u64, SyscallError>,
         yield_calls: u8,
         exit_calls: u8,
         console_calls: u8,
         console_read_calls: u8,
+        file_read_calls: u8,
         last_console_range: Option<(u64, u64)>,
         last_console_read_range: Option<(u64, u64)>,
+        last_file_read: Option<(u64, u64, u64, u64, u64)>,
     }
 
     impl MockServices {
@@ -135,12 +156,15 @@ mod tests {
                 exit_target: Some(3),
                 console_result: Ok(0),
                 console_read_result: Ok(0),
+                file_read_result: Ok(0),
                 yield_calls: 0,
                 exit_calls: 0,
                 console_calls: 0,
                 console_read_calls: 0,
+                file_read_calls: 0,
                 last_console_range: None,
                 last_console_read_range: None,
+                last_file_read: None,
             }
         }
     }
@@ -173,6 +197,25 @@ mod tests {
             self.last_console_read_range = Some((user_address, length));
             self.console_read_result
         }
+
+        fn file_read(
+            &mut self,
+            path_address: u64,
+            path_length: u64,
+            offset: u64,
+            user_buffer: u64,
+            buffer_length: u64,
+        ) -> Result<u64, SyscallError> {
+            self.file_read_calls += 1;
+            self.last_file_read = Some((
+                path_address,
+                path_length,
+                offset,
+                user_buffer,
+                buffer_length,
+            ));
+            self.file_read_result
+        }
     }
 
     #[test]
@@ -196,6 +239,7 @@ mod tests {
             SyscallNumber::Exit,
             SyscallNumber::ConsoleWrite,
             SyscallNumber::ConsoleRead,
+            SyscallNumber::FileRead,
         ];
 
         for syscall in cases {
@@ -209,6 +253,7 @@ mod tests {
             assert_eq!(services.exit_calls, 0);
             assert_eq!(services.console_calls, 0);
             assert_eq!(services.console_read_calls, 0);
+            assert_eq!(services.file_read_calls, 0);
         }
     }
 
@@ -263,6 +308,35 @@ mod tests {
             services.last_console_range,
             Some((0x0000_0002_0000_0080, 12))
         );
+    }
+
+    #[test]
+    fn denied_file_read_never_enters_the_service() {
+        let mut services = MockServices::new(CapabilitySet::EMPTY);
+        let request = SyscallRequest::new(
+            SyscallNumber::FileRead as u64,
+            [0x2000, 13, 0, 0x3000, 64, 0],
+        );
+        assert_eq!(
+            dispatch(request, &mut services),
+            DispatchOutcome::Return(SyscallError::AccessDenied.as_return_value())
+        );
+        assert_eq!(services.file_read_calls, 0);
+        assert_eq!(services.last_file_read, None);
+    }
+
+    #[test]
+    fn authorized_file_read_receives_all_abi_ranges() {
+        let capabilities = CapabilitySet::EMPTY.with(Capability::FileRead);
+        let mut services = MockServices::new(capabilities);
+        services.file_read_result = Ok(17);
+        let request = SyscallRequest::new(
+            SyscallNumber::FileRead as u64,
+            [0x2000, 13, 4, 0x3000, 64, 0],
+        );
+        assert_eq!(dispatch(request, &mut services), DispatchOutcome::Return(17));
+        assert_eq!(services.file_read_calls, 1);
+        assert_eq!(services.last_file_read, Some((0x2000, 13, 4, 0x3000, 64)));
     }
 
     #[test]
