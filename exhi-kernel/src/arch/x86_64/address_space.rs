@@ -406,7 +406,11 @@ impl AddressSpace {
     }
 
     /// Returns whether this address space is the active CR3 root.
-    #[cfg(any(feature = "process-runtime", feature = "ring3-smoke-test"))]
+    #[cfg(any(
+        feature = "process-runtime",
+        feature = "process-load-smoke-test",
+        feature = "ring3-smoke-test"
+    ))]
     pub fn is_active(&self) -> Result<bool, AddressSpaceError> {
         ensure_initialized()?;
         self.ensure_live()?;
