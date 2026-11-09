@@ -1245,9 +1245,9 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
     if first_process.activate().is_err() {
         init_runtime_failure(b"P7.1: could not activate the first process address space.\\r\\n");
     }
-    let first_space = first_process
-        .address_space()
-        .unwrap_or_else(|_| init_runtime_failure(b"P7.1: first process address space is unavailable.\\r\\n"));
+    let first_space = first_process.address_space().unwrap_or_else(|_| {
+        init_runtime_failure(b"P7.1: first process address space is unavailable.\\r\\n")
+    });
     if user::activate_kernel_stack(
         first_space,
         first_record.kernel_stack_bottom,
