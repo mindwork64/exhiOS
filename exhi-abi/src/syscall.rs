@@ -20,6 +20,7 @@ pub enum SyscallNumber {
     ConsoleWrite = 3,
     ConsoleRead = 4,
     FileRead = 5,
+    SpawnWorker = 6,
 }
 
 impl core::convert::TryFrom<u64> for SyscallNumber {
@@ -32,6 +33,7 @@ impl core::convert::TryFrom<u64> for SyscallNumber {
             value if value == Self::ConsoleWrite as u64 => Ok(Self::ConsoleWrite),
             value if value == Self::ConsoleRead as u64 => Ok(Self::ConsoleRead),
             value if value == Self::FileRead as u64 => Ok(Self::FileRead),
+            value if value == Self::SpawnWorker as u64 => Ok(Self::SpawnWorker),
             other => Err(UnknownSyscallNumber(other)),
         }
     }
@@ -97,11 +99,13 @@ mod tests {
         assert_eq!(SyscallNumber::ConsoleWrite as u64, 3);
         assert_eq!(SyscallNumber::ConsoleRead as u64, 4);
         assert_eq!(SyscallNumber::FileRead as u64, 5);
+        assert_eq!(SyscallNumber::SpawnWorker as u64, 6);
         assert_eq!(SyscallNumber::try_from(1), Ok(SyscallNumber::Yield));
         assert_eq!(SyscallNumber::try_from(2), Ok(SyscallNumber::Exit));
         assert_eq!(SyscallNumber::try_from(3), Ok(SyscallNumber::ConsoleWrite));
         assert_eq!(SyscallNumber::try_from(4), Ok(SyscallNumber::ConsoleRead));
         assert_eq!(SyscallNumber::try_from(5), Ok(SyscallNumber::FileRead));
+        assert_eq!(SyscallNumber::try_from(6), Ok(SyscallNumber::SpawnWorker));
         assert_eq!(
             SyscallNumber::try_from(0xFFFF),
             Err(UnknownSyscallNumber(0xFFFF))

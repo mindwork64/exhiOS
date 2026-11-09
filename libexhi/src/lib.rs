@@ -77,6 +77,12 @@ pub fn file_read(path: &str, offset: usize, destination: &mut [u8]) -> Result<us
     Ok(count)
 }
 
+/// Starts the built-in worker process and returns its scheduler task ID.
+#[inline]
+pub fn spawn_worker() -> Result<u64, SyscallError> {
+    decode_return(raw_syscall(SyscallNumber::SpawnWorker as u64, [0; 6]))
+}
+
 /// Terminates the current process. A correct kernel implementation does not
 /// return to the caller; spin forever if an exit request is unexpectedly
 /// returned so user code cannot continue after requesting termination.
@@ -149,5 +155,6 @@ mod tests {
         assert_eq!(SyscallNumber::ConsoleWrite as u64, 3);
         assert_eq!(SyscallNumber::ConsoleRead as u64, 4);
         assert_eq!(SyscallNumber::FileRead as u64, 5);
+        assert_eq!(SyscallNumber::SpawnWorker as u64, 6);
     }
 }

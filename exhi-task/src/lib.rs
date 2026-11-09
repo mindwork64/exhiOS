@@ -33,6 +33,7 @@ pub enum Capability {
     FileWrite = 8,
     DeviceAccess = 9,
     NetworkAccess = 10,
+    TaskSpawn = 11,
 }
 
 impl Capability {
@@ -41,7 +42,7 @@ impl Capability {
     }
 }
 
-const KNOWN_CAPABILITY_BITS: u64 = (1u64 << 11) - 1;
+const KNOWN_CAPABILITY_BITS: u64 = (1u64 << 12) - 1;
 
 /// Compact, allocation-free set of explicitly granted process capabilities.
 ///
@@ -1189,6 +1190,9 @@ mod tests {
     #[test]
     fn capability_decoder_rejects_unknown_bits() {
         assert_eq!(CapabilitySet::from_bits(0), Ok(CapabilitySet::EMPTY));
+        assert!(CapabilitySet::from_bits(1u64 << (Capability::TaskSpawn as u8))
+            .unwrap()
+            .contains(Capability::TaskSpawn));
         assert!(CapabilitySet::from_bits(1u64 << (Capability::NetworkAccess as u8)).is_ok());
         assert_eq!(
             CapabilitySet::from_bits(1 << 63),

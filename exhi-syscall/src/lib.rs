@@ -59,6 +59,9 @@ pub trait SyscallServices {
         user_buffer: u64,
         buffer_length: u64,
     ) -> Result<u64, SyscallError>;
+
+    /// Creates the built-in worker process and returns its scheduler task ID.
+    fn spawn_worker(&mut self) -> Result<u64, SyscallError>;
 }
 
 /// Dispatches one ABI request with default-deny capability enforcement.
@@ -83,6 +86,7 @@ pub fn dispatch<S: SyscallServices>(
         SyscallNumber::ConsoleWrite => Capability::ConsoleWrite,
         SyscallNumber::ConsoleRead => Capability::ConsoleRead,
         SyscallNumber::FileRead => Capability::FileRead,
+        SyscallNumber::SpawnWorker => Capability::TaskSpawn,
     };
     if services
         .current_capabilities()
@@ -123,6 +127,10 @@ pub fn dispatch<S: SyscallServices>(
                 Err(error) => DispatchOutcome::Return(error.as_return_value()),
             }
         }
+        SyscallNumber::SpawnWorker => match services.spawn_worker() {
+            Ok(task_id) => DispatchOutcome::Return(task_id),
+            Err(error) => DispatchOutcome::Return(error.as_return_value()),
+        },
     }
 }
 
@@ -138,6 +146,8 @@ mod tests {
         console_result: Result<u64, SyscallError>,
         console_read_result: Result<u64, SyscallError>,
         file_read_result: Result<u64, SyscallError>,
+        spawn_result: Result<u64, SyscallError>,
+        spawn_calls: u8,
         yield_calls: u8,
         exit_calls: u8,
         console_calls: u8,
@@ -157,6 +167,8 @@ mod tests {
                 console_result: Ok(0),
                 console_read_result: Ok(0),
                 file_read_result: Ok(0),
+                spawn_result: Ok(0),
+                spawn_calls: 0,
                 yield_calls: 0,
                 exit_calls: 0,
                 console_calls: 0,
@@ -216,6 +228,11 @@ mod tests {
             ));
             self.file_read_result
         }
+
+        fn spawn_worker(&mut self) -> Result<u64, SyscallError> {
+            self.spawn_calls += 1;
+            self.spawn_result
+        }
     }
 
     #[test]
@@ -240,6 +257,7 @@ mod tests {
             SyscallNumber::ConsoleWrite,
             SyscallNumber::ConsoleRead,
             SyscallNumber::FileRead,
+            SyscallNumber::SpawnWorker,
         ];
 
         for syscall in cases {
@@ -254,6 +272,7 @@ mod tests {
             assert_eq!(services.console_calls, 0);
             assert_eq!(services.console_read_calls, 0);
             assert_eq!(services.file_read_calls, 0);
+            assert_eq!(services.spawn_calls, 0);
         }
     }
 
@@ -340,6 +359,29 @@ mod tests {
         );
         assert_eq!(services.file_read_calls, 1);
         assert_eq!(services.last_file_read, Some((0x2000, 13, 4, 0x3000, 64)));
+    }
+
+    #[test]
+    fn denied_worker_spawn_never_enters_the_service() {
+        let mut services = MockServices::new(CapabilitySet::EMPTY);
+        let request = SyscallRequest::new(SyscallNumber::SpawnWorker as u64, [0; 6]);
+
+        assert_eq!(
+            dispatch(request, &mut services),
+            DispatchOutcome::Return(SyscallError::AccessDenied.as_return_value())
+        );
+        assert_eq!(services.spawn_calls, 0);
+    }
+
+    #[test]
+    fn authorized_worker_spawn_returns_the_new_task_id() {
+        let capabilities = CapabilitySet::EMPTY.with(Capability::TaskSpawn);
+        let mut services = MockServices::new(capabilities);
+        services.spawn_result = Ok(9);
+        let request = SyscallRequest::new(SyscallNumber::SpawnWorker as u64, [0; 6]);
+
+        assert_eq!(dispatch(request, &mut services), DispatchOutcome::Return(9));
+        assert_eq!(services.spawn_calls, 1);
     }
 
     #[test]
