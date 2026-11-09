@@ -22,7 +22,10 @@ use exhi_task::{
 
 use crate::memory;
 
-#[cfg(feature = "process-load-smoke-test")]
+#[cfg(all(
+    feature = "process-load-smoke-test",
+    not(feature = "process-run-smoke-test")
+))]
 use super::address_space::PageMapping;
 use super::address_space::{self, AddressSpace, AddressSpaceError, UserPageFlags};
 #[cfg(feature = "process-runtime")]
@@ -93,7 +96,10 @@ struct OwnedPage {
     mapped: bool,
 }
 
-#[cfg(feature = "process-load-smoke-test")]
+#[cfg(all(
+    feature = "process-load-smoke-test",
+    not(feature = "process-run-smoke-test")
+))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProcessLoadReport {
     pub entry_point: u64,
@@ -162,7 +168,10 @@ impl LoadedProcess {
         self.user_stack_pointer
     }
 
-    #[cfg(feature = "process-load-smoke-test")]
+    #[cfg(all(
+    feature = "process-load-smoke-test",
+    not(feature = "process-run-smoke-test")
+))]
     pub const fn image_page_count(&self) -> usize {
         self.image_page_count
     }
@@ -182,7 +191,10 @@ impl LoadedProcess {
             .ok_or(ProcessLoadError::AddressSpace(AddressSpaceError::Destroyed))
     }
 
-    #[cfg(feature = "process-load-smoke-test")]
+    #[cfg(all(
+    feature = "process-load-smoke-test",
+    not(feature = "process-run-smoke-test")
+))]
     pub fn translate(&self, address: u64) -> Result<PageMapping, ProcessLoadError> {
         self.address_space
             .as_ref()
@@ -419,7 +431,10 @@ fn align_up(address: u64) -> Option<u64> {
 
 /// Exercises the loader against the embedded first user executable and then
 /// destroys it again. This is a loader test, not a process scheduling test.
-#[cfg(feature = "process-load-smoke-test")]
+#[cfg(all(
+    feature = "process-load-smoke-test",
+    not(feature = "process-run-smoke-test")
+))]
 pub fn smoke_test(image: &[u8]) -> Result<ProcessLoadReport, ProcessLoadError> {
     let mut process = LoadedProcess::load(image)?;
     let report = ProcessLoadReport {
@@ -440,7 +455,10 @@ pub fn smoke_test(image: &[u8]) -> Result<ProcessLoadReport, ProcessLoadError> {
     Ok(report)
 }
 
-#[cfg(feature = "process-load-smoke-test")]
+#[cfg(all(
+    feature = "process-load-smoke-test",
+    not(feature = "process-run-smoke-test")
+))]
 fn validate_loaded_process(
     process: &LoadedProcess,
     image: &[u8],
@@ -1083,15 +1101,14 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
             None => false,
         }
     };
-    let mut task_reaped = false;
-    if cleanup_ok {
+    let task_reaped = if cleanup_ok {
         unsafe {
             ptr::write(process_slot, None);
         }
         let scheduler = ptr::addr_of_mut!(PROCESS_SCHEDULER);
         let init_id = unsafe { ptr::read_volatile(ptr::addr_of!(INIT_TASK_ID)) };
-        task_reaped = init_id.is_some_and(|id| unsafe { (*scheduler).reap(id).is_ok() });
-        if !task_reaped {
+        let reaped = init_id.is_some_and(|id| unsafe { (*scheduler).reap(id).is_ok() });
+        if !reaped {
             serial::COM1
                 .write(b"ExhiOS: init resources reclaimed but task record reaping failed.\r\n");
         } else {
@@ -1099,9 +1116,11 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
                 b"ExhiOS: init address space, user frames and finished task record reclaimed.\r\n",
             );
         }
+        reaped
     } else {
         serial::COM1.write(b"ExhiOS: init resource reclamation failed; process retained.\r\n");
-    }
+        false
+    };
 
     #[cfg(feature = "process-run-smoke-test")]
     {
