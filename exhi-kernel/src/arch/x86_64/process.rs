@@ -611,9 +611,8 @@ static mut PROCESS_MULTI_SWITCH_COUNT: u64 = 0;
 
 #[cfg(feature = "process-runtime")]
 fn initialize_userland_filesystem() {
-    let mut filesystem =
-        RamFs::<USERLAND_FS_NODE_COUNT, USERLAND_FS_FILE_CAPACITY>::new()
-            .unwrap_or_else(|_| init_runtime_failure(b"P7.4: could not create userland RAMFS.\\r\n"));
+    let mut filesystem = RamFs::<USERLAND_FS_NODE_COUNT, USERLAND_FS_FILE_CAPACITY>::new()
+        .unwrap_or_else(|_| init_runtime_failure(b"P7.4: could not create userland RAMFS.\r\n"));
     let root = filesystem.root();
     if create_directory_path(&mut filesystem, root, "/etc").is_err() {
         init_runtime_failure(b"P7.4: could not create /etc in userland RAMFS.\\r\n");
@@ -958,21 +957,11 @@ impl SyscallServices for InitServices {
 
         let process = unsafe { (*record.process).as_ref() }.ok_or(SyscallError::Io)?;
         let space = process.address_space().map_err(|_| SyscallError::Io)?;
-        user::validate_user_range(
-            space,
-            path_address,
-            path_length,
-            user::UserAccess::Read,
-        )
-        .map_err(|_| SyscallError::InvalidArgument)?;
-        if buffer_length != 0 {
-            user::validate_user_range(
-                space,
-                user_buffer,
-                buffer_length,
-                user::UserAccess::Write,
-            )
+        user::validate_user_range(space, path_address, path_length, user::UserAccess::Read)
             .map_err(|_| SyscallError::InvalidArgument)?;
+        if buffer_length != 0 {
+            user::validate_user_range(space, user_buffer, buffer_length, user::UserAccess::Write)
+                .map_err(|_| SyscallError::InvalidArgument)?;
         }
 
         let mut path_bytes = [0u8; USERLAND_MAX_PATH];
