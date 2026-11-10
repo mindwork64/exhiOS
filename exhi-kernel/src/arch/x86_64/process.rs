@@ -1666,30 +1666,38 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
 
     #[cfg(not(feature = "process-stack-guard-smoke-test"))]
     {
-    let first_frame_address = unsafe {
-        (*scheduler)
-            .get(first_task_id)
-            .map(|task| task.context().saved_stack_pointer())
-    }
-    .unwrap_or_else(|| init_runtime_failure(b"P7.1: first process entry frame is missing.\\r\n"));
-    if first_frame_address == 0
-        || first_frame_address & 0xF != 0
-        || (first_frame_address as u64) < first_record.kernel_stack_bottom
-        || (first_frame_address as u64)
-            .checked_add(size_of::<user::UserEntryFrame>() as u64)
-            .is_none_or(|end| end > first_record.kernel_stack_top)
-    {
-        init_runtime_failure(b"P7.1: first process entry frame is outside its kernel stack.\\r\n");
-    }
-    let frame = unsafe { &*(first_frame_address as *const user::UserEntryFrame) };
-    let fx_state = unsafe { &*(first_record.fx_state as *const user::FxState) };
-    match user::enter_user(frame, fx_state) {
-        Ok(()) => {
-            init_runtime_failure(b"P7.1: first user process IRETQ entry unexpectedly returned.\r\n")
+        let first_frame_address = unsafe {
+            (*scheduler)
+                .get(first_task_id)
+                .map(|task| task.context().saved_stack_pointer())
         }
-        Err(_) => init_runtime_failure(b"P7.1: first user process IRETQ handoff failed.\r\n"),
-    }    }
-
+        .unwrap_or_else(|| {
+            init_runtime_failure(b"P7.1: first process entry frame is missing.\\r\\n")
+        });
+        if first_frame_address == 0
+            || first_frame_address & 0xF != 0
+            || (first_frame_address as u64) < first_record.kernel_stack_bottom
+            || (first_frame_address as u64)
+                .checked_add(size_of::<user::UserEntryFrame>() as u64)
+                .is_none_or(|end| end > first_record.kernel_stack_top)
+        {
+            init_runtime_failure(
+                b"P7.1: first process entry frame is outside its kernel stack.\\r\\n",
+            );
+        }
+        let frame = unsafe { &*(first_frame_address as *const user::UserEntryFrame) };
+        let fx_state = unsafe { &*(first_record.fx_state as *const user::FxState) };
+        match user::enter_user(frame, fx_state) {
+            Ok(()) => {
+                init_runtime_failure(
+                    b"P7.1: first user process IRETQ entry unexpectedly returned.\\r\\n",
+                )
+            }
+            Err(_) => {
+                init_runtime_failure(b"P7.1: first user process IRETQ handoff failed.\\r\\n")
+            }
+        }
+    }
 }
 
 /// The kernel reaper always runs after the user task has switched away from
