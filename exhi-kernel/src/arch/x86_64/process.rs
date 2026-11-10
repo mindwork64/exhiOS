@@ -1756,14 +1756,10 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
         let frame = unsafe { &*(first_frame_address as *const user::UserEntryFrame) };
         let fx_state = unsafe { &*(first_record.fx_state as *const user::FxState) };
         match user::enter_user(frame, fx_state) {
-            Ok(()) => {
-                init_runtime_failure(
-                    b"P7.1: first user process IRETQ entry unexpectedly returned.\\r\n",
-                )
-            }
-            Err(_) => {
-                init_runtime_failure(b"P7.1: first user process IRETQ handoff failed.\\r\n")
-            }
+            Ok(()) => init_runtime_failure(
+                b"P7.1: first user process IRETQ entry unexpectedly returned.\\r\n",
+            ),
+            Err(_) => init_runtime_failure(b"P7.1: first user process IRETQ handoff failed.\\r\n"),
         }
     }
 }
