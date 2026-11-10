@@ -35,7 +35,7 @@ cargo build --locked --release -p exhi-init --bin exhi-init --bin exhi-worker --
 INIT_ELF="$ROOT_DIR/target/x86_64-unknown-none/release/exhi-init"
 WORKER_ELF="$ROOT_DIR/target/x86_64-unknown-none/release/exhi-worker"
 KERNEL_ELF="$ROOT_DIR/target/x86_64-unknown-none/release/exhi-kernel"
-BOOT_EFI="$ROOT_DIR/target/x86_64-unknown-uefi/release/exhi-boot"
+BOOT_EFI="$ROOT_DIR/target/x86_64-unknown-uefi/release/exhi-boot.efi"
 
 verify_et_exec() {
     local image="$1"
@@ -61,8 +61,17 @@ echo
 echo "Building native UEFI bootloader (Release)..."
 cargo build --locked --release -p exhi-boot --bin exhi-boot --target x86_64-unknown-uefi
 if [[ ! -s "$BOOT_EFI" ]]; then
-    echo "ERROR: UEFI bootloader artifact is missing: $BOOT_EFI" >&2
-    exit 1
+    # Cargo's x86_64-unknown-uefi target emits PE/COFF executables with .efi.
+    # Keep a no-extension fallback for toolchains that use the older naming.
+    LEGACY_BOOT_EFI="$ROOT_DIR/target/x86_64-unknown-uefi/release/exhi-boot"
+    if [[ -s "$LEGACY_BOOT_EFI" ]]; then
+        BOOT_EFI="$LEGACY_BOOT_EFI"
+    else
+        echo "ERROR: UEFI bootloader artifact is missing." >&2
+        echo "Checked: $BOOT_EFI" >&2
+        echo "Checked: $LEGACY_BOOT_EFI" >&2
+        exit 1
+    fi
 fi
 
 DIST_DIR="$ROOT_DIR/dist"
