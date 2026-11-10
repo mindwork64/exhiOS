@@ -18,4 +18,4 @@ Release candidate validation (2026-11-11): the Release-profile GPT/FAT32 image b
 
 The serial shell does not yet support cursor-key navigation or command history.
 
-This alpha does not include SMP, persistent storage, a graphical desktop, networking or broad device support. ExhiOS source is licensed under Apache-2.0. User-side Clippy checks completed with existing lint suggestions; rustfmt still reports a formatting diff in `process.rs`. The final bundle must be regenerated to include LICENSE and current documentation, then boot-tested and checksum-verified before publication.
+This alpha does not include SMP, persistent storage, a graphical desktop, networking or broad device support. ExhiOS source is licensed under Apache-2.0. User-side Clippy checks for userland and the kernel `process-runtime` path completed successfully with existing lint suggestions. The rustfmt correction in `process.rs` was committed in [ecce11b](https://github.com/mindwork64/exhiOS/commit/ecce11b6a27a176e7918364d9506b0f49e8329d2). The final package includes the Apache-2.0 license, booted through QEMU/OVMF to the Ring 3 shell, and passed archive and image checksum verification.
