@@ -44,6 +44,7 @@ Output:
 - dist/exhios-0.1.0-alpha.1-x86_64-uefi/exhios-0.1.0-alpha.1-x86_64-uefi.img
 - dist/exhios-0.1.0-alpha.1-x86_64-uefi/SHA256SUMS
 - dist/exhios-0.1.0-alpha.1-x86_64-uefi/RELEASE_NOTES.md
+- dist/exhios-0.1.0-alpha.1-x86_64-uefi/CHANGELOG.md
 - dist/exhios-0.1.0-alpha.1-x86_64-uefi.tar.gz
 - dist/exhios-0.1.0-alpha.1-x86_64-uefi.tar.gz.sha256
 
