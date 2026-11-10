@@ -34,6 +34,8 @@ use crate::memory;
 use super::address_space::PageMapping;
 use super::address_space::{self, AddressSpace, AddressSpaceError, UserPageFlags};
 #[cfg(feature = "process-runtime")]
+#[cfg(feature = "process-stack-guard-smoke-test")]
+use super::{idt, vmm};
 use super::{gdt, serial, stack_guard, syscall, user};
 
 const PAGE_SIZE: u64 = 4096;
@@ -733,6 +735,58 @@ fn remove_process_record(task_id: TaskId) -> bool {
 fn reaper_kernel_stack_bounds() -> Option<(u64, u64)> {
     let storage = unsafe { ptr::addr_of_mut!(REAPER_KERNEL_STACK.0).cast::<u8>() as u64 };
     runtime_stack_bounds(storage)
+}
+
+#[cfg(feature = "process-stack-guard-smoke-test")]
+fn verify_kernel_stack_guard(bottom: u64, top: u64) -> bool {
+    let expected_usable_size = INIT_KERNEL_STACK_BYTES as u64 - PAGE_SIZE;
+    let Some(guard_page) = bottom.checked_sub(PAGE_SIZE) else {
+        return false;
+    };
+    if bottom & PAGE_MASK != 0
+        || top & 0xF != 0
+        || top.checked_sub(bottom) != Some(expected_usable_size)
+        || vmm::query_page(guard_page) != Err(vmm::VmmError::NotMapped)
+    {
+        return false;
+    }
+
+    let mut page = bottom;
+    while page < top {
+        let Ok(mapping) = vmm::query_page(page) else {
+            return false;
+        };
+        if mapping.virtual_page != page
+            || mapping.physical_page != page
+            || mapping.flags.user
+            || !mapping.flags.writable
+        {
+            return false;
+        }
+        page = match page.checked_add(PAGE_SIZE) {
+            Some(next) => next,
+            None => return false,
+        };
+    }
+
+    page == top
+}
+
+#[cfg(feature = "process-stack-guard-smoke-test")]
+fn verify_all_process_kernel_stack_guards() -> bool {
+    for slot in 0..MAX_PROCESS_RECORDS {
+        let Some((bottom, top)) = process_kernel_stack_bounds(slot) else {
+            return false;
+        };
+        if !verify_kernel_stack_guard(bottom, top) {
+            return false;
+        }
+    }
+
+    let Some((reaper_bottom, reaper_top)) = reaper_kernel_stack_bounds() else {
+        return false;
+    };
+    verify_kernel_stack_guard(reaper_bottom, reaper_top)
 }
 
 #[cfg(feature = "process-runtime")]
@@ -1590,6 +1644,26 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
     {
         init_runtime_failure(b"P7.1: could not activate the first process kernel stack.\\r\n");
     }
+    #[cfg(feature = "process-stack-guard-smoke-test")]
+    {
+        if !verify_all_process_kernel_stack_guards() {
+            init_runtime_failure(
+                b"P2.6: init, worker or reaper kernel-stack guard verification failed.\r\n",
+            );
+        }
+        let Some((worker_bottom, _)) = process_kernel_stack_bounds(1) else {
+            init_runtime_failure(b"P2.6: worker kernel-stack bounds are unavailable.\r\n");
+        };
+        let Some(worker_guard) = worker_bottom.checked_sub(PAGE_SIZE) else {
+            init_runtime_failure(b"P2.6: worker guard-page address underflowed.\r\n");
+        };
+        serial::COM1.write(
+            b"P2.6: init, worker and reaper stacks have 64 KiB supervisor mappings and unmapped guards.\r\n",
+        );
+        serial::COM1.write(b"P2.6: forcing #PF/#DF from the worker kernel-stack guard.\r\n");
+        idt::trigger_process_stack_guard_smoke_test(worker_bottom, worker_guard);
+    }
+
     let first_frame_address = unsafe {
         (*scheduler)
             .get(first_task_id)

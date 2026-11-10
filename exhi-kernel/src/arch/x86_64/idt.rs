@@ -344,6 +344,44 @@ pub fn trigger_double_fault_guard_stack_smoke_test(stack_bottom: u64, guard_page
     }
 }
 
+
+#[cfg(feature = "process-stack-guard-smoke-test")]
+unsafe extern "sysv64" {
+    fn exhi_trigger_guard_stack_overflow(stack_bottom: u64, fault_address: u64) -> !;
+}
+
+/// Forces a page fault at the bottom of a process kernel stack. The CPU's
+/// attempt to push the #PF frame into the unmapped guard page must escalate
+/// to #DF and use the independent TSS IST1 stack.
+#[cfg(feature = "process-stack-guard-smoke-test")]
+pub fn trigger_process_stack_guard_smoke_test(stack_bottom: u64, guard_page: u64) -> ! {
+    if guard_page.checked_add(4096) != Some(stack_bottom)
+        || super::vmm::query_page(guard_page) != Err(super::vmm::VmmError::NotMapped)
+    {
+        unsafe {
+            asm!("ud2", options(nomem, nostack));
+        }
+    }
+
+    match super::vmm::query_page(stack_bottom) {
+        Ok(mapping)
+            if mapping.virtual_page == stack_bottom
+                && mapping.physical_page == stack_bottom
+                && !mapping.flags.user
+                && mapping.flags.writable => {}
+        _ => unsafe {
+            asm!("ud2", options(nomem, nostack));
+        },
+    }
+
+    // SAFETY: the process module validates every page in the usable stack.
+    // The first page and the immediately lower unmapped guard are checked
+    // again here before the synthetic #PF forces #DF delivery through IST1.
+    unsafe {
+        exhi_trigger_guard_stack_overflow(stack_bottom, guard_page);
+    }
+}
+
 unsafe extern "sysv64" {
     fn exhi_isr_0();
     fn exhi_isr_1();

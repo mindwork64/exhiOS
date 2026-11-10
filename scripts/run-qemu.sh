@@ -31,8 +31,17 @@ PROCESS_SHELL_TEST="${EXHIOS_PROCESS_SHELL_TEST:-0}"
 PROCESS_FAULT_TEST="${EXHIOS_PROCESS_FAULT_TEST:-0}"
 PROCESS_WORKER_FAULT_TEST="${EXHIOS_PROCESS_WORKER_FAULT_TEST:-0}"
 PROCESS_WORKER_ROLLBACK_TEST="${EXHIOS_PROCESS_WORKER_ROLLBACK_TEST:-0}"
+PROCESS_STACK_GUARD_TEST="${EXHIOS_PROCESS_STACK_GUARD_TEST:-0}"
 SHELL_SOCKET="$ROOT_DIR/target/exhios-shell-qemu.sock"
 QMP_SOCKET="$ROOT_DIR/target/exhios-keyboard-qmp.sock"
+
+if [[ "$PROCESS_STACK_GUARD_TEST" == "1" ]]; then
+    if [[ "$QEMU_EXIT_TEST" != "1" || "$PROCESS_WORKER_ROLLBACK_TEST" == "1" || "$PROCESS_WORKER_FAULT_TEST" == "1" || "$PROCESS_FAULT_TEST" == "1" || "$PROCESS_SHELL_TEST" == "1" || "$PROCESS_RUN_TEST" == "1" || "$PROCESS_LOAD_TEST" == "1" || "$PROCESS_MULTI_TEST" == "1" ]]; then
+        echo "EXHIOS_PROCESS_STACK_GUARD_TEST requires QEMU debug-exit and cannot be combined with another process smoke mode." >&2
+        exit 1
+    fi
+    PROCESS_MULTI_TEST=1
+fi
 
 if [[ "$EXCEPTION_TEST" == "1" && "$QEMU_EXIT_TEST" == "1" ]]; then
     echo "Choose either EXHIOS_EXCEPTION_TEST or EXHIOS_QEMU_EXIT_TEST, not both." >&2
@@ -336,6 +345,9 @@ elif [[ "$PROCESS_FAULT_TEST" == "1" ]]; then
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
 elif [[ "$PROCESS_SHELL_TEST" == "1" ]]; then
     echo "Starting ExhiOS interactive Ring 3 serial shell smoke test."
+    QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
+elif [[ "$PROCESS_STACK_GUARD_TEST" == "1" ]]; then
+    echo "Starting ExhiOS process kernel-stack guard and IST1 smoke test."
     QEMU_ARGS+=(-device isa-debug-exit,iobase=0xf4,iosize=0x04)
 elif [[ "$PROCESS_MULTI_TEST" == "1" ]]; then
     echo "Starting ExhiOS production two-process Ring 3 lifecycle smoke test."
