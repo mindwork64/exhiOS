@@ -49,4 +49,4 @@ The release image is an experimental alpha. Do not use it as the only boot mediu
 
 ## License and distribution
 
-No project license or redistribution terms have been selected yet. The repository currently has no LICENSE/COPYING file. Decide and add the intended terms before publicly distributing source or binaries.
+ExhiOS source code is licensed under the Apache License, Version 2.0 (Apache-2.0); see [LICENSE](LICENSE). Third-party dependencies remain subject to their own license terms.
