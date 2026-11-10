@@ -528,6 +528,8 @@ Implementation:
 
 
 ## 2026-11-10 — P7 worker fault recovery coverage added (runtime pending)
+- User verified the dedicated fault-mode userland build, userland Clippy, and kernel `process-worker-fault-smoke-test` Clippy. All completed successfully; kernel warnings remain limited to legacy modules. The runtime interaction driver was not run.
+
 - Extended the normal shell QEMU driver to issue a second `spawn` after the first worker exits; it requires a clean "could not be started" result while the Finished worker still occupies its slot, then verifies normal init exit/reaper cleanup.
 
 
