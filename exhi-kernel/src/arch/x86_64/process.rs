@@ -604,6 +604,8 @@ static mut PROCESS_REGISTRY: [Option<ProcessRuntimeRecord>; MAX_PROCESS_RECORDS]
 static mut REAPER_TASK_ID: Option<TaskId> = None;
 #[cfg(feature = "process-fault-smoke-test")]
 static mut INIT_FAULT_VECTOR: u64 = u64::MAX;
+#[cfg(feature = "process-worker-fault-smoke-test")]
+static mut PROCESS_WORKER_FAULT_VECTOR: u64 = u64::MAX;
 #[cfg(feature = "process-run-smoke-test")]
 static mut INIT_YIELD_COUNT: u64 = 0;
 #[cfg(feature = "process-run-smoke-test")]
@@ -1666,7 +1668,8 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
         feature = "process-run-smoke-test",
         feature = "process-shell-smoke-test",
         feature = "process-fault-smoke-test",
-        feature = "process-multi-smoke-test"
+        feature = "process-multi-smoke-test",
+        feature = "process-worker-fault-smoke-test"
     ))]
     let task_reaped = _task_reaped;
 
@@ -1766,6 +1769,35 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
         }
     }
 
+    #[cfg(feature = "process-worker-fault-smoke-test")]
+    {
+        let fault_vector =
+            unsafe { ptr::read_volatile(ptr::addr_of!(PROCESS_WORKER_FAULT_VECTOR)) };
+        let registry_empty = unsafe { (*registry).iter().all(Option::is_none) };
+        let success = fault_vector == 6
+            && cleanup_ok
+            && task_reaped
+            && reaped_count == 2
+            && registry_empty;
+        if success {
+            serial::COM1.write(
+                b"P7.1: worker fault returned to init; reaper reclaimed both processes.\r\n",
+            );
+        } else {
+            serial::COM1.write(
+                b"P7.1: worker fault recovery or two-process reaper verification failed.\r\n",
+            );
+        }
+        unsafe {
+            core::arch::asm!(
+                "out dx, eax",
+                in("dx") crate::QEMU_DEBUG_EXIT_PORT,
+                in("eax") if success { crate::QEMU_DEBUG_EXIT_VALUE } else { crate::QEMU_DEBUG_EXIT_VALUE + 1 },
+                options(nomem, nostack, preserves_flags)
+            );
+        }
+    }
+
     loop {
         unsafe {
             core::arch::asm!("cli", "hlt", options(nomem, nostack));
@@ -1777,7 +1809,7 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
 /// dedicated kernel reaper. No init-owned address space or task record is
 /// reclaimed on the faulting task's kernel stack.
 #[cfg(feature = "process-runtime")]
-fn handoff_faulting_process_to_scheduler() -> ! {
+fn handoff_faulting_process_to_scheduler(vector: u64) -> ! {
     unsafe {
         core::arch::asm!("cli", options(nomem, nostack, preserves_flags));
     }
@@ -1787,6 +1819,18 @@ fn handoff_faulting_process_to_scheduler() -> ! {
     });
     if process_record_for_task(current_id).is_none() {
         init_runtime_failure(b"P7.1: user faulting task has no process record.\r\n");
+    }
+    #[cfg(feature = "process-worker-fault-smoke-test")]
+    {
+        let current_name = unsafe { (*scheduler).get(current_id).map(|task| task.name()) };
+        if current_name == Some("worker") {
+            unsafe {
+                ptr::write_volatile(
+                    ptr::addr_of_mut!(PROCESS_WORKER_FAULT_VECTOR),
+                    vector,
+                );
+            }
+        }
     }
     let reaper_id =
         unsafe { ptr::read_volatile(ptr::addr_of!(REAPER_TASK_ID)) }.unwrap_or_else(|| {
@@ -1835,7 +1879,7 @@ fn handoff_faulting_process_to_scheduler() -> ! {
 }
 
 #[cfg(feature = "process-runtime")]
-pub fn terminate_user_after_user_exception(_vector: u64, exception: user::UserException) -> ! {
+pub fn terminate_user_after_user_exception(vector: u64, exception: user::UserException) -> ! {
     // IDT entry from CPL3 does not execute SWAPGS automatically. Unlike the
     // SYSCALL path, this fault path must establish the trusted kernel GS base
     // before updating the scheduler-selected syscall entry context.
@@ -1849,9 +1893,9 @@ pub fn terminate_user_after_user_exception(_vector: u64, exception: user::UserEx
     serial::COM1.write(b".\r\n");
     #[cfg(feature = "process-fault-smoke-test")]
     unsafe {
-        ptr::write_volatile(ptr::addr_of_mut!(INIT_FAULT_VECTOR), _vector);
+        ptr::write_volatile(ptr::addr_of_mut!(INIT_FAULT_VECTOR), vector);
     }
-    handoff_faulting_process_to_scheduler();
+    handoff_faulting_process_to_scheduler(vector);
 }
 
 #[cfg(feature = "process-runtime")]
@@ -1861,7 +1905,8 @@ fn init_runtime_failure(message: &[u8]) -> ! {
         feature = "process-run-smoke-test",
         feature = "process-shell-smoke-test",
         feature = "process-fault-smoke-test",
-        feature = "process-multi-smoke-test"
+        feature = "process-multi-smoke-test",
+        feature = "process-worker-fault-smoke-test"
     ))]
     unsafe {
         core::arch::asm!(
