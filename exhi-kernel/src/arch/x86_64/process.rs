@@ -1874,7 +1874,21 @@ fn handoff_faulting_process_to_scheduler(vector: u64) -> ! {
             })
     };
     let fx_state = unsafe { &*(fx_state as *const user::FxState) };
-    match user::enter_user(frame, fx_state) {
+
+    // The fault handler entered kernel GS with SWAPGS. When another Ring 3
+    // process is selected, restore the user GS layout before IRETQ so its next
+    // SYSCALL swaps back to the trusted kernel-local area.
+    unsafe {
+        core::arch::asm!("swapgs", options(nomem, nostack, preserves_flags));
+    }
+    let entry = user::enter_user(frame, fx_state);
+    // enter_user transfers control permanently on success. If validation
+    // returns an error (or the transfer unexpectedly returns), restore kernel
+    // GS before reporting the fatal handoff failure.
+    unsafe {
+        core::arch::asm!("swapgs", options(nomem, nostack, preserves_flags));
+    }
+    match entry {
         Ok(()) => init_runtime_failure(b"P7.1: scheduler fault handoff unexpectedly returned.\r\n"),
         Err(_) => init_runtime_failure(b"P7.1: scheduler fault handoff validation failed.\r\n"),
     }
