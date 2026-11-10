@@ -29,9 +29,11 @@ ExhiOS is an experimental x86-64 operating system with a native UEFI loader, a R
 
 The Release-profile package was built locally on Linux Mint and booted successfully through QEMU/OVMF. The GPT/FAT32 image passed partition-table verification; the UEFI loader and kernel were read back from the EFI System Partition and matched their source artifacts byte-for-byte. The Release kernel reached the Ring 3 serial shell.
 
-The shell's help, hostname, version, config and echo commands were exercised. Worker creation, the worker's expected TaskSpawn denial, yield/exit, and a second worker spawn after deferred cleanup were also confirmed. The second worker reused the freed process slot and exited normally.
+The shell's help, hostname, version, config and echo commands were exercised. Worker creation, the worker's expected TaskSpawn denial, yield/exit, and repeated worker replacement after deferred cleanup were confirmed. After the first worker exited, four subsequent workers each reused the freed process slot and exited normally. The run was performed after the TaskSpawn capability check had been ordered before reclamation.
 
-This is QEMU/OVMF validation, not physical-hardware qualification. Before publication, repeat the build/runtime check on the final source commit, complete the current kernel Clippy check, commit Cargo.lock, independently verify the archive checksum, and choose/add project redistribution terms.
+The current serial line editor handles CR/LF, Backspace/DEL and Ctrl+C; arrow-key navigation and command history are not implemented. Terminal up-arrow escape sequences may therefore appear as literal `[A` input.
+
+This is QEMU/OVMF validation, not physical-hardware qualification. Before publication, complete the current kernel Clippy check, commit Cargo.lock, independently verify the archive checksum, and choose/add project redistribution terms. Rebuild after any final source changes.
 
 ## Distribution terms
 
