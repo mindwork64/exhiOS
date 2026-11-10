@@ -4,9 +4,9 @@
 use core::hint::spin_loop;
 use core::panic::PanicInfo;
 
-use libexhi::{console_write, exit, spawn_worker, SyscallError};
 #[cfg(not(feature = "worker-fault-smoke-test"))]
 use libexhi::yield_now;
+use libexhi::{console_write, exit, spawn_worker, SyscallError};
 
 #[no_mangle]
 pub extern "sysv64" fn _start() -> ! {

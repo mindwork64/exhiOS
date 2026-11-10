@@ -1190,9 +1190,11 @@ mod tests {
     #[test]
     fn capability_decoder_rejects_unknown_bits() {
         assert_eq!(CapabilitySet::from_bits(0), Ok(CapabilitySet::EMPTY));
-        assert!(CapabilitySet::from_bits(1u64 << (Capability::TaskSpawn as u8))
-            .unwrap()
-            .contains(Capability::TaskSpawn));
+        assert!(
+            CapabilitySet::from_bits(1u64 << (Capability::TaskSpawn as u8))
+                .unwrap()
+                .contains(Capability::TaskSpawn)
+        );
         assert!(CapabilitySet::from_bits(1u64 << (Capability::NetworkAccess as u8)).is_ok());
         assert_eq!(
             CapabilitySet::from_bits(1 << 63),

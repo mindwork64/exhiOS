@@ -717,9 +717,7 @@ pub unsafe extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
 
     #[cfg(feature = "process-worker-fault-smoke-test")]
     {
-        serial::COM1.write(
-            b"P7.1: starting worker fault recovery with a live init process.\r\n",
-        );
+        serial::COM1.write(b"P7.1: starting worker fault recovery with a live init process.\r\n");
         arch::x86_64::process::run_init(EMBEDDED_INIT_ELF);
     }
 

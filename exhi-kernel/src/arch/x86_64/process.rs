@@ -1037,8 +1037,8 @@ fn spawn_worker_process(scheduler: *mut Scheduler<3>) -> Result<u64, SyscallErro
         return Err(SyscallError::Io);
     }
 
-    let current_id = unsafe { (*scheduler).current().map(|task| task.id()) }
-        .ok_or(SyscallError::Io)?;
+    let current_id =
+        unsafe { (*scheduler).current().map(|task| task.id()) }.ok_or(SyscallError::Io)?;
     if unsafe { (*scheduler).current_capabilities() }
         .authorize(Capability::TaskSpawn)
         .is_err()
@@ -1095,10 +1095,7 @@ fn spawn_worker_process(scheduler: *mut Scheduler<3>) -> Result<u64, SyscallErro
         #[cfg(feature = "process-worker-rollback-smoke-test")]
         unsafe {
             if !ptr::read_volatile(ptr::addr_of!(PROCESS_WORKER_ROLLBACK_INJECTED)) {
-                ptr::write_volatile(
-                    ptr::addr_of_mut!(PROCESS_WORKER_ROLLBACK_INJECTED),
-                    true,
-                );
+                ptr::write_volatile(ptr::addr_of_mut!(PROCESS_WORKER_ROLLBACK_INJECTED), true);
                 serial::COM1.write(
                     b"P7.1: injected worker setup failure after address-space activation.\r\n",
                 );
@@ -1385,10 +1382,7 @@ fn build_reaper_frame(kernel_stack_top: u64) -> *mut user::UserEntryFrame {
     pointer
 }
 
-#[cfg(all(
-    feature = "process-runtime",
-    not(feature = "process-multi-smoke-test")
-))]
+#[cfg(all(feature = "process-runtime", not(feature = "process-multi-smoke-test")))]
 pub fn run_init(image: &[u8]) -> ! {
     run_processes(image, None)
 }
@@ -1414,9 +1408,7 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
             && (address_space::restore_kernel().is_err()
                 || user::clear_active_kernel_stack().is_err())
         {
-            init_runtime_failure(
-                b"P7.1: could not restore kernel mappings between processes.\r\n",
-            );
+            init_runtime_failure(b"P7.1: could not restore kernel mappings between processes.\r\n");
         }
         let image = if slot == 0 {
             first_image
@@ -1723,9 +1715,7 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
         let registry_empty = unsafe { (*registry).iter().all(Option::is_none) };
         let success = cleanup_ok && task_reaped && reaped_count == 2 && registry_empty;
         if success {
-            serial::COM1.write(
-                b"P7.1: shell-spawned worker and init were both reaped.\r\n",
-            );
+            serial::COM1.write(b"P7.1: shell-spawned worker and init were both reaped.\r\n");
             serial::COM1.write(b"P7.3: interactive serial shell smoke test passed.\r\n");
         } else {
             serial::COM1.write(b"P7.1: shell-spawned worker cleanup verification failed.\r\n");
@@ -1792,11 +1782,8 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
         let fault_vector =
             unsafe { ptr::read_volatile(ptr::addr_of!(PROCESS_WORKER_FAULT_VECTOR)) };
         let registry_empty = unsafe { (*registry).iter().all(Option::is_none) };
-        let success = fault_vector == 6
-            && cleanup_ok
-            && task_reaped
-            && reaped_count == 2
-            && registry_empty;
+        let success =
+            fault_vector == 6 && cleanup_ok && task_reaped && reaped_count == 2 && registry_empty;
         if success {
             serial::COM1.write(
                 b"P7.1: worker fault returned to init; reaper reclaimed both processes.\r\n",
@@ -1845,10 +1832,7 @@ fn handoff_faulting_process_to_scheduler(vector: u64) -> ! {
         let current_name = unsafe { (*scheduler).get(current_id).map(|task| task.name()) };
         if current_name == Some("worker") {
             unsafe {
-                ptr::write_volatile(
-                    ptr::addr_of_mut!(PROCESS_WORKER_FAULT_VECTOR),
-                    vector,
-                );
+                ptr::write_volatile(ptr::addr_of_mut!(PROCESS_WORKER_FAULT_VECTOR), vector);
             }
         }
     }

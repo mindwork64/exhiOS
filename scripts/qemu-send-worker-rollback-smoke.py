@@ -70,58 +70,58 @@ def main() -> int:
             # The kernel injects exactly one failure after the worker address
             # space and entry stack have become active. The failed setup must
             # be destroyed and the parent context restored before this prompt.
-            client.sendall(b"spawn\\r")
+            client.sendall(b"spawn\r")
             output.extend(
                 read_until(
                     client,
                     buffer,
-                    b"P7.1: injected worker setup failure after address-space activation.\\r\\n",
+                    b"P7.1: injected worker setup failure after address-space activation.\r\n",
                 )
             )
             output.extend(
-                read_until(client, buffer, b"worker process could not be started.\\r\\n")
+                read_until(client, buffer, b"worker process could not be started.\r\n")
             )
             output.extend(read_until(client, buffer, b"exhios> "))
 
             # A second attempt must reuse the rolled-back slot and run normally.
-            client.sendall(b"spawn\\r")
-            output.extend(read_until(client, buffer, b"worker process started.\\r\\n"))
+            client.sendall(b"spawn\r")
+            output.extend(read_until(client, buffer, b"worker process started.\r\n"))
             output.extend(read_until(client, buffer, b"exhios> "))
             output.extend(
                 read_until(
                     client,
                     buffer,
-                    b"ExhiOS worker: second Ring 3 process started.\\r\\n",
+                    b"ExhiOS worker: second Ring 3 process started.\r\n",
                 )
             )
             output.extend(
                 read_until(
                     client,
                     buffer,
-                    b"ExhiOS worker: TaskSpawn denied as expected.\\r\\n",
+                    b"ExhiOS worker: TaskSpawn denied as expected.\r\n",
                 )
             )
             output.extend(
                 read_until(
                     client,
                     buffer,
-                    b"ExhiOS worker: completed yield sequence; exiting.\\r\\n",
+                    b"ExhiOS worker: completed yield sequence; exiting.\r\n",
                     timeout=8.0,
                 )
             )
 
             # The Finished worker intentionally owns its slot until init exits.
-            client.sendall(b"spawn\\r")
+            client.sendall(b"spawn\r")
             output.extend(
-                read_until(client, buffer, b"worker process could not be started.\\r\\n")
+                read_until(client, buffer, b"worker process could not be started.\r\n")
             )
             output.extend(read_until(client, buffer, b"exhios> "))
-            client.sendall(b"exit\\r")
+            client.sendall(b"exit\r")
             output.extend(
                 read_until(
                     client,
                     buffer,
-                    b"P7.3: interactive serial shell smoke test passed.\\r\\n",
+                    b"P7.3: interactive serial shell smoke test passed.\r\n",
                     timeout=10.0,
                 )
             )
