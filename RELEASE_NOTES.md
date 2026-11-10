@@ -33,7 +33,7 @@ The shell's help, hostname, version, config and echo commands were exercised. Wo
 
 The current serial line editor handles CR/LF, Backspace/DEL and Ctrl+C; arrow-key navigation and command history are not implemented. Terminal up-arrow escape sequences may therefore appear as literal `[A` input.
 
-This is QEMU/OVMF validation, not physical-hardware qualification. Cargo.lock is committed in the source repository and ExhiOS is licensed under Apache-2.0. User-side Clippy for userland and the kernel `process-runtime` path completed successfully with existing lint suggestions. The formatting check still reports a rustfmt diff in `process.rs`. The previously generated archive and image checksums passed, but that bundle predates the addition of LICENSE and the latest release documentation; regenerate the final package, boot it in QEMU/OVMF and verify its new checksums before publication.
+This is QEMU/OVMF validation, not physical-hardware qualification. Cargo.lock is committed in the source repository and ExhiOS is licensed under Apache-2.0. User-side Clippy for `exhi-init` and the kernel `process-runtime` path completed successfully; Clippy emitted existing lint suggestions but no errors. The rustfmt changes reported for `process.rs` were applied and committed in [ecce11b](https://github.com/mindwork64/exhiOS/commit/ecce11b6a27a176e7918364d9506b0f49e8329d2). The final package was rebuilt after adding LICENSE and updating the release documentation, booted through QEMU/OVMF to the interactive Ring 3 shell, and both the archive and image checksum manifests passed `sha256sum --check`.
 
 ## Distribution terms
 
