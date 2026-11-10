@@ -569,3 +569,13 @@ Implementation:
 - ABI, ELF, memory, heap, console, input, driver, scheduler, syscall, libexhi, config, VFS/RAMFS unit-test jobs and all build variants passed in the build job.
 - User-side `cargo fmt` and Clippy for both normal `exhi-init --bins` and `worker-fault-smoke-test` configurations had already passed without warnings.
 - P7.1–P7.4 are accepted for the current BSP/single-CPU implementation. This does not claim SMP or persistent storage support.
+
+
+## 2026-11-10 — Additional process kernel-stack guard / IST1 smoke path
+
+- Added the `process-stack-guard-smoke-test` feature and `EXHIOS_PROCESS_STACK_GUARD_TEST=1` runner mode, based on the production two-process setup.
+- Before entering Ring 3, the test verifies both process stacks and the dedicated reaper stack: exactly 16 usable 4 KiB pages (64 KiB), identity mapped, supervisor-only, writable, and with the immediately lower guard page returning `NotMapped`.
+- It then switches RSP to the worker stack's first usable byte and reads from the guard page. The expected #PF frame push must fault into that same unmapped guard and escalate to #DF on TSS IST1. The existing #DF handler should emit the IST1 success marker and exit QEMU with status 33.
+- The test is isolated from normal process lifecycle tests and does not alter production scheduling behavior. It deliberately halts at the expected #DF before Ring 3 entry.
+- Code commits: [521e5fe](https://github.com/mindwork64/exhiOS/commit/521e5fe875217f8c18e2167598a07751577659aa), import-gating follow-up [6758833](https://github.com/mindwork64/exhiOS/commit/6758833e5cde6c3b2032dbf4cde781834b33cd9f), whitespace cleanup [7dd8d51](https://github.com/mindwork64/exhiOS/commit/7dd8d515189412ea402c371caf8aff2d346a8728).
+- No Cargo lint, build, QEMU runtime or Actions job has been run for this addition. P2.6's additional process-stack runtime acceptance remains open.

@@ -163,7 +163,9 @@ Local Linux Mint/QEMU serial evidence (2026-11-06, supplied log):
 - Controlled guard fault raises vector 8 (Double Fault); exception frame pointer 0x122FC8 lies inside IST1 range 0x11F000..0x123000.
 - P2.6 double-fault IST runtime smoke test passed; QEMU debug-exit status 33.
 
-P2.6 is closed with both local and CI runtime evidence.
+The original boot-stack guard/IST1 scenario is accepted with both local and CI runtime evidence. An additional process-stack scenario is now implemented but not yet accepted: it validates both 64 KiB process stacks and the reaper stack page-by-page, then deliberately faults from the worker stack to verify #DF delivery through IST1. Runtime validation remains pending; P2.6's additional stack-exhaustion sub-item is still open.
+
+Code checkpoint: [521e5fe](https://github.com/mindwork64/exhiOS/commit/521e5fe875217f8c18e2167598a07751577659aa) (follow-up import gating: [6758833](https://github.com/mindwork64/exhiOS/commit/6758833e5cde6c3b2032dbf4cde781834b33cd9f)). The smoke path uses `EXHIOS_PROCESS_STACK_GUARD_TEST=1`; it has not been linted or executed yet.
 
 ## P3.1 — Polling serial driver
 

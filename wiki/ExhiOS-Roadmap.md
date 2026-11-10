@@ -89,6 +89,14 @@
 - [x] Локальный Linux Mint/QEMU (2026-11-06): guard page 0x1E0D3000 не отображена; stack 0x1E0D4000..0x1E0E4000 (64 KiB) остался supervisor-only; вызванный guard fault привёл к vector 8 (#DF), exception frame 0x122FC8 находится внутри IST1 0x11F000..0x123000; debug-exit status 33.
 - [ ] Additional deliberate stack exhaustion/guard-page variants beyond the controlled #DF probe.
 
+Code-only addition (2026-11-10, runtime pending): `process-stack-guard-smoke-test` validates all 16 usable 4 KiB pages of both process stacks and the reaper stack (64 KiB each), requires identity-mapped supervisor RW pages and an unmapped lower guard for every stack, then forces #PF/#DF delivery from the worker stack. It must end with the existing IST1 success marker and QEMU debug-exit status 33. Run locally with:
+
+```bash
+EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PROCESS_STACK_GUARD_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+```
+
+The new path has not yet been linted or run by the user; this P2.6 sub-item remains open.
+
 Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b46c8702e3725281e9a42654524649d1d04b4fe8).
 
 ## P3 — Basic devices
