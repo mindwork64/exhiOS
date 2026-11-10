@@ -121,6 +121,15 @@ jobs:
       - name: Build production multi-process runtime variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features process-multi-smoke-test
 
+      - name: Build worker-fault userland images
+        run: cargo build -p exhi-init --bins --target x86_64-unknown-none --features worker-fault-smoke-test
+
+      - name: Build production worker-fault runtime variant
+        run: cargo build -p exhi-kernel --target x86_64-unknown-none --features process-worker-fault-smoke-test
+
+      - name: Build worker spawn rollback runtime variant
+        run: cargo build -p exhi-kernel --target x86_64-unknown-none --features process-worker-rollback-smoke-test
+
       - name: Build kernel QEMU debug-exit variant
         run: cargo build -p exhi-kernel --target x86_64-unknown-none --features qemu-debug-exit-smoke-test
 
@@ -210,6 +219,12 @@ jobs:
 
       - name: Run interactive Ring 3 serial shell smoke test
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PROCESS_SHELL_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run worker spawn failure rollback and slot reuse smoke test
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PROCESS_WORKER_ROLLBACK_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
+
+      - name: Run worker fault recovery with init parent still active
+        run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PROCESS_WORKER_FAULT_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
 
       - name: Run two production Ring 3 processes through scheduler and reaper
         run: EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PROCESS_MULTI_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh

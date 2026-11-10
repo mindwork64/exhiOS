@@ -362,7 +362,14 @@ if [[ "${EXHIOS_VFS_TEST:-0}" == "1" ]]; then
     echo "Building the kernel with the VFS/RAMFS runtime smoke test."
 fi
 
-if [[ "${EXHIOS_PROCESS_WORKER_FAULT_TEST:-0}" == "1" ]]; then
+if [[ "${EXHIOS_PROCESS_WORKER_ROLLBACK_TEST:-0}" == "1" ]]; then
+    if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]]; then
+        echo "EXHIOS_PROCESS_WORKER_ROLLBACK_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2
+        exit 1
+    fi
+    KERNEL_FEATURES+=(process-worker-rollback-smoke-test)
+    echo "Building the one-shot worker spawn rollback verification variant."
+elif [[ "${EXHIOS_PROCESS_WORKER_FAULT_TEST:-0}" == "1" ]]; then
     if [[ "${EXHIOS_QEMU_EXIT_TEST:-0}" != "1" ]]; then
         echo "EXHIOS_PROCESS_WORKER_FAULT_TEST requires EXHIOS_QEMU_EXIT_TEST=1." >&2
         exit 1

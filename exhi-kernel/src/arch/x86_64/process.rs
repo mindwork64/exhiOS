@@ -606,6 +606,8 @@ static mut REAPER_TASK_ID: Option<TaskId> = None;
 static mut INIT_FAULT_VECTOR: u64 = u64::MAX;
 #[cfg(feature = "process-worker-fault-smoke-test")]
 static mut PROCESS_WORKER_FAULT_VECTOR: u64 = u64::MAX;
+#[cfg(feature = "process-worker-rollback-smoke-test")]
+static mut PROCESS_WORKER_ROLLBACK_INJECTED: bool = false;
 #[cfg(feature = "process-run-smoke-test")]
 static mut INIT_YIELD_COUNT: u64 = 0;
 #[cfg(feature = "process-run-smoke-test")]
@@ -1087,6 +1089,22 @@ fn spawn_worker_process(scheduler: *mut Scheduler<3>) -> Result<u64, SyscallErro
             process.user_stack_pointer(),
         )
         .map_err(|_| SyscallError::Io)?;
+
+        // Inject exactly one post-activation failure so the rollback path must
+        // destroy a live worker address space and return its slot to the parent.
+        #[cfg(feature = "process-worker-rollback-smoke-test")]
+        unsafe {
+            if !ptr::read_volatile(ptr::addr_of!(PROCESS_WORKER_ROLLBACK_INJECTED)) {
+                ptr::write_volatile(
+                    ptr::addr_of_mut!(PROCESS_WORKER_ROLLBACK_INJECTED),
+                    true,
+                );
+                serial::COM1.write(
+                    b"P7.1: injected worker setup failure after address-space activation.\r\n",
+                );
+                return Err(SyscallError::Io);
+            }
+        }
 
         let frame_address = bounds
             .1
