@@ -37,7 +37,7 @@ The release candidate version is stored in VERSION. Build a Release userland, th
 
     ./scripts/package-release.sh
 
-The first invocation generates Cargo.lock if the repository does not yet contain one. The resulting lockfile is copied into the release bundle; commit it to the source repository before creating a final release tag so future builds use the same resolved dependency versions.
+The first invocation generates Cargo.lock if the repository does not yet contain one. The resulting lockfile is copied into the release bundle; it must be committed to the source repository before creating a final release tag so future builds use the same resolved dependency versions. For release 0.1.0-alpha.1, Cargo.lock is already committed on main in [38f4405](https://github.com/mindwork64/exhiOS/commit/38f44050a66b325acdfdcef7b1b2cdaab1e9a9bf).
 
 Output:
 
@@ -78,16 +78,20 @@ Before publishing a release, run from a clean checkout:
 
     cargo fmt --all -- --check
     cargo build -p exhi-init --bins --target x86_64-unknown-none
-    cargo clippy -p exhi-init --bins --target x86_64-unknown-none
-    cargo clippy -p exhi-kernel --bin exhi-kernel --features process-runtime --target x86_64-unknown-none
+    cargo clippy --locked -p exhi-init --bins --target x86_64-unknown-none
+    cargo clippy --locked -p exhi-kernel --bin exhi-kernel --features process-runtime --target x86_64-unknown-none
     ./scripts/package-release.sh
     git status --short
     ./scripts/run-release-qemu.sh
 
-Confirm the serial log reaches the interactive Ring 3 shell. Run help, hostname, version, config and echo; then run spawn, wait for the worker's TaskSpawn denial marker and clean exit, and run spawn again to confirm the finished worker is reclaimed and its slot reused. Stop QEMU with Ctrl+C. Also verify the archive checksum:
+Confirm the serial log reaches the interactive Ring 3 shell. Run help, hostname, version, config and echo; then run spawn, wait for the worker's TaskSpawn denial marker and clean exit, and run spawn again to confirm the finished worker is reclaimed and its slot reused. Stop QEMU with Ctrl+C. Independently verify both checksums:
 
-    cd dist
-    sha256sum --check exhios-0.1.0-alpha.1-x86_64-uefi.tar.gz.sha256
+    (
+      cd dist
+      sha256sum --check exhios-0.1.0-alpha.1-x86_64-uefi.tar.gz.sha256
+      cd exhios-0.1.0-alpha.1-x86_64-uefi
+      sha256sum --check SHA256SUMS
+    )
 
 Do not publish until the Release build and packaged-image boot have been verified. The existing debug/QEMU acceptance evidence does not substitute for this final Release-profile check.
 
