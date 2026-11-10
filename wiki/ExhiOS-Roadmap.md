@@ -314,13 +314,13 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [x] User manually verified `help`, `hostname`, `version`, `config`, `echo`, worker startup, exact worker `TaskSpawn → AccessDenied`, yield sequence and clean worker exit.
 - [x] User reproduced worker slot recycling repeatedly on 2026-11-11: after the first worker exited, four subsequent `spawn` operations each reclaimed the Finished worker record, started a replacement and observed its TaskSpawn denial, yield sequence and clean exit. The init shell remained responsive throughout.
 - [x] The same run was performed after the TaskSpawn authorization check was moved ahead of reclamation. This validates the final ordering in the Release runtime, not just the earlier implementation.
-- [x] `scripts/run-release-qemu.sh` accepted the image checksum before launch. The archive checksum has not yet been independently checked with `sha256sum --check`.
-- [ ] Run Clippy for the current kernel `process-runtime` path after the worker-reclamation change; userland Clippy had passed earlier. Run `cargo fmt` on the final synced tree.
-- [ ] Add the locally generated `Cargo.lock` to source control; it is not currently present on `main`.
-- [ ] Independently verify the release archive checksum.
+- [x] `scripts/run-release-qemu.sh` accepted the image checksum before launch. Independent `sha256sum --check` verification of the packaged archive and image manifest remains pending.
+- [ ] Run final `cargo fmt --all -- --check` and Clippy for `exhi-init` and the kernel `process-runtime` path on the synced tree.
+- [x] Add the generated `Cargo.lock` to source control — committed on `main` in [38f4405](https://github.com/mindwork64/exhiOS/commit/38f44050a66b325acdfdcef7b1b2cdaab1e9a9bf).
+- [ ] Independently verify both the release archive checksum and the image checksum manifest with `sha256sum --check`.
 - [ ] Choose and add a project license/redistribution terms; no LICENSE/COPYING file exists.
 - [x] Rebuilt and repeated the Release QEMU smoke test after the TaskSpawn authorization-order change; the user supplied a successful boot and repeated worker-replacement log on 2026-11-11. Subsequent commits changed documentation only. Any future code change still requires a fresh Release build/QEMU run before tagging.
-- Do not publish until Clippy, Cargo.lock, archive checksum and license/redistribution gates are resolved.
+- Do not publish until final Clippy, checksum and license/redistribution gates are resolved.
 
 The serial shell currently has basic CR/LF, Backspace/DEL and Ctrl+C handling, but no cursor-key navigation or command history. In the supplied terminal log, `[A[A` was interpreted as ordinary input after up-arrow escape sequences; this is a shell-input limitation, not a process-runtime failure.
 
