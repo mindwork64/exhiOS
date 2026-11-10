@@ -74,6 +74,13 @@ def main() -> int:
                 read_until(
                     client,
                     buffer,
+                    b"ExhiOS worker: second Ring 3 process started.\r\n",
+                )
+            )
+            output.extend(
+                read_until(
+                    client,
+                    buffer,
                     b"ExhiOS worker: triggering invalid-opcode fault.\r\n",
                 )
             )
