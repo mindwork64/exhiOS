@@ -376,5 +376,5 @@ SMP, AP-local GS и user TLS не входят в принятую BSP/single-CP
 - Добавлены Release-profile сборка userland/kernel/UEFI bootloader, упаковка GPT/FAT32 UEFI image, SHA-256 checksums и отдельный QEMU/OVMF runner.
 - Release kernel выбирает Release init/worker ELF через not(debug_assertions); debug build продолжает использовать debug userland artifacts.
 - Shell version/banner обновлены до 0.1.0-alpha.1; shell QEMU smoke expectations синхронизированы.
-- **Пока не проверено:** реальная Release-сборка, созданный GPT image и загрузка этого image в QEMU/OVMF. Публикацию и git tag выполнять только после локальной проверки по документации BUILD.md.
+- **Пока не проверено:** реальная Release-сборка, созданный GPT image и загрузка этого image в QEMU/OVMF. В репозитории также нет LICENSE/COPYING и не выбраны условия распространения. Публикацию и git tag выполнять только после локальной проверки по документации BUILD.md и решения по лицензии.
 
