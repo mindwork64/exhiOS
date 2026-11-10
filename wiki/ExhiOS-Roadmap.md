@@ -318,7 +318,7 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [ ] Run final `cargo fmt --all -- --check` and Clippy for `exhi-init` and the kernel `process-runtime` path on the synced tree.
 - [x] Add the generated `Cargo.lock` to source control — committed on `main` in [38f4405](https://github.com/mindwork64/exhiOS/commit/38f44050a66b325acdfdcef7b1b2cdaab1e9a9bf).
 - [ ] Independently verify both the release archive checksum and the image checksum manifest with `sha256sum --check`.
-- [ ] Choose and add a project license/redistribution terms; no LICENSE/COPYING file exists.
+- [x] Choose and add project license/redistribution terms: Apache-2.0; root `LICENSE` contains the canonical Apache License 2.0 text.
 - [x] Rebuilt and repeated the Release QEMU smoke test after the TaskSpawn authorization-order change; the user supplied a successful boot and repeated worker-replacement log on 2026-11-11. Subsequent commits changed documentation only. Any future code change still requires a fresh Release build/QEMU run before tagging.
 - Do not publish until final Clippy, checksum and license/redistribution gates are resolved.
 
