@@ -273,3 +273,9 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - Production first-process runtime and the shared syscall CPU-local context are BSP/single-CPU only.
 - AP-local GS setup, SMP scheduling/TLB shootdown, user TLS and NMI/exception handling during the SWAPGS transition are not claimed.
 - The initial VFS is in-memory RAMFS; persistent storage and userland filesystem syscalls remain future work.
+
+### 2026-11-10 — Fault-recovery GS transition correction
+
+- The CPL3 worker-fault handoff now restores the user GS layout with `SWAPGS` before returning to a still-Ready Ring 3 init process. If the user-entry transfer unexpectedly returns or rejects its frame, the path restores trusted kernel GS before reporting the fatal handoff failure. The reaper path does not switch back to user GS.
+- User ran `cargo fmt` and the kernel `process-worker-fault-smoke-test` Clippy configuration successfully on [9b63adf](https://github.com/mindwork64/exhiOS/commit/9b63adf625512e2429110a1c89f0ed5d06060dcc). The only reported kernel warnings are 20 existing suggestions in legacy modules.
+- This verifies compilation/linting, not runtime behavior. Worker-fault and normal spawn/reaper QEMU scenarios remain unexecuted; P7 stays open.
