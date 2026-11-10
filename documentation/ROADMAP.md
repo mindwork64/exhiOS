@@ -205,3 +205,5 @@ Release preparation adds a separate Release-profile packaging path:
 - Boot the packaged image through a dedicated QEMU/OVMF runner, without the debug-exit device.
 
 The scripts and documentation are committed, but the Release build and actual packaged-image boot are not yet validated. Do not tag or publish 0.1.0-alpha.1 until the local Release build, QEMU/OVMF boot, COM1 shell interaction and checksum checks have completed. The first release remains a QEMU-first technical preview; real-hardware compatibility is not claimed.
+
+The repository does not yet contain a LICENSE/COPYING file. Project licensing and redistribution terms must be explicitly selected before public distribution; they are not inferred by the release tooling.
