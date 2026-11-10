@@ -1165,7 +1165,7 @@ fn select_process_context(id: TaskId) -> usize {
         let frame_end =
             (frame as u64).checked_add(size_of::<syscall::UserTaskSyscallFrame>() as u64);
         if (frame as u64) < record.kernel_stack_bottom
-            || frame_end.map_or(true, |end| end > record.kernel_stack_top)
+            || frame_end.is_none_or(|end| end > record.kernel_stack_top)
             || metadata.kernel_stack_top() != record.kernel_stack_top
             || metadata.fx_state_pointer() != record.fx_state
         {
@@ -1201,7 +1201,7 @@ fn select_process_context(id: TaskId) -> usize {
         };
         let frame_end =
             (frame as u64).checked_add(size_of::<syscall::UserTaskSyscallFrame>() as u64);
-        if (frame as u64) < bottom || frame_end.map_or(true, |end| end > top) {
+        if (frame as u64) < bottom || frame_end.is_none_or(|end| end > top) {
             init_runtime_failure(b"P7.1: reaper frame escaped its kernel stack.\r\n");
         }
         if address_space::restore_kernel().is_err()
@@ -1278,7 +1278,7 @@ extern "sysv64" fn exhi_init_syscall_dispatch(frame: *mut syscall::UserTaskSysca
     if frame_address == 0
         || frame_address & 0xF != 0
         || (frame_address as u64) < record.kernel_stack_bottom
-        || frame_end.map_or(true, |end| end > record.kernel_stack_top)
+        || frame_end.is_none_or(|end| end > record.kernel_stack_top)
     {
         init_runtime_failure(b"P7.1: syscall frame escaped the active process kernel stack.\r\n");
     }
@@ -1387,14 +1387,13 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
     let mut first_task_id = None;
 
     for slot in 0..process_count {
-        if slot != 0 {
-            if address_space::restore_kernel().is_err()
-                || user::clear_active_kernel_stack().is_err()
-            {
-                init_runtime_failure(
-                    b"P7.1: could not restore kernel mappings between processes.\r\n",
-                );
-            }
+        if slot != 0
+            && (address_space::restore_kernel().is_err()
+                || user::clear_active_kernel_stack().is_err())
+        {
+            init_runtime_failure(
+                b"P7.1: could not restore kernel mappings between processes.\r\n",
+            );
         }
         let image = if slot == 0 {
             first_image
@@ -1585,7 +1584,7 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
         || (first_frame_address as u64) < first_record.kernel_stack_bottom
         || (first_frame_address as u64)
             .checked_add(size_of::<user::UserEntryFrame>() as u64)
-            .map_or(true, |end| end > first_record.kernel_stack_top)
+            .is_none_or(|end| end > first_record.kernel_stack_top)
     {
         init_runtime_failure(b"P7.1: first process entry frame is outside its kernel stack.\\r\n");
     }
