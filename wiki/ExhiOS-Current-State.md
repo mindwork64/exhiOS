@@ -363,3 +363,10 @@ P5.1–P5.7 реализованы. Общие x86-64 Ring 3 entry, SYSCALL entr
 ### Ближайшая задача
 
 Runtime-приёмка P7.1: проверить `spawn` из Ring 3 shell, переключение init/worker через `Yield`, capabilities worker, возврат управления init после worker Exit, reaper cleanup обоих процессов и rollback неудачного spawn. Также нужно проверить production fault path при наличии двух процессов. До получения этих логов P7.1 остаётся открытым.
+
+### Последняя локальная проверка worker-fault пути — 2026-11-10
+
+- На HEAD [9b63adf](https://github.com/mindwork64/exhiOS/commit/9b63adf625512e2429110a1c89f0ed5d06060dcc) пользователь выполнил `cargo fmt` и повторный Clippy для `process-worker-fault-smoke-test`; команда завершилась успешно.
+- Исправлен критичный переход GS при восстановлении init после CPL3 fault worker: перед `IRETQ` к другому Ring 3 процессу выполняется `SWAPGS`, чтобы следующая инструкция `SYSCALL` переключилась на доверенный kernel GS. При неожиданном возврате/ошибке `user::enter_user` GS восстанавливается обратно в kernel layout. Reaper продолжает работу в kernel GS.
+- Clippy сообщил 20 legacy-предупреждений в существующих модулях ядра и не сообщил новых предупреждений в process-runtime/fault-recovery коде.
+- Ни QEMU, ни CI, ни unit tests после этого исправления не запускались. Проверка подтверждает только форматирование и lint/компиляцию; динамический spawn, возврат к init, fault recovery и reaper cleanup всё ещё требуют runtime-логов.
