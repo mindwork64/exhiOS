@@ -81,6 +81,13 @@ def main() -> int:
                 read_until(
                     client,
                     buffer,
+                    b"ExhiOS worker: TaskSpawn denied as expected.\r\n",
+                )
+            )
+            output.extend(
+                read_until(
+                    client,
+                    buffer,
                     b"ExhiOS worker: triggering invalid-opcode fault.\r\n",
                 )
             )
