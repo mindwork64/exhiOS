@@ -525,3 +525,11 @@ Implementation:
 - The feature-specific multi-process Clippy pass initially reported one `dead_code` warning for `run_init`, because that feature enters through `run_process_pair`. The entry point was cfg-gated out of the process-pair build; the user reran Clippy and confirmed that warning disappeared.
 - Clippy then completed successfully for `process-fault-smoke-test`, `process-run-smoke-test` and `process-load-smoke-test` as well. The six P7 kernel feature configurations and the common workspace library/binary targets now all pass Clippy. Remaining warnings are pre-existing suggestions in allocator, ELF and baseline architecture modules, not the new P7 process-runtime path.
 - No unit tests, GitHub Actions or QEMU runs were performed. P7 runtime acceptance remains pending.
+
+
+## 2026-11-10 — P7 worker fault recovery coverage added (runtime pending)
+
+- Added the `process-worker-fault-smoke-test` kernel feature and `worker-fault-smoke-test` userland build feature. In this mode the embedded worker emits its startup marker and executes `UD2` from CPL3.
+- The user-fault handoff records the fault vector only when the current scheduler task is named `worker`; the shared scheduler fault path must select the still-Ready init task instead of waking the reaper prematurely.
+- Added a reaper acceptance condition requiring vector 6, both process records reclaimed, and an empty registry. A serial driver waits for the fault, issues `hostname` to prove init resumed, then sends `exit` and waits for final cleanup.
+- Added `EXHIOS_PROCESS_WORKER_FAULT_TEST=1` support to the build and QEMU runner scripts. Code-only addition; Clippy is pending and no QEMU or CI job was run.
