@@ -14,6 +14,7 @@ bench = false
 qemu-smoke-test = []
 shell-smoke-test = []
 user-fault-smoke-test = []
+worker-fault-smoke-test = []
 
 [dependencies]
 libexhi.workspace = true
