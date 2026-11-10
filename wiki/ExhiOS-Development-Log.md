@@ -546,3 +546,10 @@ Implementation:
   `cargo clippy -p exhi-kernel --bin exhi-kernel --features process-worker-fault-smoke-test --target x86_64-unknown-none`.
 - Clippy emitted 20 existing warnings in legacy modules (`manual_is_multiple_of`, `new_without_default`, and `collapsible_if` suggestions); there were no new warnings in the process-runtime or worker-fault code.
 - No Cargo tests/build, QEMU runtime, or GitHub Actions/CI were run for this checkpoint. The earlier userland build and Clippy checks remain as previously recorded. P7 acceptance still requires runtime evidence for normal spawn/rejection/reaping and worker-fault recovery.
+
+## 2026-11-10 — Explicit TaskSpawn denial check in the worker
+
+- Added an adversarial capability check to the embedded worker: it calls `libexhi::spawn_worker()` without the `TaskSpawn` grant and requires the exact `SyscallError::AccessDenied` result. Any success or different error prints an explicit failure marker and exits.
+- The check runs in both normal worker mode (before the cooperative yield loop) and worker-fault mode (before CPL3 `UD2`). It therefore validates the grant boundary independently of the worker's termination mode.
+- Updated the normal shell and worker-fault serial drivers to require the success marker. A generic `Io` result due to the two occupied process slots does not satisfy the assertion.
+- Code-only update. User-side Clippy for `exhi-init --bins` in the normal configuration and with `worker-fault-smoke-test` is pending. No build, tests, QEMU, or CI were run.
