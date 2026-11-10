@@ -171,3 +171,11 @@ P5.1–P5.7 are implemented and accepted by the full self-hosted build and headl
 - [ ] **P7.4 — Configuration:** init reads `/etc/exhi.conf` from kernel RAMFS through capability-gated `FileRead`, applies `hostname`, `prompt` and `version`, and falls back to defaults on malformed input. RAMFS is volatile and kernel-populated; persistent storage and FileWrite are outside P7. Runtime validation remains pending.
 
 **Validation:** user-side `cargo build -p exhi-init --bin exhi-init --bin exhi-worker --target x86_64-unknown-none` succeeded. Clippy completed successfully for the workspace library/binary targets and all seven P7 kernel feature configurations: `process-runtime`, `process-shell-smoke-test`, `process-multi-smoke-test`, `process-fault-smoke-test`, `process-run-smoke-test`, `process-load-smoke-test` and `process-worker-fault-smoke-test`. The worker-fault userland feature also built and passed Clippy. Existing warnings remain in legacy modules; the new P7 process-runtime code has no Clippy warnings in these configurations. No unit tests, GitHub Actions or QEMU runs were performed. P7 remains unchecked until runtime evidence is available.
+
+### 2026-11-10 — Worker-fault GS recovery hardening
+
+- Static review found that the CPL3 fault handler had already executed `SWAPGS` before scheduling a still-Ready peer process. Returning to that process without restoring the user GS layout would make its next `SYSCALL` swap against the wrong GS bases.
+- The fault handoff now executes `SWAPGS` before `IRETQ` when another Ring 3 process is selected, and switches back to trusted kernel GS if the user-entry transfer unexpectedly returns or reports validation failure. The reaper path remains in kernel GS.
+- User ran `cargo fmt` and `cargo clippy -p exhi-kernel --bin exhi-kernel --features process-worker-fault-smoke-test --target x86_64-unknown-none`; Clippy completed successfully. The 20 emitted warnings are existing suggestions in legacy modules; no new warnings were reported in process-runtime/fault-recovery code.
+- Fix: [9b63adf](https://github.com/mindwork64/exhiOS/commit/9b63adf625512e2429110a1c89f0ed5d06060dcc).
+- This is compile/lint evidence only. Neither QEMU runtime scenario nor CI was run; P7 remains open pending runtime evidence.
