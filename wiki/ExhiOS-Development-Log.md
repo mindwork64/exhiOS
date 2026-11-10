@@ -609,3 +609,12 @@ Implementation:
 - Опубликованный release body содержит перечень возможностей, ограничений, QEMU/OVMF validation evidence и условия Apache-2.0. Физическое оборудование не квалифицировано; alpha остаётся экспериментальной.
 - Тег и опубликованные assets оставлены неизменными. Последующий коммит в `main` синхронизирует только документацию со статусом публикации и не изменяет release commit.
 
+
+
+## 2026-11-11 — P8 Native Shell roadmap defined (implementation not started)
+
+- Static review подтвердил, что P7.1–P7.4 приняты, а Release 0.1.0-alpha.1 опубликован и проверен пользователем через QEMU/OVMF. Старые промежуточные записи Roadmap о pending P7 были устаревшими; актуальный Roadmap теперь отражает финальную приёмку. Подробная хронология проверок сохранена в Development Log.
+- Зафиксировано текущее состояние shell по исходнику `exhi-init/src/main.rs`: Ring 3, COM1 через `console_read`/`console_write`, printable ASCII до 127 байт, CR/LF/CRLF, Backspace/DEL, Ctrl+C и Ctrl+D на пустой строке. ANSI key-sequence parser и command history отсутствуют.
+- Следующий milestone — P8 Native ExhiOS Shell. Первым шагом P8.1 будет bounded line editor, CSI-sequence state machine, cursor navigation и bounded in-memory history; предполагается testable `no_std` core, COM1 I/O остаётся в init.
+- P8.2 отдельно добавит bounded tokenizer/command dispatch и quoted arguments. Bash compatibility, pipelines, redirection, scripts, произвольный ELF launch, userland directory APIs и persistent filesystem не входят в первые этапы P8.
+- Это только документационный план. Код не менялся; Cargo build/tests/Clippy, QEMU и GitHub Actions не запускались. Первый кодовый шаг ожидает отдельного нового чата.

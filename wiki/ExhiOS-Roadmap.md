@@ -252,53 +252,56 @@ Evidence: all eight `exhi-vfs` unit tests passed; [CI run #412](https://github.c
 
 Scope boundary: userland file-open/read/write syscalls and persistent on-disk filesystems are not implemented. The current configuration is embedded in `exhi-init`; VFS/RAMFS is currently exercised from kernel code.
 
-## P7 — Userland
+## P7 — Userland (принято)
 
-### P7.1 — Production process creation and lifecycle
+**P7.1–P7.4 приняты для текущей BSP/single-CPU реализации.** Производственный userland включает Ring 3 init, ограниченный двухслотовый process manager, capability-gated worker creation, deferred reaper, `libexhi`, COM1 shell и чтение конфигурации из volatile kernel RAMFS.
 
-- [x] The two-slot production registry and per-process LoadedProcess/address-space, guarded kernel-stack, FXSAVE and scheduler records are runtime-verified.
-- [x] Capability-gated `SpawnWorker`: init alone receives `TaskSpawn`; worker receives only `TaskYield`, `TaskExit` and `ConsoleWrite`. The worker's explicit spawn attempt returned `AccessDenied` in both normal and fault modes.
-- [x] `Exit` and validated CPL3 faults mark only the current process Finished; the dedicated reaper restores kernel mappings, releases Finished resources and reaps task records after switch-away.
-- [x] Serial QEMU verified normal worker startup/yield/exit, occupied-slot rejection, cleanup of both records, and rollback after a post-activation setup failure followed by successful slot reuse.
-- [x] Separate worker-fault QEMU mode forced CPL3 `UD2`, verified init remained responsive to `hostname`, and confirmed reaper cleanup of both process records.
+### P7.1 — Process manager
+- [x] Два фиксированных production slots: init и один worker; отдельные address spaces, guarded kernel stacks, FXSAVE state и scheduler records.
+- [x] Только init имеет `TaskSpawn`. Worker получает `AccessDenied` при попытке создать процесс.
+- [x] Yield, Exit, CPL3 fault recovery, deferred reaping, rollback после неудачной активации и повторное использование worker slot.
+- [x] Release QEMU runtime подтвердил четыре последовательных replacement worker после reclamation предыдущих Finished resources.
 
 ### P7.2 — libexhi
+- [x] `no_std` wrappers: `console_write`, `console_read`, `file_read`, `spawn_worker`, `yield_now`, `exit`.
 
-- [x] `no_std` wrappers include `console_write`, `console_read`, `file_read`, `spawn_worker`, `yield_now` and `exit`; ABI, wrapper and syscall-dispatcher unit tests passed in Actions #513.
+### P7.3 — Initial serial shell
+- [x] Ring 3 shell в `exhi-init`, ввод через COM1.
+- [x] Команды: `help`, `hostname`, `version`, `echo`, `clear`, `config`, `spawn`, `exit`.
+- [x] Ограниченный ввод до 127 printable ASCII bytes; CR/LF/CRLF, Backspace/DEL, Ctrl+C и Ctrl+D.
+- [x] Текущий редактор строки ещё не понимает ANSI cursor-key sequences и не хранит историю команд.
 
-### P7.3 — serial shell
+### P7.4 — Configuration
+- [x] Bounded allocation-free `key=value` parser.
+- [x] Init читает `/etc/exhi.conf` через capability-checked `FileRead` и применяет `hostname`, `prompt`, `version`.
+- [x] RAMFS остаётся volatile; persistent storage и userland FileWrite не входят в P7.
 
-- [x] Bounded COM1 shell with `spawn` passed the interactive QEMU serial-driver scenario, including command handling, line editing, Ctrl+C, config output and exit.
+**Acceptance evidence:** Actions [run #513](https://github.com/mindwork64/exhiOS/actions/runs/42829639418) прошёл build и полный QEMU runtime job (30 шагов). Пользователь также загрузил опубликованный Release image через QEMU/OVMF, проверил shell-команды, worker capability denial, yield/exit и четыре последовательных повторных запуска worker. Clippy и `cargo fmt --all -- --check` завершились по предоставленным пользователем логам; checksum manifests финального образа и архива прошли проверку. P7 принят; это не означает поддержку SMP, persistent storage или произвольных user processes.
 
-### P7.4 — configuration
+## P8 — Native ExhiOS Shell (запланирован; следующий этап)
 
-- [x] Init reads `/etc/exhi.conf` through capability-gated `FileRead` from kernel RAMFS, applies `hostname`, `prompt` and `version`, and passes the shell runtime scenario. Bounded parser tests passed.
-- [x] RAMFS remains volatile and kernel-populated; persistent storage and FileWrite are outside P7.
+Цель — превратить уже существующий Ring 3 command interpreter в удобную собственную оболочку ExhiOS. Это развитие текущего `exhi-init` shell, а не реализация Bash и не kernel-side command interpreter.
 
-**Validation:** GitHub Actions [run #513](https://github.com/mindwork64/exhiOS/actions/runs/42829639418) passed on self-hosted runner `eqstream`: build job success and the complete QEMU runtime job success (30 completed steps). This includes the new worker rollback/slot-reuse test, normal worker capability/yield/exit test, worker-fault recovery with live init, production two-process scheduler/reaper test, and the existing platform smoke tests. P7.1–P7.4 are accepted for the current BSP/single-CPU implementation. Persistent storage and SMP are not implied.
-## Current platform boundaries
+### P8.1 — Line editor and command history (первый следующий шаг)
+- [ ] Вынести тестируемую логику редактора строки в небольшой `no_std` core (предлагаемое имя crate: `exhi-shell`); COM1 I/O оставить в `exhi-init` через `libexhi`.
+- [ ] Добавить инкрементальный parser ANSI/VT100 CSI input sequences, включая последовательности, разделённые между несколькими `ConsoleRead` calls.
+- [ ] Поддержать Left/Right, Home/End, Delete, Backspace, Up/Down и bounded in-memory history (предлагаемая начальная ёмкость — 8 непустых команд).
+- [ ] Сохранить текущие CR/LF/CRLF, Ctrl+C, Ctrl+D на пустой строке и ограничение ввода 127 printable ASCII bytes.
+- [ ] Использовать фиксированные буферы без heap allocation. Неизвестные/неполные escape sequences не должны превращаться в печатные фрагменты команды.
+- [ ] Добавить host unit tests для редактирования, границ буфера, истории, управляющих клавиш и CSI sequences на границах input chunks.
+- [ ] Принять runtime по пользовательскому QEMU/OVMF прогону: перемещение курсора, вставка/удаление, история, Enter/Backspace/Ctrl+C/Ctrl+D, длинная строка и отсутствие утечки `[A`/других escape fragments в команду.
 
-- Production first-process runtime and the shared syscall CPU-local context are BSP/single-CPU only.
-- AP-local GS setup, SMP scheduling/TLB shootdown, user TLS and NMI/exception handling during the SWAPGS transition are not claimed.
-- The initial VFS is in-memory RAMFS; persistent storage and userland filesystem syscalls remain future work.
+### P8.2 — Command parser and dispatch
+- [ ] Отделить bounded tokenization и command dispatch от COM1 input/output loop.
+- [ ] Определить малый предсказуемый синтаксис с пробелами и quoted arguments; ошибки unmatched quotes/overflow/слишком большого числа аргументов должны быть явными.
+- [ ] Сохранить текущие встроенные команды и покрыть parser/dispatcher host tests.
+- [ ] Не реализовывать shell expansion, globbing, pipelines, redirection или scripting в рамках начального P8.
 
-### 2026-11-10 — Fault-recovery GS transition correction
-
-- The CPL3 worker-fault handoff now restores the user GS layout with `SWAPGS` before returning to a still-Ready Ring 3 init process. If the user-entry transfer unexpectedly returns or rejects its frame, the path restores trusted kernel GS before reporting the fatal handoff failure. The reaper path does not switch back to user GS.
-- User ran `cargo fmt` and the kernel `process-worker-fault-smoke-test` Clippy configuration successfully on [9b63adf](https://github.com/mindwork64/exhiOS/commit/9b63adf625512e2429110a1c89f0ed5d06060dcc). The only reported kernel warnings are 20 existing suggestions in legacy modules.
-- This verifies compilation/linting, not runtime behavior. Worker-fault and normal spawn/reaper QEMU scenarios remain unexecuted; P7 stays open.
-
-### P7.1 — Worker capability-denial regression coverage (2026-11-10)
-
-- The worker now attempts `SpawnWorker` and requires the exact `AccessDenied` response before continuing. This is checked in both the normal yield/exit path and the fault-injection path before `UD2`.
-- Both QEMU serial drivers now require the explicit `TaskSpawn denied as expected` marker. This proves the capability gate rejects the syscall before the process-slot allocator can return a generic resource error.
-- Code is committed; userland Clippy and runtime scenarios remain pending. This does not change P7 acceptance state.
-
-### 2026-11-10 — Worker capability-denial lint passed
-
-- User ran `cargo fmt` and Clippy for `exhi-init --bins` in both the default configuration and with `worker-fault-smoke-test`. Both completed successfully with no warnings.
-- The exact `TaskSpawn → AccessDenied` assertion is now lint-clean in both worker paths. Runtime confirmation by the serial QEMU drivers remains pending; P7 is still open.
-
+### Вне scope P8
+- Произвольный запуск ELF по имени файла пока невозможен: `SpawnWorker` запускает только встроенный worker в фиксированной двухслотовой process model.
+- Для внешних программ потребуются отдельные этапы: userland VFS/file syscalls, получение executable из файловой системы, общий capability-gated process/ELF launch API и безопасное управление числом процессов.
+- `ls`, полноценный `cd` и аналогичные file-management команды также зависят от userland directory/VFS API; не имитировать их до появления соответствующих возможностей.
+- Shell остаётся Ring 3 userland программой. Новые kernel syscalls не добавлять без доказанной необходимости; P8.1 должен использовать имеющиеся `console_read`/`console_write`.
 
 ## R0 — ExhiOS 0.1.0-alpha.1 release (published)
 

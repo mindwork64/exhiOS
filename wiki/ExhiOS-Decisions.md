@@ -96,3 +96,15 @@
 - Production `process-runtime` uses a fixed two-slot registry: Ring 3 init and one worker. Init alone has the `TaskSpawn` capability; the worker's attempt to spawn another task is denied with `AccessDenied`. `Yield` switches between init and the active worker. The worker's Finished resources are reclaimed by the reaper only after switch-away; the next authorized spawn reclaims the prior Finished record and reuses its slot. Sequential worker replacement was verified four times in the final Release QEMU run. This is bounded two-process support, not an arbitrary process service or SMP scheduler.
 - AP-local GS state, user TLS, NMI/exception handling across the SWAPGS window, SMP scheduling and TLB shootdown are outside the accepted BSP-only scope.
 - VFS/RAMFS is currently in-memory and kernel-integrated. Userland filesystem syscalls and persistent storage are future work.
+
+
+## P8 — Native ExhiOS Shell (планируемый контракт)
+
+- Shell является Ring 3 userland программой; command parsing и line editing не переносятся в kernel.
+- На первом P8 этапе shell остаётся частью `exhi-init`, пока ОС не получит общий механизм запуска произвольных user ELF. Текущий встроенный `SpawnWorker` не является таким механизмом.
+- COM1 input/output остаётся на существующих `libexhi::console_read` и `libexhi::console_write`. P8.1 не должен менять stable syscall ABI без отдельно доказанной необходимости.
+- Редактор строки и parser должны быть bounded, allocation-free и пригодными для host unit tests. Предлагается вынести чистую логику в отдельный `no_std` crate `exhi-shell`; аппаратный/serial I/O остаётся в `exhi-init`.
+- P8.1 поддерживает используемые терминалом ANSI/VT100 CSI key sequences, включая разбиение последовательности между входными chunks. Начальные input/history buffers имеют фиксированный размер.
+- Начальный command language намеренно меньше Bash/POSIX shell: без variable expansion, globbing, pipelines, redirection и scripts. Эти функции не добавлять по умолчанию.
+- Произвольный ELF запуск и файловые команды, требующие перечисления директорий или изменения текущего каталога, вынесены в отдельный будущий этап после userland VFS/process APIs.
+- Любая новая возможность принимается по host tests и пользовательскому QEMU/OVMF runtime evidence; build/CI сам по себе не является runtime acceptance.

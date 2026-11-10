@@ -6,6 +6,16 @@
 
 P0–P7.4 сохранены. P7 включает двухслотовый process manager, capability-gated `SpawnWorker`, независимые address space/kernel stack/FX state, deferred reaper cleanup, `FileRead` из kernel RAMFS и shell-команды `config`/`spawn`. Дополнительный сценарий P2.6 теперь также выполнен локально в QEMU: init, worker и reaper stack mappings/guard pages проверены, worker guard fault дошёл до #DF на IST1, QEMU завершился с кодом 33. Пользователь повторно выполнил `cargo fmt` и Clippy для `process-stack-guard-smoke-test`: команда завершилась успешно, новых предупреждений в тестовом пути нет. Остались только существующие рекомендации Clippy в `exhi-heap`, `exhi-elf`, `exhi-memory` и базовых модулях ядра. Для этой работы GitHub Actions не запускались.
 
+## Следующий этап — P8 Native ExhiOS Shell (план, реализация не начата)
+
+Текущий shell — собственный Ring 3 command interpreter внутри `exhi-init`. Он получает байты через `libexhi::console_read` с COM1 и выводит их через `console_write`; host Bash/terminal используется только для запуска QEMU и отображения последовательной консоли.
+
+Фактические ограничения текущего редактора: printable ASCII, максимум 127 байт, CR/LF/CRLF, Backspace/DEL, Ctrl+C и Ctrl+D на пустой строке. ANSI cursor-key sequences не разбираются; поэтому Up/Down/Left/Right не работают, а фрагменты вроде `[A` могут попасть в текущую команду. Истории команд нет.
+
+Следующая работа — **P8.1: bounded line editor + command history**. Планируется host-testable `no_std` core (рабочее имя `exhi-shell`), state machine для ANSI/VT100 CSI sequences, навигация курсора и фиксированная история. Затем P8.2 отделит command parser/dispatch и добавит quoted arguments. Подробные критерии приёмки и границы scope находятся в [Roadmap](ExhiOS-Roadmap.md) и [Decisions](ExhiOS-Decisions.md).
+
+Произвольный запуск ELF, userland directory syscalls и persistent filesystem в P8 не входят: текущий `SpawnWorker` запускает только встроенный worker в фиксированной двухслотовой модели.
+
 ## Закрыто и проверено в QEMU
 
 ### P0 — UEFI boot chain
