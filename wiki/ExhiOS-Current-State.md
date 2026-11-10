@@ -370,3 +370,10 @@ Runtime-приёмка P7.1: проверить `spawn` из Ring 3 shell, пе�
 - Исправлен критичный переход GS при восстановлении init после CPL3 fault worker: перед `IRETQ` к другому Ring 3 процессу выполняется `SWAPGS`, чтобы следующая инструкция `SYSCALL` переключилась на доверенный kernel GS. При неожиданном возврате/ошибке `user::enter_user` GS восстанавливается обратно в kernel layout. Reaper продолжает работу в kernel GS.
 - Clippy сообщил 20 legacy-предупреждений в существующих модулях ядра и не сообщил новых предупреждений в process-runtime/fault-recovery коде.
 - Ни QEMU, ни CI, ни unit tests после этого исправления не запускались. Проверка подтверждает только форматирование и lint/компиляцию; динамический spawn, возврат к init, fault recovery и reaper cleanup всё ещё требуют runtime-логов.
+
+### Проверка capability gate для worker — код добавлен, lint ожидается
+
+- Worker теперь вызывает `spawn_worker()` при отсутствии capability `TaskSpawn` и требует точный результат `SyscallError::AccessDenied`. При любом другом результате он сообщает об ошибке и завершает работу.
+- Проверка включена в оба режима: нормальный worker до yield/exit и fault-worker до выполнения `UD2`.
+- Обычный shell QEMU-драйвер и worker-fault драйвер ожидают отдельный маркер успешного отказа. Это позволяет отличить отказ capability gate от ошибки из-за исчерпания process slots.
+- Изменения кода внесены; Clippy для обычного и fault-mode userland ещё не запускался. QEMU/CI не запускались. P7 остаётся открытым.
