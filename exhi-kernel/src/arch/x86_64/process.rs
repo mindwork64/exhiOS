@@ -73,7 +73,7 @@ const USERLAND_FS_NODE_COUNT: usize = 8;
 const USERLAND_FS_FILE_CAPACITY: usize = 256;
 #[cfg(feature = "process-runtime")]
 const USERLAND_CONFIG_CONTENT: &[u8] =
-    b"# ExhiOS system configuration\nhostname=exhios\nprompt=exhios>\nversion=0.1\n";
+    b"# ExhiOS system configuration\nhostname=exhios\nprompt=exhios>\nversion=0.1.0-alpha.1\n";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessLoadError {

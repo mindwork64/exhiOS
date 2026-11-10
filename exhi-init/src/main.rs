@@ -28,7 +28,7 @@ struct ShellConfig<'a> {
 const DEFAULT_CONFIG: ShellConfig<'static> = ShellConfig {
     hostname: "exhios",
     prompt: "exhios>",
-    version: "0.1",
+    version: "0.1.0-alpha.1",
 };
 
 #[cfg(not(any(feature = "qemu-smoke-test", feature = "user-fault-smoke-test")))]

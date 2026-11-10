@@ -1,136 +1,89 @@
-# Building ExhiOS
+# Building and running ExhiOS
 
-## Toolchain
+## Supported build environment
 
-The workspace uses Rust Stable and requires Rust 1.91 or newer for the current UEFI crate dependency.
+ExhiOS is an experimental x86-64 UEFI operating system. Rust Stable is used for the UEFI bootloader, freestanding kernel, and Ring 3 userland. The repository toolchain file selects:
 
-The repository's `rust-toolchain.toml` selects Stable and requests:
+- x86_64-unknown-uefi
+- x86_64-unknown-none
+- rustfmt
+- clippy
 
-- `x86_64-unknown-uefi` for the UEFI application;
-- `x86_64-unknown-none` for the freestanding ELF64 kernel;
-- `rustfmt` and `clippy`.
+The kernel and user executables are fixed-address ELF64 ET_EXEC images. The bootloader loads the kernel at its declared physical addresses; the kernel maps user executables into private address spaces.
 
-The kernel is linked as a fixed-address `ET_EXEC` image. The loader requires physical and virtual addresses in each loadable segment to match and loads at those addresses using UEFI page allocation.
+## Host dependencies
 
-## Build and unit tests
+On Debian/Ubuntu/Linux Mint:
 
-Install the host-side inspection utility on Debian/Ubuntu-based systems:
+    sudo apt update
+    sudo apt install binutils qemu-system-x86 ovmf gdisk mtools dosfstools
 
-```bash
-sudo apt install binutils
-```
+Rustup and Cargo must be installed. The rust-toolchain.toml file selects the required targets and components.
 
-From the repository root:
+## Debug build and QEMU smoke tests
 
-```bash
-./scripts/build.sh
-```
+Build the current development images and run the standard UEFI boot:
 
-The script runs the ABI and ELF parser tests, builds the UEFI application and kernel, and verifies that the kernel output is an ELF64 `ET_EXEC` image.
+    ./scripts/build.sh
+    ./scripts/run-qemu.sh
 
-Expected artifacts:
+The debug build artifacts are placed under target/. The runner creates a temporary GPT/FAT EFI System Partition and boots it with QEMU/OVMF.
 
-- `target/x86_64-unknown-uefi/debug/exhi-boot.efi`
-- `target/x86_64-unknown-none/debug/exhi-kernel`
+The repository also contains feature-specific smoke-test modes. Their environment variables and expected serial markers are documented in the ExhiOS Wiki roadmap and development log.
 
-## P0.4: exit UEFI Boot Services and enter ExhiKernel
+## Release image
 
-On Debian/Ubuntu-based systems, install the runtime tools:
+The release candidate version is stored in VERSION. Build a Release userland, then the kernel with that Release userland embedded, then the native UEFI bootloader, and package the result as a raw GPT disk image:
 
-```bash
-sudo apt install qemu-system-x86 ovmf gdisk mtools dosfstools
-```
+    ./scripts/package-release.sh
 
-Then run:
+The first invocation generates Cargo.lock if the repository does not yet contain one. The resulting lockfile is copied into the release bundle; commit it to the source repository before creating a final release tag so future builds use the same resolved dependency versions.
 
-```bash
-./scripts/run-qemu.sh
-```
+Output:
 
-The loader reads and validates the kernel ELF, loads each `PT_LOAD` segment into its declared physical address, and reserves a 64 KiB kernel stack and a persistent `BootInfo` page.
+- dist/exhios-0.1.0-alpha.1-x86_64-uefi/exhios-0.1.0-alpha.1-x86_64-uefi.img
+- dist/exhios-0.1.0-alpha.1-x86_64-uefi/SHA256SUMS
+- dist/exhios-0.1.0-alpha.1-x86_64-uefi/RELEASE_NOTES.md
+- dist/exhios-0.1.0-alpha.1-x86_64-uefi.tar.gz
+- dist/exhios-0.1.0-alpha.1-x86_64-uefi.tar.gz.sha256
 
-Before exiting Boot Services, it closes the filesystem and drops temporary heap-backed buffers. The `uefi` crate's `boot::exit_boot_services(None)` helper obtains the final memory map and retries the ExitBootServices operation if the map key becomes stale. The loader stores the returned memory-map buffer address, size, descriptor size and descriptor version in BootInfo.
+The image contains one GPT EFI System Partition formatted as FAT32, the fallback boot path EFI/BOOT/BOOTX64.EFI, and /exhi-kernel.elf. The first user executables are embedded into the kernel; separate init/worker files are not required on the ESP.
 
-The loader then switches to its dedicated kernel stack, disables interrupts, and calls the kernel entry point using the x86-64 System V ABI. No UEFI protocol, console, allocator or Boot Services API is used after the transition.
+### Boot the packaged Release image in QEMU
 
-## P1.1: kernel GDT — QEMU verified
+From the source checkout:
 
-At kernel entry, ExhiOS replaces the firmware-provided GDT with its own three-entry table:
+    ./scripts/run-release-qemu.sh
 
-- selector 0x08: 64-bit kernel code segment;
-- selector 0x10: kernel data/stack segment;
-- selector 0x00: mandatory null descriptor.
+The graphical QEMU window uses GOP; the terminal remains attached to COM1 and accepts shell input. To run without a display:
 
-The GDT setup loads GDTR, performs a far return to reload CS, and reloads DS, ES and SS. The kernel reads CS, DS, ES and SS back and verifies the expected selector values. This was confirmed in QEMU.
+    EXHIOS_HEADLESS=1 ./scripts/run-release-qemu.sh
 
-Expected output:
+The default image path is the package produced by package-release.sh. Override it with EXHIOS_RELEASE_IMAGE=/absolute/path/to/image.img. OVMF_CODE and OVMF_VARS can be set when firmware files are installed in non-standard locations. QEMU memory defaults to 512 MiB and can be changed with EXHIOS_QEMU_MEMORY.
 
-```text
-GDT selectors: CS=0x0008 DS=0x0010 ES=0x0010 SS=0x0010
-GDT: installed and verified.
-```
+The guest does not have a QEMU debug-exit device in this release runner. Stop it with Ctrl+C after checking the boot messages and serial shell.
 
-## P1.2: kernel IDT and CPU exception diagnostics — QEMU verified
+## USB media
 
-The kernel installs a 256-entry IDT with gates for the 32 x86 CPU exception vectors. Each assembly stub normalizes the stack layout so the common handler receives the vector, error code, RIP, CS and RFLAGS consistently. The fatal handler reports those values over COM1; for a page fault it also reads CR2 to show the faulting linear address.
+The raw image is intended for UEFI removable media. Writing it to a USB device destroys the existing contents of the selected device. On Linux, first identify the correct whole-disk device with lsblk, then write the image (replace /dev/sdX with the verified device):
 
-The normal QEMU run verified the active IDT base and 0x0FFF limit with LIDT/SIDT. The optional INT3 test also ran successfully:
+    sudo dd if=dist/exhios-0.1.0-alpha.1-x86_64-uefi/exhios-0.1.0-alpha.1-x86_64-uefi.img of=/dev/sdX bs=4M status=progress conv=fsync
 
-```bash
-EXHIOS_EXCEPTION_TEST=1 ./scripts/run-qemu.sh
-```
+Do not use a partition path such as /dev/sdX1. Re-check the destination before pressing Enter. The current alpha has not been qualified on a broad set of physical machines; QEMU/OVMF is the reference test environment.
 
-The kernel deliberately executes INT3 after installing the IDT. QEMU confirmed vector 3 (Breakpoint), error code 0, the kernel CS selector and the fatal halt path. This test intentionally halts the guest after printing diagnostics; stop QEMU with Ctrl+C.
+## Pre-release verification
 
-## P1.3: PIC setup and controlled QEMU exit
+Before publishing a release, run from a clean checkout:
 
-The initial interrupt-controller strategy is deliberately conservative:
+    cargo fmt --all -- --check
+    cargo clippy -p exhi-init --bins --target x86_64-unknown-none
+    cargo clippy -p exhi-kernel --bin exhi-kernel --features process-runtime --target x86_64-unknown-none
+    ./scripts/package-release.sh
+    ./scripts/run-release-qemu.sh
 
-- Remap the legacy dual 8259 PIC so IRQ0–7 use vectors 0x20–0x27 and IRQ8–15 use 0x28–0x2F, away from CPU exceptions.
-- Mask all 16 PIC inputs and keep IF cleared. The kernel must not enable interrupts until gates and handlers for the corresponding IRQ vectors are installed.
-- Keep local APIC/IOAPIC activation for the later ACPI MADT and device-interrupt stage. The current q35 QEMU profile uses the legacy PIC only as a masked compatibility baseline.
+Confirm the serial log reaches the interactive Ring 3 shell, run help, version, config and spawn, confirm the worker exits cleanly, and stop QEMU with Ctrl+C. Also verify the archive checksum:
 
-To verify PIC mask readback and the QEMU debug-exit device, run:
+    cd dist
+    sha256sum --check exhios-0.1.0-alpha.1-x86_64-uefi.tar.gz.sha256
 
-```bash
-EXHIOS_QEMU_EXIT_TEST=1 ./scripts/run-qemu.sh
-```
-
-The test build writes 0x10 to I/O port 0xF4, where the script attaches QEMU's `isa-debug-exit` device. QEMU exits with status 33; the script recognizes that exact status as a successful controlled shutdown and returns zero. A different exit status is reported as a failed test.
-
-The QEMU serial output should include:
-
-```text
-PIC: remapping legacy IRQs to vectors 0x20-0x2F.
-PIC master mask: 0x00000000000000FF slave mask: 0x00000000000000FF
-PIC: remap sequence issued; all IRQ masks verified.
-QEMU debug-exit: requesting controlled shutdown.
-QEMU debug-exit confirmed (exit status 33).
-```
-
-P1.3 was verified in QEMU: both PIC masks read back as 0xFF, and isa-debug-exit terminated the guest with status 33.
-
-
-## P2.1: initial physical page allocator
-
-The kernel initializes a bitmap-based physical frame allocator from the final UEFI memory map passed in BootInfo. It uses the firmware-reported descriptor stride and supports UEFI descriptor version 1. The descriptor structure itself is 40 bytes, while the firmware-reported stride may be 48 bytes; the parser never assumes those values are identical.
-
-The first implementation is intentionally conservative:
-
-- Only UEFI EfiConventionalMemory (type 7) is considered free.
-- Loader, boot-services, runtime, ACPI, MMIO and all other descriptor types remain reserved.
-- Physical addresses below 1 MiB remain reserved.
-- The initial bitmap manages physical addresses below 4 GiB. Memory above that limit is counted but not allocated.
-- Two bitmaps distinguish pages managed by ExhiOS from pages currently allocated by the kernel.
-- Allocation, release, invalid-free and page reuse paths are covered by host unit tests.
-
-The kernel startup performs an allocation/release/reuse smoke test without dereferencing the returned physical page. Mapping and accessing arbitrary physical pages is deferred until the kernel page-table subsystem exists.
-
-P2.1 was verified in QEMU on 2026-11-06. The runtime map contained 127 descriptors with a 48-byte stride; the allocator managed 118,837 conventional pages, and the allocation/free/reuse smoke test returned frame 0x14C000 again. QEMU then exited successfully with status 33.
-
-
-## P2.2: bootstrap page tables — draft, not yet verified
-
-A preliminary four-level page-table builder exists in `exhi-kernel/src/arch/x86_64/paging.rs`. It is intended to allocate six table frames, build an identity map for 0–4 GiB with 2 MiB pages, switch CR3 and verify translations for kernel code, the current stack and the PML4 frame.
-
-At the current checkpoint this module is not exported by `arch/x86_64/mod.rs` and is not called by kernel startup. It has not yet been compiled as part of the kernel or tested in QEMU. Treat it as an implementation draft until it is reviewed, integrated, built and runtime-verified.
+Do not publish until the Release build and packaged-image boot have been verified. The existing debug/QEMU acceptance evidence does not substitute for this final Release-profile check.

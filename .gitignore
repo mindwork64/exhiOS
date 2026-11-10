@@ -1,3 +1,4 @@
 /target/
 /*.img
 /OVMF_VARS.fd
+/dist/

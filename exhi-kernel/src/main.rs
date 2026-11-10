@@ -24,15 +24,32 @@ const QEMU_DEBUG_EXIT_PORT: u16 = 0xF4;
 #[cfg(feature = "qemu-debug-exit-smoke-test")]
 const QEMU_DEBUG_EXIT_VALUE: u32 = 0x10;
 
-#[cfg(any(feature = "process-load-smoke-test", feature = "process-runtime"))]
+#[cfg(all(
+    any(feature = "process-load-smoke-test", feature = "process-runtime"),
+    debug_assertions
+))]
 const EMBEDDED_INIT_ELF: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../target/x86_64-unknown-none/debug/exhi-init"
 ));
-#[cfg(feature = "process-runtime")]
+#[cfg(all(
+    any(feature = "process-load-smoke-test", feature = "process-runtime"),
+    not(debug_assertions)
+))]
+const EMBEDDED_INIT_ELF: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../target/x86_64-unknown-none/release/exhi-init"
+));
+
+#[cfg(all(feature = "process-runtime", debug_assertions))]
 pub(crate) const EMBEDDED_WORKER_ELF: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../target/x86_64-unknown-none/debug/exhi-worker"
+));
+#[cfg(all(feature = "process-runtime", not(debug_assertions)))]
+pub(crate) const EMBEDDED_WORKER_ELF: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../target/x86_64-unknown-none/release/exhi-worker"
 ));
 
 /// Kernel entry point invoked by the bootloader using the x86-64 System V ABI.
@@ -44,7 +61,7 @@ pub(crate) const EMBEDDED_WORKER_ELF: &[u8] = include_bytes!(concat!(
 pub unsafe extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     let mut framebuffer_console: Option<exhi_console::FramebufferConsole<'static>> = None;
     serial::COM1.initialize();
-    serial::COM1.write(b"ExhiOS Kernel 0.1\r\n");
+    serial::COM1.write(b"ExhiOS Kernel 0.1.0-alpha.1\r\n");
     serial::COM1.write(b"P3.1: COM1 polling serial driver ready.\r\n");
     serial::COM1.write(b"Kernel entry point reached.\r\n");
 
