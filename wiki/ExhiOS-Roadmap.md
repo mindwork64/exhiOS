@@ -265,7 +265,7 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [ ] Init reads `/etc/exhi.conf` through capability-gated `FileRead` from kernel RAMFS, then applies `hostname`, `prompt` and `version` and falls back to defaults on malformed settings.
 - [ ] RAMFS remains volatile and kernel-populated; persistent storage and FileWrite are outside P7.
 
-**Validation:** user-side userland ELF build succeeded. Clippy completed successfully for the common workspace targets and `process-runtime`, `process-shell-smoke-test` and `process-multi-smoke-test` configurations, with warnings limited to older modules plus one feature-specific unused entry point now corrected. No unit tests, CI or QEMU runtime scenarios were run. P7 remains open pending runtime evidence.
+**Validation:** user-side build of both userland ELF images succeeded. Clippy completed successfully for workspace library/binary targets and all six P7 kernel configurations: `process-runtime`, `process-shell-smoke-test`, `process-multi-smoke-test`, `process-fault-smoke-test`, `process-run-smoke-test` and `process-load-smoke-test`. The feature-specific `run_init` dead-code warning was removed and the multi-process configuration was rechecked. Remaining warnings are in legacy modules outside the new P7 process-runtime paths. No unit tests, CI or QEMU runtime scenarios were run. P7 remains open pending runtime evidence.
 
 ## Current platform boundaries
 
