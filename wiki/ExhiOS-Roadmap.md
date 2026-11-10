@@ -298,3 +298,19 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 
 - User ran `cargo fmt` and Clippy for `exhi-init --bins` in both the default configuration and with `worker-fault-smoke-test`. Both completed successfully with no warnings.
 - The exact `TaskSpawn → AccessDenied` assertion is now lint-clean in both worker paths. Runtime confirmation by the serial QEMU drivers remains pending; P7 is still open.
+
+
+## R0 — ExhiOS 0.1.0-alpha.1 release preparation
+
+**State: packaging code committed; Release-profile build and packaged-image runtime validation are pending.**
+
+- [x] Define the target version in the root `VERSION` file.
+- [x] Select the Release userland artifacts when `debug_assertions` are disabled; keep the existing Debug include paths for development builds.
+- [x] Add `scripts/package-release.sh`: build exhi-init/exhi-worker first, build the kernel with `process-runtime`, build the UEFI application, verify ET_EXEC user/kernel images, create a GPT/FAT32 EFI System Partition, place `EFI/BOOT/BOOTX64.EFI` and `exhi-kernel.elf`, read the files back for byte-for-byte comparison, and generate SHA-256 checksums/archive.
+- [x] Add `scripts/run-release-qemu.sh` to boot the packaged disk image with OVMF and a fresh copy of NVRAM variables.
+- [x] Update README, BUILD and USERLAND documentation, Release Notes, shell version banner/config and shell smoke-test expected strings.
+- [ ] Run `cargo fmt`, userland/kernel Clippy, and `scripts/package-release.sh` locally; retain the generated Cargo.lock in source control before creating a release tag.
+- [ ] Boot the actual Release image using `scripts/run-release-qemu.sh`; verify kernel handoff and interact with the Ring 3 shell (`help`, `version`, `config`, `spawn`).
+- [ ] Verify packaged checksums, then create the release tag and publish the image/archive only after the preceding gates pass.
+
+The preparation work does not claim that a Release build or packaged image has already booted. Existing Debug/feature QEMU evidence is not a substitute for Release-profile runtime validation.
