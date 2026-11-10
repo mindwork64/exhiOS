@@ -128,6 +128,11 @@ def main() -> int:
                 timeout=8.0,
             )
             print(worker_output.decode("ascii", errors="replace"), end="")
+            # The v1 runtime retains a Finished worker until init exits, so a
+            # second spawn must fail without allocating another process slot.
+            client.sendall(b"spawn\r")
+            read_until(client, buffer, b"worker process could not be started.\r\n")
+            read_until(client, buffer, b"exhios> ")
             client.sendall(b"exit\r")
             output = read_until(
                 client,
