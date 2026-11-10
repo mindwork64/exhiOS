@@ -1365,7 +1365,10 @@ fn build_reaper_frame(kernel_stack_top: u64) -> *mut user::UserEntryFrame {
     pointer
 }
 
-#[cfg(feature = "process-runtime")]
+#[cfg(all(
+    feature = "process-runtime",
+    not(feature = "process-multi-smoke-test")
+))]
 pub fn run_init(image: &[u8]) -> ! {
     run_processes(image, None)
 }
