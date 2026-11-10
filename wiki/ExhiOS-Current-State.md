@@ -1,10 +1,10 @@
 # ExhiOS — текущее состояние
 
-Снимок: **2026-11-10**
+Снимок: **2026-11-10** (после локальной runtime-приёмки process-stack guard для P2.6).
 Репозиторий: https://github.com/mindwork64/exhiOS
-Рабочая ветка: `main` (self-hosted Actions #513 passed (build + complete QEMU runtime)).
+Рабочая ветка: `main`; P7.1–P7.4 приняты для BSP/single-CPU реализации по self-hosted Actions #513 и пользовательскому runtime evidence.
 
-P0–P6 сохранены. P7 code path включает двухслотовый process manager, capability-gated `SpawnWorker`, независимые address space/kernel stack/FX state, deferred reaper cleanup, `FileRead` из kernel RAMFS и shell-команды `config`/`spawn`. Serial QEMU driver расширен проверкой запуска worker и очистки обоих процессов. Эта версия не собиралась и не запускалась в QEMU/CI; `cargo`, `rustfmt` и `clippy-driver` в локальном контейнере отсутствуют.
+P0–P7.4 сохранены. P7 включает двухслотовый process manager, capability-gated `SpawnWorker`, независимые address space/kernel stack/FX state, deferred reaper cleanup, `FileRead` из kernel RAMFS и shell-команды `config`/`spawn`. Дополнительный сценарий P2.6 теперь также выполнен локально в QEMU: init, worker и reaper stack mappings/guard pages проверены, worker guard fault дошёл до #DF на IST1, QEMU завершился с кодом 33. Пользовательский Clippy завершился успешно, но сообщил один новый `unreachable_code` warning в smoke-конфигурации; исправление внесено, повторный Clippy после него ожидается. Остальные предупреждения относятся к существующим модулям. Для этой работы GitHub Actions не запускались.
 
 ## Закрыто и проверено в QEMU
 
@@ -163,9 +163,15 @@ Local Linux Mint/QEMU serial evidence (2026-11-06, supplied log):
 - Controlled guard fault raises vector 8 (Double Fault); exception frame pointer 0x122FC8 lies inside IST1 range 0x11F000..0x123000.
 - P2.6 double-fault IST runtime smoke test passed; QEMU debug-exit status 33.
 
-The original boot-stack guard/IST1 scenario is accepted with both local and CI runtime evidence. An additional process-stack scenario is now implemented but not yet accepted: it validates both 64 KiB process stacks and the reaper stack page-by-page, then deliberately faults from the worker stack to verify #DF delivery through IST1. Runtime validation remains pending; P2.6's additional stack-exhaustion sub-item is still open.
+The original boot-stack guard/IST1 scenario is accepted with both local and CI runtime evidence. The additional process-stack scenario is also accepted from the user's local Linux Mint/QEMU run on 2026-11-10:
+- Verified all 16 usable 4 KiB pages (64 KiB) of init, worker and reaper stacks as identity-mapped, supervisor-only, writable; each immediately lower guard page was confirmed unmapped.
+- The deliberate worker-stack guard access caused vector 8 (Double Fault); the exception frame was on the dedicated IST1 stack.
+- Serial output included `P2.6: double-fault IST runtime smoke test passed.`; QEMU debug-exit status was 33.
+- Command: `EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PROCESS_STACK_GUARD_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh`.
 
-Code checkpoint: [521e5fe](https://github.com/mindwork64/exhiOS/commit/521e5fe875217f8c18e2167598a07751577659aa) (follow-up import gating: [6758833](https://github.com/mindwork64/exhiOS/commit/6758833e5cde6c3b2032dbf4cde781834b33cd9f)). The smoke path uses `EXHIOS_PROCESS_STACK_GUARD_TEST=1`; it has not been linted or executed yet.
+The user also ran `cargo fmt` and `cargo clippy -p exhi-kernel --bin exhi-kernel --features process-stack-guard-smoke-test --target x86_64-unknown-none`; Clippy finished successfully. It identified an `unreachable_code` warning because the expected smoke-test fault function returns `!`, making the normal Ring 3 entry tail unreachable in that feature build. Commit [23f34f8](https://github.com/mindwork64/exhiOS/commit/23f34f878b4fa63a4e9600633f0c477f4e54a66c) now excludes that tail from the guard-test configuration. A post-fix Clippy rerun is pending; other reported warnings are legacy suggestions in existing modules.
+
+Process-stack test implementation: [521e5fe](https://github.com/mindwork64/exhiOS/commit/521e5fe875217f8c18e2167598a07751577659aa), import-gating follow-up [6758833](https://github.com/mindwork64/exhiOS/commit/6758833e5cde6c3b2032dbf4cde781834b33cd9f), formatting cleanup [7dd8d51](https://github.com/mindwork64/exhiOS/commit/7dd8d515189412ea402c371caf8aff2d346a8728).
 
 ## P3.1 — Polling serial driver
 
