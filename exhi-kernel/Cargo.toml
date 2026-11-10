@@ -30,6 +30,7 @@ process-load-smoke-test = ["qemu-debug-exit-smoke-test"]
 process-run-smoke-test = ["process-load-smoke-test", "process-runtime"]
 process-shell-smoke-test = ["process-runtime", "qemu-debug-exit-smoke-test"]
 process-fault-smoke-test = ["process-runtime", "qemu-debug-exit-smoke-test"]
+process-worker-fault-smoke-test = ["process-runtime", "qemu-debug-exit-smoke-test"]
 
 [[bin]]
 name = "exhi-kernel"
