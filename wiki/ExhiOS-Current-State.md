@@ -370,11 +370,14 @@ SMP, AP-local GS и user TLS не входят в принятую BSP/single-CP
 - Feature-specific Clippy повторно завершился успешно без новых предупреждений в smoke-пути. Остались только legacy suggestions в exhi-heap, exhi-elf, exhi-memory и базовых kernel modules.
 - Исправление unreachable_code и последующие formatting/string-escape cleanup коммиты: [23f34f8](https://github.com/mindwork64/exhiOS/commit/23f34f878b4fa63a4e9600633f0c477f4e54a66c), [76c06c5](https://github.com/mindwork64/exhiOS/commit/76c06c589224ae315e659ae035584c48a8730594), [0bfd656](https://github.com/mindwork64/exhiOS/commit/0bfd6565a224b6b3a0986209b7bebd286a680e74).
 
-## Release 0.1.0-alpha.1 — подготовка
+## Release 0.1.0-alpha.1 — локальная проверка Release image (2026-11-11)
 
-- Целевая версия хранится в корневом файле VERSION.
-- Добавлены Release-profile сборка userland/kernel/UEFI bootloader, упаковка GPT/FAT32 UEFI image, SHA-256 checksums и отдельный QEMU/OVMF runner.
-- Release kernel выбирает Release init/worker ELF через not(debug_assertions); debug build продолжает использовать debug userland artifacts.
-- Shell version/banner обновлены до 0.1.0-alpha.1; shell QEMU smoke expectations синхронизированы.
-- **Пока не проверено:** реальная Release-сборка, созданный GPT image и загрузка этого image в QEMU/OVMF. В репозитории также нет LICENSE/COPYING и не выбраны условия распространения. Публикацию и git tag выполнять только после локальной проверки по документации BUILD.md и решения по лицензии.
+- Пользователь успешно выполнил `scripts/package-release.sh`: Release init/worker/kernel и UEFI bootloader собраны; создан GPT/FAT32 image и архив. `sgdisk --verify` не обнаружил проблем, EFI bootloader/kernel прочитаны обратно из ESP и совпали с исходными файлами побайтно.
+- `scripts/run-release-qemu.sh` проверил SHA-256 образа и запустил его через QEMU/OVMF.
+- UEFI bootloader загрузил Release kernel, kernel handoff прошёл; подтверждены allocator/VMM/heap/address spaces, COM1, framebuffer, драйверный registry и запуск init в Ring 3.
+- В shell проверены `help`, `hostname`, `version`, `config`, `echo` и `spawn`. Worker подтвердил отказ собственного `TaskSpawn` с `AccessDenied`, выполнил yield sequence и завершился.
+- Повторный `spawn` после завершения worker сначала вывел `reclaimed finished process before worker spawn`, затем успешно создал второй worker; тот также завершился штатно. Это подтверждает deferred cleanup и повторное использование слота в Release runtime.
+- Дополнительный code review поправил порядок: capability `TaskSpawn` теперь проверяется до reclamation side effects. Этот последний порядок ещё требует повторного build/Clippy/QEMU на актуальном HEAD.
+- **Остаётся перед публикацией:** прогнать Clippy для текущего kernel `process-runtime`, повторить Release QEMU на окончательном HEAD, добавить сгенерированный `Cargo.lock`, отдельно проверить checksum архива, выбрать и добавить LICENSE/условия распространения. До выполнения этих пунктов tag и публикация не создаются.
+- Платформенные ограничения неизменны: QEMU/OVMF — эталонная среда; BSP/single-CPU, RAMFS volatile, физическая память управляется ниже 4 GiB; SMP, постоянная ФС и desktop не заявлены.
 
