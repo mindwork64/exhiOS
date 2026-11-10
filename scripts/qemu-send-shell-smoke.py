@@ -90,7 +90,7 @@ def main() -> int:
                 (b"commands: help hostname version echo clear config spawn exit\r\n",),
             )
             issue(client, buffer, b"hostname", (b"exhios\r\n",))
-            issue(client, buffer, b"version", (b"ExhiOS userland 0.1\r\n",))
+            issue(client, buffer, b"version", (b"ExhiOS userland 0.1.0-alpha.1\r\n",))
             issue(client, buffer, b"echo ci-pass", (b"ci-pass\r\n",))
             issue_input(
                 client,
@@ -110,7 +110,7 @@ def main() -> int:
                 (
                     b"hostname=exhios\r\n",
                     b"prompt=exhios>\r\n",
-                    b"version=0.1\r\n",
+                    b"version=0.1.0-alpha.1\r\n",
                 ),
             )
             client.sendall(b"spawn\r")
