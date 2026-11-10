@@ -33,7 +33,7 @@ For a headless QEMU session:
 
     EXHIOS_HEADLESS=1 ./scripts/run-release-qemu.sh
 
-See [Release notes](RELEASE_NOTES.md), [Build instructions](documentation/BUILD.md), and [Userland guide](documentation/USERLAND.md).
+See [Changelog](CHANGELOG.md), [Release notes](RELEASE_NOTES.md), [Build instructions](documentation/BUILD.md), and [Userland guide](documentation/USERLAND.md).
 
 ## Known limitations
 
