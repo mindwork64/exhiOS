@@ -589,3 +589,13 @@ Implementation:
 - The deliberate access to the worker stack guard generated #PF and then #DF; the existing handler reported that the double fault arrived on dedicated IST1 and printed `P2.6: double-fault IST runtime smoke test passed.`. QEMU debug-exit returned status 33.
 - This closes the remaining P2.6 process/reaper stack guard runtime item. No GitHub Actions workflow was triggered.
 - Relevant code: feature implementation [521e5fe](https://github.com/mindwork64/exhiOS/commit/521e5fe875217f8c18e2167598a07751577659aa), import-gating correction [6758833](https://github.com/mindwork64/exhiOS/commit/6758833e5cde6c3b2032dbf4cde781834b33cd9f), whitespace cleanup [7dd8d51](https://github.com/mindwork64/exhiOS/commit/7dd8d515189412ea402c371caf8aff2d346a8728), cfg lint-warning fix [23f34f8](https://github.com/mindwork64/exhiOS/commit/23f34f878b4fa63a4e9600633f0c477f4e54a66c), Rust block formatting [76c06c5](https://github.com/mindwork64/exhiOS/commit/76c06c589224ae315e659ae035584c48a8730594) and diagnostic-literal correction [0bfd656](https://github.com/mindwork64/exhiOS/commit/0bfd6565a224b6b3a0986209b7bebd286a680e74).
+
+
+## 2026-11-10 — P2.6 process-stack guard final Clippy verification
+
+- After syncing `origin/main`, the user ran `cargo fmt` and repeated:
+  `cargo clippy -p exhi-kernel --bin exhi-kernel --features process-stack-guard-smoke-test --target x86_64-unknown-none`.
+- Clippy completed successfully. The prior `unreachable_code` warning is gone. No new warnings were emitted by the process-stack guard test path.
+- Remaining diagnostics are existing suggestions: one `manual_is_multiple_of` in `exhi-heap`, one `collapsible_if` in `exhi-elf`, five warnings in `exhi-memory`, and 20 baseline architecture warnings in `exhi-kernel`.
+- Together with the supplied local QEMU run (all three 64 KiB process/reaper stacks and guard pages verified; #PF → #DF on IST1; debug-exit 33), this completes P2.6 runtime and feature-specific Clippy acceptance.
+- No GitHub Actions or additional QEMU run was started for this final lint confirmation.
