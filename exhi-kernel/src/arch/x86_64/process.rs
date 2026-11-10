@@ -1805,9 +1805,9 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
     }
 }
 
-/// Marks the current init task Finished and transfers execution to the
-/// dedicated kernel reaper. No init-owned address space or task record is
-/// reclaimed on the faulting task's kernel stack.
+/// Marks the current user task Finished and transfers execution to the next
+/// scheduler context or the dedicated kernel reaper. No process-owned address
+/// space or task record is reclaimed on the faulting task's kernel stack.
 #[cfg(feature = "process-runtime")]
 fn handoff_faulting_process_to_scheduler(vector: u64) -> ! {
     // The vector is only consumed by the dedicated worker-fault smoke mode.
