@@ -14,6 +14,8 @@ Initial x86-64 UEFI technical preview.
 - COM1 serial shell, basic GOP framebuffer text output, PIT timer and PS/2 keyboard decoding.
 - Release packaging scripts for a raw GPT/FAT32 UEFI image, SHA-256 manifests and QEMU/OVMF launch.
 
-Release candidate validation (2026-11-11): the Release-profile GPT/FAT32 image booted through QEMU/OVMF, reached the Ring 3 serial shell, and passed manual command and worker lifecycle checks. A second worker was successfully spawned after deferred reclamation of the first worker's finished process record.
+Release candidate validation (2026-11-11): the Release-profile GPT/FAT32 image booted through QEMU/OVMF, reached the Ring 3 serial shell, and passed manual command and worker lifecycle checks. After the first worker exited, four further workers were each spawned successfully after deferred reclamation of the previous Finished record. The run also validates that the TaskSpawn capability check occurs before reclamation.
+
+The serial shell does not yet support cursor-key navigation or command history.
 
 This alpha does not include SMP, persistent storage, a graphical desktop, networking or broad device support. It remains unpublished pending final source checks, an explicitly selected license/redistribution policy and archive checksum verification.
