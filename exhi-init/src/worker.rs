@@ -13,20 +13,24 @@ pub extern "sysv64" fn _start() -> ! {
     }
 
     #[cfg(feature = "worker-fault-smoke-test")]
-    unsafe {
+    {
         let _ = console_write(b"ExhiOS worker: triggering invalid-opcode fault.\r\n");
-        core::arch::asm!("ud2", options(noreturn));
-    }
-
-    #[cfg(not(feature = "worker-fault-smoke-test"))]
-    for _ in 0..4 {
-        if yield_now().is_err() {
-            exit();
+        unsafe {
+            core::arch::asm!("ud2", options(noreturn));
         }
     }
 
-    let _ = console_write(b"ExhiOS worker: completed yield sequence; exiting.\r\n");
-    exit();
+    #[cfg(not(feature = "worker-fault-smoke-test"))]
+    {
+        for _ in 0..4 {
+            if yield_now().is_err() {
+                exit();
+            }
+        }
+
+        let _ = console_write(b"ExhiOS worker: completed yield sequence; exiting.\r\n");
+        exit();
+    }
 }
 
 #[panic_handler]
