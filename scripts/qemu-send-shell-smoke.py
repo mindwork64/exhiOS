@@ -116,16 +116,27 @@ def main() -> int:
             client.sendall(b"spawn\r")
             read_until(client, buffer, b"worker process started.\r\n")
             read_until(client, buffer, b"exhios> ")
-            read_until(
-                client,
-                buffer,
-                b"ExhiOS worker: second Ring 3 process started.\r\n",
+            worker_output = bytearray(
+                read_until(
+                    client,
+                    buffer,
+                    b"ExhiOS worker: second Ring 3 process started.\r\n",
+                )
             )
-            worker_output = read_until(
-                client,
-                buffer,
-                b"ExhiOS worker: completed yield sequence; exiting.\r\n",
-                timeout=8.0,
+            worker_output.extend(
+                read_until(
+                    client,
+                    buffer,
+                    b"ExhiOS worker: TaskSpawn denied as expected.\r\n",
+                )
+            )
+            worker_output.extend(
+                read_until(
+                    client,
+                    buffer,
+                    b"ExhiOS worker: completed yield sequence; exiting.\r\n",
+                    timeout=8.0,
+                )
             )
             print(worker_output.decode("ascii", errors="replace"), end="")
             # The v1 runtime retains a Finished worker until init exits, so a
