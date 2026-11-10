@@ -112,6 +112,11 @@ trap - EXIT
 
 cp "$ROOT_DIR/RELEASE_NOTES.md" "$PACKAGE_DIR/RELEASE_NOTES.md"
 cp "$ROOT_DIR/CHANGELOG.md" "$PACKAGE_DIR/CHANGELOG.md"
+for license_file in LICENSE LICENSE.md COPYING; do
+    if [[ -s "$ROOT_DIR/$license_file" ]]; then
+        cp "$ROOT_DIR/$license_file" "$PACKAGE_DIR/$license_file"
+    fi
+done
 cp "$ROOT_DIR/VERSION" "$PACKAGE_DIR/VERSION"
 cp "$ROOT_DIR/Cargo.lock" "$PACKAGE_DIR/Cargo.lock"
 
@@ -136,6 +141,8 @@ Boot in QEMU:
 The image is an experimental alpha. Disable Secure Boot. Hardware support
 outside the documented QEMU/OVMF profile has not been qualified. Do not use
 this image on a machine containing data you need to preserve.
+No project license/redistribution terms have been selected yet. Do not publicly
+redistribute this package until the project owner adds the intended terms.
 EOF
 
 (
