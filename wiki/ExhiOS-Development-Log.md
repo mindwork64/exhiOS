@@ -553,3 +553,9 @@ Implementation:
 - The check runs in both normal worker mode (before the cooperative yield loop) and worker-fault mode (before CPL3 `UD2`). It therefore validates the grant boundary independently of the worker's termination mode.
 - Updated the normal shell and worker-fault serial drivers to require the success marker. A generic `Io` result due to the two occupied process slots does not satisfy the assertion.
 - Code-only update. User-side Clippy for `exhi-init --bins` in the normal configuration and with `worker-fault-smoke-test` is pending. No build, tests, QEMU, or CI were run.
+
+## 2026-11-10 — Worker TaskSpawn denial coverage lint-clean
+
+- User synced the capability-denial worker changes, ran `cargo fmt`, and executed Clippy for the default `exhi-init --bins` target and for the `worker-fault-smoke-test` feature configuration.
+- Both commands completed successfully with no warnings. The normal worker and fault-injection worker both compile with the exact `SyscallError::AccessDenied` assertion.
+- No tests, QEMU runtime scenarios, or GitHub Actions were run. The next acceptance evidence must come from the local serial QEMU scenarios.
