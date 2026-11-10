@@ -377,3 +377,11 @@ Runtime-приёмка P7.1: проверить `spawn` из Ring 3 shell, пе�
 - Проверка включена в оба режима: нормальный worker до yield/exit и fault-worker до выполнения `UD2`.
 - Обычный shell QEMU-драйвер и worker-fault драйвер ожидают отдельный маркер успешного отказа. Это позволяет отличить отказ capability gate от ошибки из-за исчерпания process slots.
 - Изменения кода внесены; Clippy для обычного и fault-mode userland ещё не запускался. QEMU/CI не запускались. P7 остаётся открытым.
+
+### Worker TaskSpawn denial — lint checkpoint 2026-11-10
+
+- Пользователь выполнил `cargo fmt`, затем обе команды Clippy:
+  - `cargo clippy -p exhi-init --bins --target x86_64-unknown-none`
+  - `cargo clippy -p exhi-init --bins --target x86_64-unknown-none --features worker-fault-smoke-test`
+- Обе завершились успешно, без предупреждений. Проверка точного `SyscallError::AccessDenied` включена в обычный и fault-mode worker.
+- Serial QEMU assertions не запускались; runtime-подтверждения capability gate и fault recovery пока нет.
