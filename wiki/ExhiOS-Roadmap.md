@@ -247,25 +247,25 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 
 ### P7.1 — Production process creation and lifecycle
 
-- [ ] Code added: a two-slot production registry with independent LoadedProcess/address space, guarded kernel stack, FXSAVE image and scheduler record for each user process.
-- [ ] Capability-gated `SpawnWorker`; only init receives `TaskSpawn`. Init may create one built-in worker while remaining runnable. Worker receives only `TaskYield`, `TaskExit` and `ConsoleWrite`.
-- [ ] `Exit` and validated CPL3 faults mark the current process Finished; the dedicated reaper restores kernel mappings, releases Finished process resources and reaps task records after switch-away.
-- [ ] Serial QEMU driver sends `spawn`, observes worker startup/completion and expects the reaper to release both processes. Not run for this code-only update.
+- [ ] The two-slot production registry and per-process LoadedProcess/address-space, guarded kernel-stack, FXSAVE and scheduler records are implemented in code.
+- [ ] Capability-gated `SpawnWorker` is implemented: only init receives `TaskSpawn`; it can create one built-in worker while remaining runnable. Worker receives only `TaskYield`, `TaskExit` and `ConsoleWrite`.
+- [ ] `Exit` and validated CPL3 faults mark only the current process Finished; the dedicated reaper restores kernel mappings, releases Finished resources and reaps task records after switch-away.
+- [ ] Serial QEMU driver sends `spawn`, observes worker startup/completion and requires both records to be reaped. Runtime scenario not yet executed.
 
 ### P7.2 — libexhi
 
-- [ ] `no_std` wrappers include `console_write`, `console_read`, `file_read`, `spawn_worker`, `yield_now` and `exit`. Spawn authorization tests were added but not run.
+- [ ] `no_std` wrappers include `console_write`, `console_read`, `file_read`, `spawn_worker`, `yield_now` and `exit`. Spawn authorization tests are present but not run.
 
 ### P7.3 — serial shell
 
-- [ ] Existing bounded COM1 shell retained; the new `spawn` command and serial-driver scenario were added. Not executed in this update.
+- [ ] Existing bounded COM1 shell includes the new `spawn` command and serial-driver scenario. Runtime scenario not yet executed.
 
 ### P7.4 — configuration
 
 - [ ] Init reads `/etc/exhi.conf` through capability-gated `FileRead` from kernel RAMFS, then applies `hostname`, `prompt` and `version` and falls back to defaults on malformed settings.
 - [ ] RAMFS remains volatile and kernel-populated; persistent storage and FileWrite are outside P7.
 
-**Validation:** no CI/QEMU/build/test jobs were started. Rust formatting and Clippy commands were unavailable in the local container.
+**Validation:** user-side userland ELF build succeeded. Clippy completed successfully for the common workspace targets and `process-runtime`, `process-shell-smoke-test` and `process-multi-smoke-test` configurations, with warnings limited to older modules plus one feature-specific unused entry point now corrected. No unit tests, CI or QEMU runtime scenarios were run. P7 remains open pending runtime evidence.
 
 ## Current platform boundaries
 
