@@ -1672,7 +1672,7 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
                 .map(|task| task.context().saved_stack_pointer())
         }
         .unwrap_or_else(|| {
-            init_runtime_failure(b"P7.1: first process entry frame is missing.\\r\\n")
+            init_runtime_failure(b"P7.1: first process entry frame is missing.\\r\n")
         });
         if first_frame_address == 0
             || first_frame_address & 0xF != 0
@@ -1682,7 +1682,7 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
                 .is_none_or(|end| end > first_record.kernel_stack_top)
         {
             init_runtime_failure(
-                b"P7.1: first process entry frame is outside its kernel stack.\\r\\n",
+                b"P7.1: first process entry frame is outside its kernel stack.\\r\n",
             );
         }
         let frame = unsafe { &*(first_frame_address as *const user::UserEntryFrame) };
@@ -1690,11 +1690,11 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
         match user::enter_user(frame, fx_state) {
             Ok(()) => {
                 init_runtime_failure(
-                    b"P7.1: first user process IRETQ entry unexpectedly returned.\\r\\n",
+                    b"P7.1: first user process IRETQ entry unexpectedly returned.\\r\n",
                 )
             }
             Err(_) => {
-                init_runtime_failure(b"P7.1: first user process IRETQ handoff failed.\\r\\n")
+                init_runtime_failure(b"P7.1: first user process IRETQ handoff failed.\\r\n")
             }
         }
     }
