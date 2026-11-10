@@ -1088,6 +1088,66 @@ impl SyscallServices for InitServices {
 }
 
 #[cfg(feature = "process-runtime")]
+fn reap_finished_processes_before_spawn(
+    scheduler: *mut Scheduler<3>,
+) -> Result<usize, SyscallError> {
+    if scheduler.is_null() {
+        return Err(SyscallError::Io);
+    }
+
+    // The caller is a live user process, so any Finished peer has already
+    // switched away from its private address space and kernel stack. Restore
+    // the kernel mappings before reclaiming that peer's resources.
+    address_space::restore_kernel().map_err(|_| SyscallError::Io)?;
+    user::clear_active_kernel_stack().map_err(|_| SyscallError::Io)?;
+
+    let registry = ptr::addr_of!(PROCESS_REGISTRY);
+    let mut reaped = 0usize;
+    for slot in 0..MAX_PROCESS_RECORDS {
+        let record = unsafe { ptr::read_volatile((*registry).as_ptr().add(slot)) };
+        let Some(record) = record else {
+            continue;
+        };
+        let finished = unsafe {
+            (*scheduler)
+                .get(record.task_id)
+                .is_some_and(|task| task.state() == TaskState::Finished)
+        };
+        if !finished {
+            continue;
+        }
+
+        let destroyed = unsafe {
+            match (*record.process).as_mut() {
+                Some(process) => process.destroy().is_ok(),
+                None => false,
+            }
+        };
+        if !destroyed {
+            return Err(SyscallError::Io);
+        }
+
+        unsafe {
+            ptr::write(record.process, None);
+        }
+        unsafe {
+            (*scheduler)
+                .reap(record.task_id)
+                .map_err(|_| SyscallError::Io)?;
+        }
+        if !remove_process_record(record.task_id) {
+            return Err(SyscallError::Io);
+        }
+        reaped += 1;
+    }
+
+    if reaped != 0 {
+        serial::COM1.write(b"ExhiOS: reclaimed finished process before worker spawn.\r\n");
+    }
+    Ok(reaped)
+}
+
+#[cfg(feature = "process-runtime")]
 fn spawn_worker_process(scheduler: *mut Scheduler<3>) -> Result<u64, SyscallError> {
     if scheduler.is_null() {
         return Err(SyscallError::Io);
@@ -1095,6 +1155,13 @@ fn spawn_worker_process(scheduler: *mut Scheduler<3>) -> Result<u64, SyscallErro
 
     let current_id =
         unsafe { (*scheduler).current().map(|task| task.id()) }.ok_or(SyscallError::Io)?;
+    if let Err(error) = reap_finished_processes_before_spawn(scheduler) {
+        // The helper restores kernel mappings before touching a finished peer.
+        // Restore the caller's process context even when reclamation fails.
+        let _ = select_process_context(current_id);
+        return Err(error);
+    }
+
     if unsafe { (*scheduler).current_capabilities() }
         .authorize(Capability::TaskSpawn)
         .is_err()
