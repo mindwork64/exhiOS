@@ -316,11 +316,11 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [x] The same run was performed after the TaskSpawn authorization check was moved ahead of reclamation. This validates the final ordering in the Release runtime, not just the earlier implementation.
 - [x] `scripts/run-release-qemu.sh` accepted the disk-image checksum before launch. The user later independently verified both checksum manifests for that package; both reported `ЦЕЛ`.
 - [x] Clippy completed successfully for `exhi-init --bins` and the kernel `process-runtime` path. It emitted existing lint suggestions in `exhi-memory`, `exhi-heap`, `exhi-elf` and kernel modules; no errors were reported.
-- [ ] Apply rustfmt to the `process.rs` formatting diff reported by `cargo fmt --all -- --check`, then repeat the check.
+- [x] Apply rustfmt to the reported `process.rs` formatting diff and commit it as [ecce11b](https://github.com/mindwork64/exhiOS/commit/ecce11b6a27a176e7918364d9506b0f49e8329d2). A separate post-fix `cargo fmt --all -- --check` transcript has not yet been supplied.
 - [x] Add the generated `Cargo.lock` to source control — committed on `main` in [38f4405](https://github.com/mindwork64/exhiOS/commit/38f44050a66b325acdfdcef7b1b2cdaab1e9a9bf).
 - [x] Choose and add project license/redistribution terms: Apache-2.0; root `LICENSE` contains the canonical Apache License 2.0 text.
 - [x] Rebuilt and repeated the Release QEMU smoke test after the TaskSpawn authorization-order change; the user supplied a successful boot and repeated worker-replacement log on 2026-11-11. Subsequent commits changed documentation only. Any future code change still requires a fresh Release build/QEMU run before tagging.
-- [ ] Rebuild the final package so it includes the new `LICENSE` and current release documentation; boot that package in QEMU/OVMF and rerun SHA-256 verification for the newly generated archive and image.
+- [x] Rebuild the final package after adding `LICENSE` and updating release documentation; the user booted it through QEMU/OVMF to the Ring 3 shell and independently verified both the archive and image checksum manifests (`sha256sum --check` reported `ЦЕЛ` for both).
 
 The serial shell currently has basic CR/LF, Backspace/DEL and Ctrl+C handling, but no cursor-key navigation or command history. In the supplied terminal log, `[A[A` was interpreted as ordinary input after up-arrow escape sequences; this is a shell-input limitation, not a process-runtime failure.
 
