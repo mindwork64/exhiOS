@@ -30,3 +30,7 @@ ExhiOS is an experimental x86-64 operating system with a native UEFI loader, a R
 The development milestones P0–P7.4 have prior build and runtime acceptance evidence recorded in the repository wiki. P2.6 process/reaper stack guards also passed a local Linux Mint/QEMU run, and the feature-specific Clippy check passed.
 
 The Release-profile artifacts and packaged GPT image are produced by scripts/package-release.sh. This preparation step does not itself prove that the Release image boots. Before publishing this alpha, run scripts/run-release-qemu.sh and verify the serial shell as described in documentation/BUILD.md.
+
+## Distribution terms
+
+No project license or redistribution terms have been selected yet, and the repository currently has no LICENSE/COPYING file. This alpha is still in release-candidate preparation; define the terms before public distribution.
