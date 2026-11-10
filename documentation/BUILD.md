@@ -97,4 +97,4 @@ Do not publish until the Release build and packaged-image boot have been verifie
 
 ## Distribution gate
 
-The repository currently has no LICENSE/COPYING file and no explicit redistribution terms. Choose and add the intended project license or distribution terms before publishing the source or binary release. This does not prevent local build and QEMU evaluation.
+ExhiOS source code is licensed under Apache-2.0; the canonical license text is in the root `LICENSE` file. `scripts/package-release.sh` automatically copies `LICENSE` into the release bundle. Third-party dependencies remain subject to their own license terms. This does not prevent local build and QEMU evaluation.
