@@ -320,7 +320,7 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [x] Add the generated `Cargo.lock` to source control — committed on `main` in [38f4405](https://github.com/mindwork64/exhiOS/commit/38f44050a66b325acdfdcef7b1b2cdaab1e9a9bf).
 - [x] Choose and add project license/redistribution terms: Apache-2.0; root `LICENSE` contains the canonical Apache License 2.0 text.
 - [x] Rebuilt and repeated the Release QEMU smoke test after the TaskSpawn authorization-order change; the user supplied a successful boot and repeated worker-replacement log on 2026-11-11. Subsequent commits changed documentation only. Any future code change still requires a fresh Release build/QEMU run before tagging.
-- [x] Rebuild the final package after adding `LICENSE` and updating release documentation; the user booted it through QEMU/OVMF to the Ring 3 shell and independently verified both the archive and image checksum manifests (`sha256sum --check` reported `ЦЕЛ` for both).
+- [x] Rebuild the package after adding `LICENSE`; the user booted it through QEMU/OVMF to the Ring 3 shell and independently verified both checksum manifests (`ЦЕЛ`). The bundled `RELEASE_NOTES.md` and `CHANGELOG.md` were then updated with this validation result, so regenerate the bundle once more to include their final wording.
 
 The serial shell currently has basic CR/LF, Backspace/DEL and Ctrl+C handling, but no cursor-key navigation or command history. In the supplied terminal log, `[A[A` was interpreted as ordinary input after up-arrow escape sequences; this is a shell-input limitation, not a process-runtime failure.
 
