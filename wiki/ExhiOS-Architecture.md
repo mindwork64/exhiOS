@@ -280,4 +280,4 @@ Ring 3 init provides a bounded interactive COM1 shell with CR/LF/CRLF, backspace
 
 `exhi-config` parses bounded allocation-free UTF-8 `key=value` input with comments, whitespace/CRLF handling, strict limits and line-numbered errors. Init reads `/etc/exhi.conf` from kernel RAMFS through capability-gated `FileRead`; the kernel validates both user ranges and copies a bounded read into user memory. Init applies `hostname`, `prompt` and `version` and falls back to defaults on invalid or duplicate known settings.
 
-**Validation status:** this update is code-only; no CI/QEMU/build/test jobs were run.
+**Validation status (2026-11-10):** user-side build of `exhi-init` and `exhi-worker` succeeded. Clippy completed for the workspace library/binary targets and for `process-runtime`, `process-shell-smoke-test` and `process-multi-smoke-test`; legacy-module warnings remain. No unit tests, CI or QEMU runtime validation has been performed for dynamic worker creation.
