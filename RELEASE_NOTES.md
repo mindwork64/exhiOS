@@ -37,4 +37,4 @@ This is QEMU/OVMF validation, not physical-hardware qualification. Cargo.lock is
 
 ## Distribution terms
 
-No project license or redistribution terms have been selected yet, and the repository currently has no LICENSE/COPYING file. This alpha is still in release-candidate preparation; define the terms before public distribution.
+ExhiOS is licensed under the Apache License, Version 2.0 (Apache-2.0); see the repository's `LICENSE` file. The release packaging script includes this file in the source bundle. Third-party dependencies remain subject to their respective license terms.
