@@ -1,6 +1,8 @@
 # ExhiOS 0.1.0-alpha.1
 
-**Status: release candidate preparation; not yet published.**
+**Status: Published GitHub pre-release on 2026-11-10 (UTC).**
+
+[Open the GitHub release and download its assets](https://github.com/mindwork64/exhiOS/releases/tag/0.1.0-alpha.1).
 
 ExhiOS is an experimental x86-64 operating system with a native UEFI loader, a Rust kernel, protected user-mode execution, and a minimal COM1 serial shell. This alpha is intended for technical evaluation in QEMU/OVMF.
 

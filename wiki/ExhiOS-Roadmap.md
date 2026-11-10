@@ -300,9 +300,9 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - The exact `TaskSpawn → AccessDenied` assertion is now lint-clean in both worker paths. Runtime confirmation by the serial QEMU drivers remains pending; P7 is still open.
 
 
-## R0 — ExhiOS 0.1.0-alpha.1 release preparation
+## R0 — ExhiOS 0.1.0-alpha.1 release (published)
 
-**State: release candidate 0.1.0-alpha.1 has passed final formatting, Clippy, Release build, QEMU/OVMF boot and checksum verification. Ready for the release-owner's publication decision.**
+**State: published GitHub pre-release.** Final formatting, Clippy, Release build, QEMU/OVMF boot and checksum gates were completed before tagging. The annotated tag `0.1.0-alpha.1` points to [e223030](https://github.com/mindwork64/exhiOS/commit/e223030b22cbb39510817ee494f1537677301e02). [Open the published release](https://github.com/mindwork64/exhiOS/releases/tag/0.1.0-alpha.1).
 
 - [x] Define the target version in the root `VERSION` file.
 - [x] Select Release userland artifacts when `debug_assertions` are disabled; retain Debug include paths for development builds.
@@ -321,6 +321,9 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [x] Choose and add project license/redistribution terms: Apache-2.0; root `LICENSE` contains the canonical Apache License 2.0 text.
 - [x] Rebuilt and repeated the Release QEMU smoke test after the TaskSpawn authorization-order change; the user supplied a successful boot and repeated worker-replacement log on 2026-11-11. Subsequent commits changed documentation only. Any future code change still requires a fresh Release build/QEMU run before tagging.
 - [x] Rebuild the final package from the synced `main` containing Apache-2.0 and the updated `RELEASE_NOTES.md`/`CHANGELOG.md`; the user booted it through QEMU/OVMF to the Ring 3 shell and independently verified both the archive and image checksum manifests (`sha256sum --check` reported `ЦЕЛ` for both). The Bash-layer `[ble: EOF]` text in the terminal transcript is external to the guest and is not an ExhiOS diagnostic.
+
+- [x] Create and push the annotated `0.1.0-alpha.1` tag at commit `e223030b22cbb39510817ee494f1537677301e02`.
+- [x] Publish the GitHub pre-release with the UEFI image, source bundle, archive checksum and image `SHA256SUMS`: [0.1.0-alpha.1](https://github.com/mindwork64/exhiOS/releases/tag/0.1.0-alpha.1).
 
 The serial shell currently has basic CR/LF, Backspace/DEL and Ctrl+C handling, but no cursor-key navigation or command history. In the supplied terminal log, `[A[A` was interpreted as ordinary input after up-arrow escape sequences; this is a shell-input limitation, not a process-runtime failure.
 

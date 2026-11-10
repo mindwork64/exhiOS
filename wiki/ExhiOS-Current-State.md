@@ -1,8 +1,8 @@
 # ExhiOS — текущее состояние
 
-Снимок: **2026-11-10** (после локальной runtime-приёмки process-stack guard для P2.6).
+Снимок: **2026-11-11** (ExhiOS 0.1.0-alpha.1 опубликован как GitHub pre-release).
 Репозиторий: https://github.com/mindwork64/exhiOS
-Рабочая ветка: `main`; P7.1–P7.4 приняты для BSP/single-CPU реализации по self-hosted Actions #513 и пользовательскому runtime evidence.
+Рабочая ветка: `main`; P7.1–P7.4 приняты для BSP/single-CPU реализации по runtime evidence. Опубликованный релиз: [0.1.0-alpha.1](https://github.com/mindwork64/exhiOS/releases/tag/0.1.0-alpha.1); тег указывает на [e223030](https://github.com/mindwork64/exhiOS/commit/e223030b22cbb39510817ee494f1537677301e02).
 
 P0–P7.4 сохранены. P7 включает двухслотовый process manager, capability-gated `SpawnWorker`, независимые address space/kernel stack/FX state, deferred reaper cleanup, `FileRead` из kernel RAMFS и shell-команды `config`/`spawn`. Дополнительный сценарий P2.6 теперь также выполнен локально в QEMU: init, worker и reaper stack mappings/guard pages проверены, worker guard fault дошёл до #DF на IST1, QEMU завершился с кодом 33. Пользователь повторно выполнил `cargo fmt` и Clippy для `process-stack-guard-smoke-test`: команда завершилась успешно, новых предупреждений в тестовом пути нет. Остались только существующие рекомендации Clippy в `exhi-heap`, `exhi-elf`, `exhi-memory` и базовых модулях ядра. Для этой работы GitHub Actions не запускались.
 
@@ -370,7 +370,7 @@ SMP, AP-local GS и user TLS не входят в принятую BSP/single-CP
 - Feature-specific Clippy повторно завершился успешно без новых предупреждений в smoke-пути. Остались только legacy suggestions в exhi-heap, exhi-elf, exhi-memory и базовых kernel modules.
 - Исправление unreachable_code и последующие formatting/string-escape cleanup коммиты: [23f34f8](https://github.com/mindwork64/exhiOS/commit/23f34f878b4fa63a4e9600633f0c477f4e54a66c), [76c06c5](https://github.com/mindwork64/exhiOS/commit/76c06c589224ae315e659ae035584c48a8730594), [0bfd656](https://github.com/mindwork64/exhiOS/commit/0bfd6565a224b6b3a0986209b7bebd286a680e74).
 
-## Release 0.1.0-alpha.1 — локальная проверка Release image (2026-11-11)
+## Release 0.1.0-alpha.1 — финальная проверка и публикация (2026-11-11)
 
 - Пользователь успешно выполнил `scripts/package-release.sh`: Release init/worker/kernel и UEFI bootloader собраны; создан GPT/FAT32 image и архив. `sgdisk --verify` не обнаружил проблем, EFI bootloader/kernel прочитаны обратно из ESP и совпали с исходными файлами побайтно.
 - `scripts/run-release-qemu.sh` проверил SHA-256 образа и запустил его через QEMU/OVMF.
@@ -381,3 +381,5 @@ SMP, AP-local GS и user TLS не входят в принятую BSP/single-CP
 - Финальная Release-сборка после добавления Apache-2.0 и обновления `RELEASE_NOTES.md`/`CHANGELOG.md` выполнена 2026-11-11. Пользователь загрузил этот пакет через QEMU/OVMF: UEFI handoff успешен, Release kernel достиг интерактивной Ring 3 shell. Для финальной сборки `sha256sum --check` подтвердил архив и image manifest (`ЦЕЛ`). `cargo fmt --all -- --check` после форматирования `process.rs` завершился без diff. Clippy для `exhi-init` и kernel `process-runtime` завершился успешно с существующими style suggestions. `Cargo.lock` добавлен коммитом [38f4405](https://github.com/mindwork64/exhiOS/commit/38f44050a66b325acdfdcef7b1b2cdaab1e9a9bf), Apache-2.0 добавлена в [LICENSE](../LICENSE). Строка `[ble: EOF]` в терминальном transcript — сообщение внешней Linux/Bash-надстройки, не вывод и не состояние ExhiOS.
 - Платформенные ограничения неизменны: QEMU/OVMF — эталонная среда; BSP/single-CPU, RAMFS volatile, физическая память управляется ниже 4 GiB; SMP, постоянная ФС и desktop не заявлены.
 
+
+Публикация завершена: [GitHub Release 0.1.0-alpha.1](https://github.com/mindwork64/exhiOS/releases/tag/0.1.0-alpha.1) создан 2026-11-10T22:16:59Z как pre-release. Аннотированный тег `0.1.0-alpha.1` указывает на commit `e223030b22cbb39510817ee494f1537677301e02`. В релиз загружены raw UEFI image (128 MiB), tar.gz source bundle, checksum архива и `SHA256SUMS` образа. Последующие изменения `main` в этом коммите касаются только документации; опубликованный тег и бинарные assets не переписывались.

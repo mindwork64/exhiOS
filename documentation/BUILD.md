@@ -33,11 +33,11 @@ The repository also contains feature-specific smoke-test modes. Their environmen
 
 ## Release image
 
-The release candidate version is stored in VERSION. Build a Release userland, then the kernel with that Release userland embedded, then the native UEFI bootloader, and package the result as a raw GPT disk image:
+The release version is stored in VERSION. Build a Release userland, then the kernel with that Release userland embedded, then the native UEFI bootloader, and package the result as a raw GPT disk image:
 
     ./scripts/package-release.sh
 
-The first invocation generates Cargo.lock if the repository does not yet contain one. The resulting lockfile is copied into the release bundle; it must be committed to the source repository before creating a final release tag so future builds use the same resolved dependency versions. For release 0.1.0-alpha.1, Cargo.lock is already committed on main in [38f4405](https://github.com/mindwork64/exhiOS/commit/38f44050a66b325acdfdcef7b1b2cdaab1e9a9bf).
+The first invocation generates Cargo.lock if the repository does not yet contain one. The lockfile is copied into the release bundle and should be committed before tagging each release so builds use the same resolved dependency versions. For 0.1.0-alpha.1 it is committed on main in [38f4405](https://github.com/mindwork64/exhiOS/commit/38f44050a66b325acdfdcef7b1b2cdaab1e9a9bf) and included in the published source bundle.
 
 Output:
 
@@ -72,9 +72,9 @@ The raw image is intended for UEFI removable media. Writing it to a USB device d
 
 Do not use a partition path such as /dev/sdX1. Re-check the destination before pressing Enter. The current alpha has not been qualified on a broad set of physical machines; QEMU/OVMF is the reference test environment.
 
-## Pre-release verification
+## Release verification checklist
 
-Before publishing a release, run from a clean checkout:
+This is the repeatable checklist for future versioned releases. It was completed for [0.1.0-alpha.1](https://github.com/mindwork64/exhiOS/releases/tag/0.1.0-alpha.1); the corresponding runtime and checksum evidence is recorded in the Wiki Current State page. Before publishing each future release, run from a clean checkout:
 
     cargo fmt --all -- --check
     cargo build -p exhi-init --bins --target x86_64-unknown-none
@@ -93,8 +93,8 @@ Confirm the serial log reaches the interactive Ring 3 shell. Run help, hostname,
       sha256sum --check SHA256SUMS
     )
 
-Do not publish until the Release build and packaged-image boot have been verified. The existing debug/QEMU acceptance evidence does not substitute for this final Release-profile check.
+For every future release, do not publish until the Release build and packaged-image boot have been verified. Debug/QEMU acceptance evidence does not substitute for the final Release-profile check.
 
-## Distribution gate
+## License and redistribution
 
-ExhiOS source code is licensed under Apache-2.0; the canonical license text is in the root `LICENSE` file. `scripts/package-release.sh` automatically copies `LICENSE` into the release bundle. Third-party dependencies remain subject to their own license terms. This does not prevent local build and QEMU evaluation.
+ExhiOS source code is licensed under Apache-2.0; the canonical license text is in the root `LICENSE` file. `scripts/package-release.sh` automatically copies `LICENSE` into the release bundle. Third-party dependencies remain subject to their own license terms. The published [0.1.0-alpha.1 release](https://github.com/mindwork64/exhiOS/releases/tag/0.1.0-alpha.1) includes the license in its source bundle.

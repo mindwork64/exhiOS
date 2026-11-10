@@ -2,9 +2,9 @@
 
 All notable ExhiOS release changes are recorded here.
 
-## 0.1.0-alpha.1 — unreleased
+## [0.1.0-alpha.1] — published 2026-11-10
 
-Initial x86-64 UEFI technical preview.
+Initial x86-64 UEFI technical preview. Published as a GitHub pre-release: [ExhiOS 0.1.0-alpha.1](https://github.com/mindwork64/exhiOS/releases/tag/0.1.0-alpha.1).
 
 - Native UEFI bootloader and fixed-address ELF64 kernel handoff.
 - Kernel GDT/IDT/TSS, exception diagnostics, guarded stacks and double-fault IST1.
@@ -14,7 +14,7 @@ Initial x86-64 UEFI technical preview.
 - COM1 serial shell, basic GOP framebuffer text output, PIT timer and PS/2 keyboard decoding.
 - Release packaging scripts for a raw GPT/FAT32 UEFI image, SHA-256 manifests and QEMU/OVMF launch.
 
-Release candidate validation (2026-11-11): the Release-profile GPT/FAT32 image booted through QEMU/OVMF, reached the Ring 3 serial shell, and passed manual command and worker lifecycle checks. After the first worker exited, four further workers were each spawned successfully after deferred reclamation of the previous Finished record. The run also validates that the TaskSpawn capability check occurs before reclamation.
+Release validation (2026-11-11): the Release-profile GPT/FAT32 image booted through QEMU/OVMF, reached the Ring 3 serial shell, and passed manual command and worker lifecycle checks. After the first worker exited, four further workers were each spawned successfully after deferred reclamation of the previous Finished record. The run also validates that the TaskSpawn capability check occurs before reclamation.
 
 The serial shell does not yet support cursor-key navigation or command history.
 

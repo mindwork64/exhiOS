@@ -38,7 +38,7 @@
 - Bootstrap tables живут в выровненном kernel .bss, поскольку произвольные Conventional Memory frames нельзя безопасно разыменовывать до первого kernel-owned mapping.
 - CR3 switch выполняется при IF=0; перед и после него проверяются code, stack, BootInfo, memory map, framebuffer, ACPI, GDT, IDT и таблицы.
 - Bootstrap identity mapping использует 2 MiB RW supervisor pages и является временной, не конечной защитой.
-- W^X, user/supervisor isolation, cache attributes и process address spaces — будущие этапы.
+- W^X, user/supervisor isolation и private process address spaces реализованы. Per-device memory cache attributes остаются отдельной будущей задачей.
 - Физический allocator может снабжать динамические таблицы после включения kernel identity map.
 
 ## Правила разработки
@@ -93,6 +93,6 @@
 - Address-space teardown must switch to the kernel root first, unmap owned user pages, return data frames, then release private page-table structures. A running/current task must never be reaped.
 - After selecting a user task and activating its CR3, the architecture layer must update TSS.RSP0 and the trusted active kernel-stack bounds used by CPL3 exception-frame validation as one serialized IF=0 operation. The P5.6 context selector now uses `user::activate_kernel_stack`; verified in CI #453.
 - Production `process-runtime` now uses `exhi-task::Scheduler` for the init user-task lifecycle and a dedicated blocked kernel-reaper task. `Exit` and validated CPL3 faults finish init and switch to the reaper before reclamation; the IDT fault path must execute `SWAPGS` before accessing the trusted GS-relative syscall context. Verified by production QEMU tests in CI #484.
-- The production process manager still registers only one user process. `Yield` delegates to the scheduler but returns `Continue` while no other user process is Ready. Process creation, a multi-process registry/service adapter and production two-user-task dispatch remain open. The P5.6 two-user-task adapter remains a separate architecture smoke test; do not describe it as a production multi-process workload.
+- Production `process-runtime` uses a fixed two-slot registry: Ring 3 init and one worker. Init alone has the `TaskSpawn` capability; the worker's attempt to spawn another task is denied with `AccessDenied`. `Yield` switches between init and the active worker. The worker's Finished resources are reclaimed by the reaper only after switch-away; the next authorized spawn reclaims the prior Finished record and reuses its slot. Sequential worker replacement was verified four times in the final Release QEMU run. This is bounded two-process support, not an arbitrary process service or SMP scheduler.
 - AP-local GS state, user TLS, NMI/exception handling across the SWAPGS window, SMP scheduling and TLB shootdown are outside the accepted BSP-only scope.
 - VFS/RAMFS is currently in-memory and kernel-integrated. Userland filesystem syscalls and persistent storage are future work.

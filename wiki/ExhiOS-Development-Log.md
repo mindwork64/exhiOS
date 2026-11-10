@@ -599,3 +599,13 @@ Implementation:
 - Remaining diagnostics are existing suggestions: one `manual_is_multiple_of` in `exhi-heap`, one `collapsible_if` in `exhi-elf`, five warnings in `exhi-memory`, and 20 baseline architecture warnings in `exhi-kernel`.
 - Together with the supplied local QEMU run (all three 64 KiB process/reaper stacks and guard pages verified; #PF → #DF on IST1; debug-exit 33), this completes P2.6 runtime and feature-specific Clippy acceptance.
 - No GitHub Actions or additional QEMU run was started for this final lint confirmation.
+
+
+## 2026-11-11 — ExhiOS 0.1.0-alpha.1 опубликован
+
+- Пользователь создал и отправил аннотированный тег `0.1.0-alpha.1`, указывающий на release commit [e223030](https://github.com/mindwork64/exhiOS/commit/e223030b22cbb39510817ee494f1537677301e02).
+- GitHub Release [ExhiOS 0.1.0-alpha.1](https://github.com/mindwork64/exhiOS/releases/tag/0.1.0-alpha.1) опубликован как pre-release 2026-11-10T22:16:59Z.
+- В релиз загружены raw UEFI image (128 MiB), tar.gz bundle, SHA-256 sidecar архива и `SHA256SUMS` для файлов образа. GitHub подтвердил состояние `uploaded` для всех четырёх assets.
+- Опубликованный release body содержит перечень возможностей, ограничений, QEMU/OVMF validation evidence и условия Apache-2.0. Физическое оборудование не квалифицировано; alpha остаётся экспериментальной.
+- Тег и опубликованные assets оставлены неизменными. Последующий коммит в `main` синхронизирует только документацию со статусом публикации и не изменяет release commit.
+

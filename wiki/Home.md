@@ -3,6 +3,10 @@
 
 Эта Wiki — переносимый слепок контекста разработки. Исходники страниц находятся в каталоге `wiki/` основного репозитория и автоматически публикуются сюда через GitHub Actions.
 
+### Текущий релиз
+
+[ExhiOS 0.1.0-alpha.1 — опубликованный UEFI pre-release](https://github.com/mindwork64/exhiOS/releases/tag/0.1.0-alpha.1).
+
 ### Навигация
 - [[ExhiOS Current State]] — подтверждённое состояние, текущая задача и runtime evidence.
 - [[ExhiOS Architecture]] — загрузчик, kernel, ABI и подсистемы.

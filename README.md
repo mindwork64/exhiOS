@@ -1,10 +1,10 @@
 # ExhiOS
 
-**Current release target: 0.1.0-alpha.1 (Release image booted and exercised in QEMU/OVMF; not yet published).**
+**Current release: [0.1.0-alpha.1](https://github.com/mindwork64/exhiOS/releases/tag/0.1.0-alpha.1) (published pre-release; Release image booted and exercised in QEMU/OVMF).**
 
 ExhiOS is an experimental independent x86-64 operating system written in Rust. It has a native UEFI bootloader, a protected-mode kernel with virtual memory and guarded stacks, isolated Ring 3 processes, a syscall interface, and a small serial shell.
 
-This is an early technical preview, not a general-purpose desktop operating system. The initial release target is UEFI boot on x86-64, with QEMU/OVMF as the reference environment.
+This is an early technical preview, not a general-purpose desktop operating system. The published alpha targets UEFI boot on x86-64, with QEMU/OVMF as the reference environment.
 
 ## Current capabilities
 
@@ -16,6 +16,12 @@ This is an early technical preview, not a general-purpose desktop operating syst
 - Init process and one dynamically spawned worker, with process cleanup and fault recovery.
 - Interactive COM1 shell: help, hostname, version, echo, clear, config, spawn, and exit.
 - Bounded in-memory RAMFS configuration; settings are not persistent across reboot.
+
+## Download
+
+- [UEFI disk image (.img)](https://github.com/mindwork64/exhiOS/releases/download/0.1.0-alpha.1/exhios-0.1.0-alpha.1-x86_64-uefi.img)
+- [Release bundle (.tar.gz)](https://github.com/mindwork64/exhiOS/releases/download/0.1.0-alpha.1/exhios-0.1.0-alpha.1-x86_64-uefi.tar.gz)
+- [Archive checksum](https://github.com/mindwork64/exhiOS/releases/download/0.1.0-alpha.1/exhios-0.1.0-alpha.1-x86_64-uefi.tar.gz.sha256) · [Image checksums](https://github.com/mindwork64/exhiOS/releases/download/0.1.0-alpha.1/SHA256SUMS)
 
 ## Build and run
 
