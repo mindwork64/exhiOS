@@ -17,7 +17,7 @@ Commands:
 | spawn | Start the built-in worker process. Only one worker slot is available. |
 | exit | Terminate init. |
 
-The line editor accepts CR, LF and CRLF, Backspace and DEL. Ctrl+C clears the current line. Ctrl+D on an empty line exits. Input is bounded to 127 printable bytes; excess input is rejected with a bell.
+The line editor accepts CR, LF and CRLF, Backspace and DEL. Ctrl+C clears the current line. Ctrl+D on an empty line exits. Input is bounded to 127 printable bytes; excess input is rejected with a bell. Cursor-key navigation and command history are not implemented; terminal arrow-key escape sequences are not recognized and may contribute printable characters such as `[A` to the current command.
 
 ## Configuration
 
