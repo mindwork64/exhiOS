@@ -1664,6 +1664,8 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
         idt::trigger_process_stack_guard_smoke_test(worker_bottom, worker_guard);
     }
 
+    #[cfg(not(feature = "process-stack-guard-smoke-test"))]
+    {
     let first_frame_address = unsafe {
         (*scheduler)
             .get(first_task_id)
@@ -1686,7 +1688,8 @@ fn run_processes(first_image: &[u8], second_image: Option<&[u8]>) -> ! {
             init_runtime_failure(b"P7.1: first user process IRETQ entry unexpectedly returned.\r\n")
         }
         Err(_) => init_runtime_failure(b"P7.1: first user process IRETQ handoff failed.\r\n"),
-    }
+    }    }
+
 }
 
 /// The kernel reaper always runs after the user task has switched away from
