@@ -528,6 +528,8 @@ Implementation:
 
 
 ## 2026-11-10 — P7 worker fault recovery coverage added (runtime pending)
+- Extended the normal shell QEMU driver to issue a second `spawn` after the first worker exits; it requires a clean "could not be started" result while the Finished worker still occupies its slot, then verifies normal init exit/reaper cleanup.
+
 
 - Added the `process-worker-fault-smoke-test` kernel feature and `worker-fault-smoke-test` userland build feature. In this mode the embedded worker emits its startup marker and executes `UD2` from CPL3.
 - The user-fault handoff records the fault vector only when the current scheduler task is named `worker`; the shared scheduler fault path must select the still-Ready init task instead of waking the reaper prematurely.
