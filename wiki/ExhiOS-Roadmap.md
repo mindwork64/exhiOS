@@ -308,7 +308,7 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [x] Select the Release userland artifacts when `debug_assertions` are disabled; keep the existing Debug include paths for development builds.
 - [x] Add `scripts/package-release.sh`: build exhi-init/exhi-worker first, build the kernel with `process-runtime`, build the UEFI application, verify ET_EXEC user/kernel images, create a GPT/FAT32 EFI System Partition, place `EFI/BOOT/BOOTX64.EFI` and `exhi-kernel.elf`, read the files back for byte-for-byte comparison, and generate SHA-256 checksums/archive.
 - [x] Add `scripts/run-release-qemu.sh` to boot the packaged disk image with OVMF and a fresh copy of NVRAM variables.
-- [x] Update README, BUILD and USERLAND documentation, Release Notes, shell version banner/config and shell smoke-test expected strings.
+- [x] Update README, BUILD and USERLAND documentation, Release Notes and CHANGELOG, shell version banner/config and shell smoke-test expected strings.
 - [ ] Run `cargo fmt`, userland/kernel Clippy, and `scripts/package-release.sh` locally; retain the generated Cargo.lock in source control before creating a release tag.
 - [ ] Boot the actual Release image using `scripts/run-release-qemu.sh`; verify kernel handoff and interact with the Ring 3 shell (`help`, `version`, `config`, `spawn`).
 - [ ] Verify packaged checksums, then create the release tag and publish the image/archive only after the preceding gates pass.
