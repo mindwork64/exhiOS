@@ -1,6 +1,6 @@
 # ExhiOS
 
-**Current release target: 0.1.0-alpha.1 (release candidate preparation).**
+**Current release target: 0.1.0-alpha.1 (Release image booted and exercised in QEMU/OVMF; not yet published).**
 
 ExhiOS is an experimental independent x86-64 operating system written in Rust. It has a native UEFI bootloader, a protected-mode kernel with virtual memory and guarded stacks, isolated Ring 3 processes, a syscall interface, and a small serial shell.
 
