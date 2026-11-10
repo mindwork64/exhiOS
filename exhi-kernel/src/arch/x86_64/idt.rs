@@ -344,7 +344,6 @@ pub fn trigger_double_fault_guard_stack_smoke_test(stack_bottom: u64, guard_page
     }
 }
 
-
 #[cfg(feature = "process-stack-guard-smoke-test")]
 unsafe extern "sysv64" {
     fn exhi_trigger_guard_stack_overflow(stack_bottom: u64, fault_address: u64) -> !;
