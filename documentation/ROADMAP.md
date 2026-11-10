@@ -190,3 +190,18 @@ P5.1–P5.7 are implemented and accepted by the full self-hosted build and headl
 - User synced the worker `TaskSpawn` denial coverage, ran `cargo fmt`, and successfully completed Clippy for both `cargo clippy -p exhi-init --bins --target x86_64-unknown-none` and the same command with `--features worker-fault-smoke-test`.
 - Both configurations completed without warnings. This validates compilation/lint of the normal and fault-mode worker capability probe; the serial QEMU assertions remain unexecuted.
 - No tests, QEMU or CI were run. P7 runtime acceptance remains pending.
+
+
+## 2026-11-10 — ExhiOS 0.1.0-alpha.1 release candidate preparation
+
+The P0–P7.4 implementation milestones are accepted for the documented BSP/single-CPU scope. P2.6 process/reaper stack guard runtime and its feature-specific Clippy check are also accepted from the user's local Linux Mint/QEMU evidence.
+
+Release preparation adds a separate Release-profile packaging path:
+- Build the init and worker ET_EXEC images first, then embed those Release artifacts into the Release kernel.
+- Build the native UEFI application in Release mode.
+- Package a raw GPT image with one FAT32 EFI System Partition, fallback path EFI/BOOT/BOOTX64.EFI and /exhi-kernel.elf.
+- Verify the user/kernel ELF types and read copied EFI/kernel files back from the image for byte-for-byte comparison.
+- Produce an image SHA-256 manifest and a compressed release bundle.
+- Boot the packaged image through a dedicated QEMU/OVMF runner, without the debug-exit device.
+
+The scripts and documentation are committed, but the Release build and actual packaged-image boot are not yet validated. Do not tag or publish 0.1.0-alpha.1 until the local Release build, QEMU/OVMF boot, COM1 shell interaction and checksum checks have completed. The first release remains a QEMU-first technical preview; real-hardware compatibility is not claimed.
