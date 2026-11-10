@@ -179,3 +179,9 @@ P5.1–P5.7 are implemented and accepted by the full self-hosted build and headl
 - User ran `cargo fmt` and `cargo clippy -p exhi-kernel --bin exhi-kernel --features process-worker-fault-smoke-test --target x86_64-unknown-none`; Clippy completed successfully. The 20 emitted warnings are existing suggestions in legacy modules; no new warnings were reported in process-runtime/fault-recovery code.
 - Fix: [9b63adf](https://github.com/mindwork64/exhiOS/commit/9b63adf625512e2429110a1c89f0ed5d06060dcc).
 - This is compile/lint evidence only. Neither QEMU runtime scenario nor CI was run; P7 remains open pending runtime evidence.
+
+### 2026-11-10 — Worker TaskSpawn capability-denial coverage added
+
+- The embedded worker now calls `spawn_worker()` before its normal yield/exit sequence and before the dedicated `UD2` fault sequence. It requires the exact `SyscallError::AccessDenied` result and emits a success marker only for that result.
+- Both serial QEMU interaction drivers now wait for the marker. This distinguishes capability-gate enforcement from an `Io` error caused by an occupied process slot.
+- Code-only update; user-side Clippy for normal and `worker-fault-smoke-test` userland configurations is pending. No build, tests, QEMU or CI were run. Runtime acceptance remains pending.
