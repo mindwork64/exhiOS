@@ -1155,19 +1155,20 @@ fn spawn_worker_process(scheduler: *mut Scheduler<3>) -> Result<u64, SyscallErro
 
     let current_id =
         unsafe { (*scheduler).current().map(|task| task.id()) }.ok_or(SyscallError::Io)?;
-    if let Err(error) = reap_finished_processes_before_spawn(scheduler) {
-        // The helper restores kernel mappings before touching a finished peer.
-        // Restore the caller's process context even when reclamation fails.
-        let _ = select_process_context(current_id);
-        return Err(error);
-    }
-
+    // Enforce the capability boundary before any reclamation side effects.
     if unsafe { (*scheduler).current_capabilities() }
         .authorize(Capability::TaskSpawn)
         .is_err()
         || process_record_for_task(current_id).is_none()
     {
         return Err(SyscallError::AccessDenied);
+    }
+
+    if let Err(error) = reap_finished_processes_before_spawn(scheduler) {
+        // The helper restores kernel mappings before touching a finished peer.
+        // Restore the caller's process context even when reclamation fails.
+        let _ = select_process_context(current_id);
+        return Err(error);
     }
 
     let registry = ptr::addr_of!(PROCESS_REGISTRY);
