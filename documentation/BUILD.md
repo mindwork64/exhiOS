@@ -88,3 +88,7 @@ Confirm the serial log reaches the interactive Ring 3 shell, run help, version, 
     sha256sum --check exhios-0.1.0-alpha.1-x86_64-uefi.tar.gz.sha256
 
 Do not publish until the Release build and packaged-image boot have been verified. The existing debug/QEMU acceptance evidence does not substitute for this final Release-profile check.
+
+## Distribution gate
+
+The repository currently has no LICENSE/COPYING file and no explicit redistribution terms. Choose and add the intended project license or distribution terms before publishing the source or binary release. This does not prevent local build and QEMU evaluation.
