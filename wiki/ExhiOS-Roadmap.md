@@ -311,6 +311,7 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [x] Update README, BUILD and USERLAND documentation, Release Notes and CHANGELOG, shell version banner/config and shell smoke-test expected strings.
 - [ ] Run `cargo fmt`, userland/kernel Clippy, and `scripts/package-release.sh` locally; retain the generated Cargo.lock in source control before creating a release tag.
 - [ ] Boot the actual Release image using `scripts/run-release-qemu.sh`; verify kernel handoff and interact with the Ring 3 shell (`help`, `version`, `config`, `spawn`).
+- [ ] Choose and add a project license/redistribution terms; the repository currently has no LICENSE/COPYING file.
 - [ ] Verify packaged checksums, then create the release tag and publish the image/archive only after the preceding gates pass.
 
 The preparation work does not claim that a Release build or packaged image has already booted. Existing Debug/feature QEMU evidence is not a substitute for Release-profile runtime validation.
