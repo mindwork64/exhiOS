@@ -27,9 +27,11 @@ ExhiOS is an experimental x86-64 operating system with a native UEFI loader, a R
 
 ## Release validation status
 
-The development milestones P0–P7.4 have prior build and runtime acceptance evidence recorded in the repository wiki. P2.6 process/reaper stack guards also passed a local Linux Mint/QEMU run, and the feature-specific Clippy check passed.
+The Release-profile package was built locally on Linux Mint and booted successfully through QEMU/OVMF. The GPT/FAT32 image passed partition-table verification; the UEFI loader and kernel were read back from the EFI System Partition and matched their source artifacts byte-for-byte. The Release kernel reached the Ring 3 serial shell.
 
-The Release-profile artifacts and packaged GPT image are produced by scripts/package-release.sh. This preparation step does not itself prove that the Release image boots. Before publishing this alpha, run scripts/run-release-qemu.sh and verify the serial shell as described in documentation/BUILD.md.
+The shell's help, hostname, version, config and echo commands were exercised. Worker creation, the worker's expected TaskSpawn denial, yield/exit, and a second worker spawn after deferred cleanup were also confirmed. The second worker reused the freed process slot and exited normally.
+
+This is QEMU/OVMF validation, not physical-hardware qualification. Before publication, repeat the build/runtime check on the final source commit, complete the current kernel Clippy check, commit Cargo.lock, independently verify the archive checksum, and choose/add project redistribution terms.
 
 ## Distribution terms
 
