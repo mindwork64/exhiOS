@@ -33,7 +33,7 @@ The shell's help, hostname, version, config and echo commands were exercised. Wo
 
 The current serial line editor handles CR/LF, Backspace/DEL and Ctrl+C; arrow-key navigation and command history are not implemented. Terminal up-arrow escape sequences may therefore appear as literal `[A` input.
 
-This is QEMU/OVMF validation, not physical-hardware qualification. Before publication, complete the current kernel Clippy check, commit Cargo.lock, independently verify the archive checksum, and choose/add project redistribution terms. Rebuild after any final source changes.
+This is QEMU/OVMF validation, not physical-hardware qualification. Cargo.lock is committed in the source repository. Before publication, complete final formatting and Clippy checks for userland and the kernel `process-runtime` path, independently verify both the archive and disk-image checksums, and choose/add project redistribution terms. Rebuild and repeat the Release QEMU check after any final source changes.
 
 ## Distribution terms
 
