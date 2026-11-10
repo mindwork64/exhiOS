@@ -48,7 +48,9 @@ const USER_STACK_GUARD: u64 = USER_STACK_BASE - PAGE_SIZE;
 const MAX_IMAGE_PAGES: usize = 256;
 const MAX_OWNED_PAGES: usize = MAX_IMAGE_PAGES + USER_STACK_PAGES;
 #[cfg(feature = "process-runtime")]
-const INIT_KERNEL_STACK_PAGES: usize = 5;
+// One guard page plus sixteen usable pages. Worker creation loads and rolls back a
+// bounded LoadedProcess while running on the parent's kernel stack.
+const INIT_KERNEL_STACK_PAGES: usize = 17;
 #[cfg(feature = "process-runtime")]
 const INIT_KERNEL_STACK_BYTES: usize = INIT_KERNEL_STACK_PAGES * PAGE_SIZE as usize;
 #[cfg(feature = "process-run-smoke-test")]
