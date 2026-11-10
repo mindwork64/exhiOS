@@ -279,3 +279,9 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - The CPL3 worker-fault handoff now restores the user GS layout with `SWAPGS` before returning to a still-Ready Ring 3 init process. If the user-entry transfer unexpectedly returns or rejects its frame, the path restores trusted kernel GS before reporting the fatal handoff failure. The reaper path does not switch back to user GS.
 - User ran `cargo fmt` and the kernel `process-worker-fault-smoke-test` Clippy configuration successfully on [9b63adf](https://github.com/mindwork64/exhiOS/commit/9b63adf625512e2429110a1c89f0ed5d06060dcc). The only reported kernel warnings are 20 existing suggestions in legacy modules.
 - This verifies compilation/linting, not runtime behavior. Worker-fault and normal spawn/reaper QEMU scenarios remain unexecuted; P7 stays open.
+
+### P7.1 — Worker capability-denial regression coverage (2026-11-10)
+
+- The worker now attempts `SpawnWorker` and requires the exact `AccessDenied` response before continuing. This is checked in both the normal yield/exit path and the fault-injection path before `UD2`.
+- Both QEMU serial drivers now require the explicit `TaskSpawn denied as expected` marker. This proves the capability gate rejects the syscall before the process-slot allocator can return a generic resource error.
+- Code is committed; userland Clippy and runtime scenarios remain pending. This does not change P7 acceptance state.
