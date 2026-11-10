@@ -77,9 +77,11 @@ Do not use a partition path such as /dev/sdX1. Re-check the destination before p
 Before publishing a release, run from a clean checkout:
 
     cargo fmt --all -- --check
+    cargo build -p exhi-init --bins --target x86_64-unknown-none
     cargo clippy -p exhi-init --bins --target x86_64-unknown-none
     cargo clippy -p exhi-kernel --bin exhi-kernel --features process-runtime --target x86_64-unknown-none
     ./scripts/package-release.sh
+    git status --short
     ./scripts/run-release-qemu.sh
 
 Confirm the serial log reaches the interactive Ring 3 shell, run help, version, config and spawn, confirm the worker exits cleanly, and stop QEMU with Ctrl+C. Also verify the archive checksum:
