@@ -537,3 +537,12 @@ Implementation:
 - The user-fault handoff records the fault vector only when the current scheduler task is named `worker`; the shared scheduler fault path must select the still-Ready init task instead of waking the reaper prematurely.
 - Added a reaper acceptance condition requiring vector 6, both process records reclaimed, and an empty registry. A serial driver waits for the fault, issues `hostname` to prove init resumed, then sends `exit` and waits for final cleanup.
 - Added `EXHIOS_PROCESS_WORKER_FAULT_TEST=1` support to the build and QEMU runner scripts. Code-only addition; Clippy is pending and no QEMU or CI job was run.
+
+## 2026-11-10 — Worker fault recovery: GS transition fix and lint pass
+
+- Static review found a context-sensitive GS-base bug in the worker-fault handoff. The user exception path enters trusted kernel GS with `SWAPGS`; when the scheduler selects a still-Ready init process, the return path must restore the user GS layout before `IRETQ`, otherwise the resumed process's next `SYSCALL` would swap the wrong bases.
+- Updated the alternate-process handoff to execute `SWAPGS` before `user::enter_user`. If that transfer unexpectedly returns or rejects the entry frame, the code swaps back to trusted kernel GS before the fatal error path. The reaper handoff remains in kernel GS.
+- User synced [9b63adf](https://github.com/mindwork64/exhiOS/commit/9b63adf625512e2429110a1c89f0ed5d06060dcc), ran `cargo fmt`, and successfully ran:
+  `cargo clippy -p exhi-kernel --bin exhi-kernel --features process-worker-fault-smoke-test --target x86_64-unknown-none`.
+- Clippy emitted 20 existing warnings in legacy modules (`manual_is_multiple_of`, `new_without_default`, and `collapsible_if` suggestions); there were no new warnings in the process-runtime or worker-fault code.
+- No Cargo tests/build, QEMU runtime, or GitHub Actions/CI were run for this checkpoint. The earlier userland build and Clippy checks remain as previously recorded. P7 acceptance still requires runtime evidence for normal spawn/rejection/reaping and worker-fault recovery.
