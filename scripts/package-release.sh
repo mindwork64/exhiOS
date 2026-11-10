@@ -95,7 +95,7 @@ echo
 echo "Verifying partition table and files on the EFI System Partition..."
 sgdisk --verify "$IMAGE"
 mdir -i "$ESP_MTOOLS_IMAGE" ::/EFI/BOOT
-mdir -i "$ESP_MTOOLS_IMAGE" ::/exhi-kernel.elf
+mdir -i "$ESP_MTOOLS_IMAGE" ::/
 
 mkdir -p "$ROOT_DIR/target"
 VERIFY_DIR="$(mktemp -d "$ROOT_DIR/target/exhios-release-verify.XXXXXX")"
