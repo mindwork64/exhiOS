@@ -185,3 +185,9 @@ P5.1–P5.7 are implemented and accepted by the full self-hosted build and headl
 - The embedded worker now calls `spawn_worker()` before its normal yield/exit sequence and before the dedicated `UD2` fault sequence. It requires the exact `SyscallError::AccessDenied` result and emits a success marker only for that result.
 - Both serial QEMU interaction drivers now wait for the marker. This distinguishes capability-gate enforcement from an `Io` error caused by an occupied process slot.
 - Code-only update; user-side Clippy for normal and `worker-fault-smoke-test` userland configurations is pending. No build, tests, QEMU or CI were run. Runtime acceptance remains pending.
+
+### 2026-11-10 — Worker capability-denial lint checkpoint
+
+- User synced the worker `TaskSpawn` denial coverage, ran `cargo fmt`, and successfully completed Clippy for both `cargo clippy -p exhi-init --bins --target x86_64-unknown-none` and the same command with `--features worker-fault-smoke-test`.
+- Both configurations completed without warnings. This validates compilation/lint of the normal and fault-mode worker capability probe; the serial QEMU assertions remain unexecuted.
+- No tests, QEMU or CI were run. P7 runtime acceptance remains pending.
