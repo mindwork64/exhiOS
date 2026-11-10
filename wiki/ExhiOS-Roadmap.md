@@ -312,12 +312,15 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [x] User ran `scripts/package-release.sh` successfully on Linux Mint; GPT verification, FAT directory listing and byte-for-byte ESP readback checks passed. The image, archive and checksum files were created.
 - [x] User booted the actual Release image through QEMU/OVMF. UEFI handoff, Release kernel, memory/VMM/heap/address-space startup, framebuffer/COM1 and Ring 3 init all reached the interactive shell.
 - [x] User manually verified `help`, `hostname`, `version`, `config`, `echo`, worker startup, exact worker `TaskSpawn → AccessDenied`, yield sequence and clean worker exit.
-- [x] User reproduced worker slot recycling: after one worker exited, the next `spawn` emitted `reclaimed finished process before worker spawn`, started another worker and completed its yield/exit sequence. Runtime evidence was supplied on 2026-11-11 against the worker-reclamation change.
+- [x] User reproduced worker slot recycling repeatedly on 2026-11-11: after the first worker exited, four subsequent `spawn` operations each reclaimed the Finished worker record, started a replacement and observed its TaskSpawn denial, yield sequence and clean exit. The init shell remained responsive throughout.
+- [x] The same run was performed after the TaskSpawn authorization check was moved ahead of reclamation. This validates the final ordering in the Release runtime, not just the earlier implementation.
 - [x] `scripts/run-release-qemu.sh` accepted the image checksum before launch. The archive checksum has not yet been independently checked with `sha256sum --check`.
 - [ ] Run Clippy for the current kernel `process-runtime` path after the worker-reclamation change; userland Clippy had passed earlier. Run `cargo fmt` on the final synced tree.
 - [ ] Add the locally generated `Cargo.lock` to source control; it is not currently present on `main`.
 - [ ] Independently verify the release archive checksum.
 - [ ] Choose and add a project license/redistribution terms; no LICENSE/COPYING file exists.
-- [ ] Rebuild and repeat the Release QEMU smoke test on the final synced commit after the authorization-order hardening; only then consider a release tag. Do not publish until the license and remaining gates are resolved.
+- [ ] Rebuild and repeat the Release QEMU smoke test after any remaining source changes; only then consider a release tag. Do not publish until the license and remaining gates are resolved.
+
+The serial shell currently has basic CR/LF, Backspace/DEL and Ctrl+C handling, but no cursor-key navigation or command history. In the supplied terminal log, `[A[A` was interpreted as ordinary input after up-arrow escape sequences; this is a shell-input limitation, not a process-runtime failure.
 
 The current Release runtime evidence is QEMU/OVMF-only. It does not qualify physical hardware, SMP, persistent storage or broad device support.
