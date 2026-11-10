@@ -522,5 +522,6 @@ Implementation:
 - User ran `cargo fmt` after syncing the P7 dynamic-worker implementation.
 - User built the two embedded userland images successfully with `cargo build -p exhi-init --bin exhi-init --bin exhi-worker --target x86_64-unknown-none`.
 - Clippy completed successfully for `cargo clippy --workspace --lib --bins --target x86_64-unknown-none`, the production `process-runtime` feature, `process-shell-smoke-test`, and `process-multi-smoke-test`.
-- The feature-specific multi-process Clippy pass reported one `dead_code` warning for `run_init`, because that feature enters through `run_process_pair`. The entry point is now cfg-gated out of the process-pair build; a confirming rerun is pending.
-- Existing Clippy warnings remain in older allocator, ELF and architecture modules. No unit tests, GitHub Actions or QEMU runs were performed. P7 runtime acceptance remains pending.
+- The feature-specific multi-process Clippy pass initially reported one `dead_code` warning for `run_init`, because that feature enters through `run_process_pair`. The entry point was cfg-gated out of the process-pair build; the user reran Clippy and confirmed that warning disappeared.
+- Clippy then completed successfully for `process-fault-smoke-test`, `process-run-smoke-test` and `process-load-smoke-test` as well. The six P7 kernel feature configurations and the common workspace library/binary targets now all pass Clippy. Remaining warnings are pre-existing suggestions in allocator, ELF and baseline architecture modules, not the new P7 process-runtime path.
+- No unit tests, GitHub Actions or QEMU runs were performed. P7 runtime acceptance remains pending.
