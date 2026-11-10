@@ -302,16 +302,22 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 
 ## R0 — ExhiOS 0.1.0-alpha.1 release preparation
 
-**State: packaging code committed; Release-profile build and packaged-image runtime validation are pending.**
+**State: the Release image has been built and booted successfully in QEMU/OVMF; final source/redistribution gates remain open.**
 
 - [x] Define the target version in the root `VERSION` file.
-- [x] Select the Release userland artifacts when `debug_assertions` are disabled; keep the existing Debug include paths for development builds.
-- [x] Add `scripts/package-release.sh`: build exhi-init/exhi-worker first, build the kernel with `process-runtime`, build the UEFI application, verify ET_EXEC user/kernel images, create a GPT/FAT32 EFI System Partition, place `EFI/BOOT/BOOTX64.EFI` and `exhi-kernel.elf`, read the files back for byte-for-byte comparison, and generate SHA-256 checksums/archive.
-- [x] Add `scripts/run-release-qemu.sh` to boot the packaged disk image with OVMF and a fresh copy of NVRAM variables.
-- [x] Update README, BUILD and USERLAND documentation, Release Notes and CHANGELOG, shell version banner/config and shell smoke-test expected strings.
-- [ ] Run `cargo fmt`, userland/kernel Clippy, and `scripts/package-release.sh` locally; retain the generated Cargo.lock in source control before creating a release tag.
-- [ ] Boot the actual Release image using `scripts/run-release-qemu.sh`; verify kernel handoff and interact with the Ring 3 shell (`help`, `version`, `config`, `spawn`).
-- [ ] Choose and add a project license/redistribution terms; the repository currently has no LICENSE/COPYING file.
-- [ ] Verify packaged checksums, then create the release tag and publish the image/archive only after the preceding gates pass.
+- [x] Select Release userland artifacts when `debug_assertions` are disabled; retain Debug include paths for development builds.
+- [x] Add `scripts/package-release.sh`: build init/worker first, embed those Release ELFs into the Release kernel, build the UEFI application, verify ELF types, create the GPT/FAT32 EFI System Partition, write the fallback bootloader and kernel, read them back for byte-for-byte comparison, and generate SHA-256 checksums/archive.
+- [x] Add `scripts/run-release-qemu.sh` for the packaged image with OVMF and fresh NVRAM variables.
+- [x] Update README, BUILD, USERLAND, Release Notes, CHANGELOG, version strings and smoke-test expectations.
+- [x] User ran `scripts/package-release.sh` successfully on Linux Mint; GPT verification, FAT directory listing and byte-for-byte ESP readback checks passed. The image, archive and checksum files were created.
+- [x] User booted the actual Release image through QEMU/OVMF. UEFI handoff, Release kernel, memory/VMM/heap/address-space startup, framebuffer/COM1 and Ring 3 init all reached the interactive shell.
+- [x] User manually verified `help`, `hostname`, `version`, `config`, `echo`, worker startup, exact worker `TaskSpawn → AccessDenied`, yield sequence and clean worker exit.
+- [x] User reproduced worker slot recycling: after one worker exited, the next `spawn` emitted `reclaimed finished process before worker spawn`, started another worker and completed its yield/exit sequence. Runtime evidence was supplied on 2026-11-11 against the worker-reclamation change.
+- [x] `scripts/run-release-qemu.sh` accepted the image checksum before launch. The archive checksum has not yet been independently checked with `sha256sum --check`.
+- [ ] Run Clippy for the current kernel `process-runtime` path after the worker-reclamation change; userland Clippy had passed earlier. Run `cargo fmt` on the final synced tree.
+- [ ] Add the locally generated `Cargo.lock` to source control; it is not currently present on `main`.
+- [ ] Independently verify the release archive checksum.
+- [ ] Choose and add a project license/redistribution terms; no LICENSE/COPYING file exists.
+- [ ] Rebuild and repeat the Release QEMU smoke test on the final synced commit after the authorization-order hardening; only then consider a release tag. Do not publish until the license and remaining gates are resolved.
 
-The preparation work does not claim that a Release build or packaged image has already booted. Existing Debug/feature QEMU evidence is not a substitute for Release-profile runtime validation.
+The current Release runtime evidence is QEMU/OVMF-only. It does not qualify physical hardware, SMP, persistent storage or broad device support.
