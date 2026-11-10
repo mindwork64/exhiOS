@@ -84,7 +84,7 @@ Before publishing a release, run from a clean checkout:
     git status --short
     ./scripts/run-release-qemu.sh
 
-Confirm the serial log reaches the interactive Ring 3 shell, run help, version, config and spawn, confirm the worker exits cleanly, and stop QEMU with Ctrl+C. Also verify the archive checksum:
+Confirm the serial log reaches the interactive Ring 3 shell. Run help, hostname, version, config and echo; then run spawn, wait for the worker's TaskSpawn denial marker and clean exit, and run spawn again to confirm the finished worker is reclaimed and its slot reused. Stop QEMU with Ctrl+C. Also verify the archive checksum:
 
     cd dist
     sha256sum --check exhios-0.1.0-alpha.1-x86_64-uefi.tar.gz.sha256
