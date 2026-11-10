@@ -68,7 +68,7 @@ OVMF_VARS_PATH="$(find_file \
     }
 
 mkdir -p "$ROOT_DIR/target"
-VARS_COPY="$(mktemp "$ROOT_DIR/target/exhios-release-vars.XXXXXX.fd")"
+VARS_COPY="$(mktemp "$ROOT_DIR/target/exhios-release-vars.XXXXXX")"
 cp "$OVMF_VARS_PATH" "$VARS_COPY"
 cleanup() {
     rm -f "$VARS_COPY"
