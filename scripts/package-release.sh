@@ -17,7 +17,7 @@ require_tool() {
     fi
 }
 
-for tool in cargo rustup readelf sgdisk mformat mmd mcopy mdir sha256sum truncate tar; do
+for tool in cargo rustup readelf sgdisk mformat mmd mcopy mdir sha256sum truncate tar cmp; do
     require_tool "$tool"
 done
 
@@ -96,6 +96,19 @@ echo "Verifying partition table and files on the EFI System Partition..."
 sgdisk --verify "$IMAGE"
 mdir -i "$ESP_MTOOLS_IMAGE" ::/EFI/BOOT
 mdir -i "$ESP_MTOOLS_IMAGE" ::/exhi-kernel.elf
+
+mkdir -p "$ROOT_DIR/target"
+VERIFY_DIR="$(mktemp -d "$ROOT_DIR/target/exhios-release-verify.XXXXXX")"
+cleanup_verify() {
+    rm -rf "$VERIFY_DIR"
+}
+trap cleanup_verify EXIT
+mcopy -i "$ESP_MTOOLS_IMAGE" ::/EFI/BOOT/BOOTX64.EFI "$VERIFY_DIR/BOOTX64.EFI"
+mcopy -i "$ESP_MTOOLS_IMAGE" ::/exhi-kernel.elf "$VERIFY_DIR/exhi-kernel.elf"
+cmp "$BOOT_EFI" "$VERIFY_DIR/BOOTX64.EFI"
+cmp "$KERNEL_ELF" "$VERIFY_DIR/exhi-kernel.elf"
+rm -rf "$VERIFY_DIR"
+trap - EXIT
 
 cp "$ROOT_DIR/RELEASE_NOTES.md" "$PACKAGE_DIR/RELEASE_NOTES.md"
 cp "$ROOT_DIR/VERSION" "$PACKAGE_DIR/VERSION"
