@@ -351,50 +351,30 @@ P5.1–P5.7 реализованы. Общие x86-64 Ring 3 entry, SYSCALL entr
 
 [CI #412](https://github.com/mindwork64/exhiOS/actions/runs/42546613316): 8/8 VFS host tests, build и headless QEMU runtime passed. Userland filesystem syscalls и persistent filesystem пока отсутствуют.
 
-### P7 — Userland: состояние
+### P7 — Userland: принято
 
-**P7.1 — частично реализовано, runtime-приёмка pending.** ET_EXEC init загружается в private address space с RX code, RW+NX stack и guard page и исполняется в Ring 3. Production runtime использует `exhi-task::Scheduler`, двухслотовый process registry и отдельные LoadedProcess/address space, guarded kernel stack и FXSAVE state для каждого процесса. Init получает capability `TaskSpawn` и может через syscall `SpawnWorker` создать один встроенный worker, не завершаясь сам. Worker получает только `TaskYield`, `TaskExit` и `ConsoleWrite`; его запуск/выход планируется общим scheduler. `Exit` и validated CPL3 faults переводят только текущий процесс в Finished; reaper восстанавливает kernel CR3 и после switch-away освобождает ресурсы всех завершённых процессов и task records. Shell command `spawn` и serial QEMU сценарий добавлены; нормальный сценарий требует завершения worker, отказа второго `spawn` из-за занятого слота и очистки обоих процессов. Добавлен отдельный `process-worker-fault-smoke-test`: worker вызывает CPL3 `UD2`, kernel должен вернуть управление живому init, serial driver проверяет ответ `hostname`, затем reaper должен очистить оба процесса. Оба runtime-сценария пока не запускались. Специальная сборка userland для faulting worker прошла, Clippy для userland и kernel worker-fault feature также прошёл. Предыдущая single-process/reaper реализация принята в QEMU CI #484, но новая динамическая multi-process реализация ещё не запускалась в QEMU/CI. P5.6 остаётся отдельным архитектурным scheduler smoke test.
+**P7.1–P7.4 приняты** по self-hosted Actions [#513](https://github.com/mindwork64/exhiOS/actions/runs/42829639418): build job и полный QEMU runtime job (30 шагов) завершились успешно.
 
-**P7.2 — libexhi: интерфейсы реализованы, новая часть runtime не проверена.** `no_std` wrappers: `console_write`, `console_read`, `file_read`, `spawn_worker`, `yield_now`, `exit`; общий dispatcher проверяет capability до вызова service adapter. Clippy прошёл для workspace lib/bin targets и всех шести feature-наборов: `process-runtime`, `process-shell-smoke-test`, `process-multi-smoke-test`, `process-fault-smoke-test`, `process-run-smoke-test`, `process-load-smoke-test`, `process-worker-fault-smoke-test`. Userland `worker-fault-smoke-test` отдельно собран и прошёл Clippy. Unit tests dispatcher не запускались.
+- Production process manager: два слота, независимые address spaces, guarded kernel stacks, FXSAVE state, capability-gated SpawnWorker и deferred reaper.
+- Runtime проверены обычный запуск/yield/exit worker, точный отказ worker в TaskSpawn (AccessDenied), занятый слот, rollback и повторное использование слота, worker CPL3 UD2 recovery при живом init и очистка обоих process records.
+- libexhi: syscall wrappers для ConsoleWrite/ConsoleRead/FileRead/SpawnWorker/Yield/Exit.
+- Serial shell: help, hostname, version, echo, clear, config, spawn, exit; line editing и Ctrl+C.
+- Config: init получает hostname/prompt/version через FileRead из kernel RAMFS. RAMFS volatile; persistent filesystem и general userland file-management API не заявлены.
 
-**P7.3 — serial shell: реализован.** Интерактивная консоль Ring 3 с line editing, CR/LF/CRLF, Backspace/DEL, Ctrl+C/D, ограничением 127 байт и командами `help`, `hostname`, `version`, `echo`, `clear`, `config`, `spawn`, `exit`. Сценарий проверки `spawn` добавлен, но runtime не запускался.
+SMP, AP-local GS и user TLS не входят в принятую BSP/single-CPU реализацию.
 
-**P7.4 — конфигурация: реализована для RAMFS.** `exhi-config` разбирает bounded allocation-free UTF-8 key/value; init читает `/etc/exhi.conf` через capability-gated `FileRead`, применяет hostname/prompt/version и переключается на defaults при malformed/duplicate known settings. RAMFS volatile; persistent VFS storage remains future work.
+## P2.6 — Exception and process-stack hardening: принято
 
-### Последняя принятая CI-точка до динамического SpawnWorker
+- Пользовательский Linux Mint/QEMU прогон 2026-11-10 подтвердил по 64 KiB usable supervisor RW mappings для init, worker и reaper, а также unmapped lower guard page для каждого стека.
+- Контролируемое обращение к guard worker вызвало #PF, затем #DF; exception frame оказался на выделенном IST1. QEMU debug-exit завершился кодом 33.
+- Feature-specific Clippy повторно завершился успешно без новых предупреждений в smoke-пути. Остались только legacy suggestions в exhi-heap, exhi-elf, exhi-memory и базовых kernel modules.
+- Исправление unreachable_code и последующие formatting/string-escape cleanup коммиты: [23f34f8](https://github.com/mindwork64/exhiOS/commit/23f34f878b4fa63a4e9600633f0c477f4e54a66c), [76c06c5](https://github.com/mindwork64/exhiOS/commit/76c06c589224ae315e659ae035584c48a8730594), [0bfd656](https://github.com/mindwork64/exhiOS/commit/0bfd6565a224b6b3a0986209b7bebd286a680e74).
 
-- HEAD CI #484: [8f0b4bf](https://github.com/mindwork64/exhiOS/commit/8f0b4bf5f854b06b2f4d9452b408baf5a0a719d9).
-- CI [#484](https://github.com/mindwork64/exhiOS/actions/runs/42597997791): build — success (50 job steps, 0 Rust warning lines); QEMU runtime — success (27 completed job steps, including all 21 runtime scenarios).
-- P7.1 runtime markers in #484 подтвердили single-init syscall/Exit reaper path и cleanup адресного пространства, frames и task record. Это не является runtime-доказательством нового SpawnWorker.
-- После #484 в P7 внесены code-only изменения; новых CI/QEMU запусков не было. Пользователь локально подтвердил сборку обоих userland ELF и успешный Clippy для workspace lib/bin и всех шести P7 kernel feature-конфигураций (`process-runtime`, `process-shell-smoke-test`, `process-multi-smoke-test`, `process-fault-smoke-test`, `process-run-smoke-test`, `process-load-smoke-test`). В старых модулях остаются Clippy warnings; unit tests не запускались.
+## Release 0.1.0-alpha.1 — подготовка
 
-### Ближайшая задача
+- Целевая версия хранится в корневом файле VERSION.
+- Добавлены Release-profile сборка userland/kernel/UEFI bootloader, упаковка GPT/FAT32 UEFI image, SHA-256 checksums и отдельный QEMU/OVMF runner.
+- Release kernel выбирает Release init/worker ELF через not(debug_assertions); debug build продолжает использовать debug userland artifacts.
+- Shell version/banner обновлены до 0.1.0-alpha.1; shell QEMU smoke expectations синхронизированы.
+- **Пока не проверено:** реальная Release-сборка, созданный GPT image и загрузка этого image в QEMU/OVMF. Публикацию и git tag выполнять только после локальной проверки по документации BUILD.md.
 
-Runtime-приёмка P7.1: проверить `spawn` из Ring 3 shell, переключение init/worker через `Yield`, capabilities worker, возврат управления init после worker Exit, reaper cleanup обоих процессов и rollback неудачного spawn. Также нужно проверить production fault path при наличии двух процессов. До получения этих логов P7.1 остаётся открытым.
-
-### Последняя локальная проверка worker-fault пути — 2026-11-10
-
-- На HEAD [9b63adf](https://github.com/mindwork64/exhiOS/commit/9b63adf625512e2429110a1c89f0ed5d06060dcc) пользователь выполнил `cargo fmt` и повторный Clippy для `process-worker-fault-smoke-test`; команда завершилась успешно.
-- Исправлен критичный переход GS при восстановлении init после CPL3 fault worker: перед `IRETQ` к другому Ring 3 процессу выполняется `SWAPGS`, чтобы следующая инструкция `SYSCALL` переключилась на доверенный kernel GS. При неожиданном возврате/ошибке `user::enter_user` GS восстанавливается обратно в kernel layout. Reaper продолжает работу в kernel GS.
-- Clippy сообщил 20 legacy-предупреждений в существующих модулях ядра и не сообщил новых предупреждений в process-runtime/fault-recovery коде.
-- Ни QEMU, ни CI, ни unit tests после этого исправления не запускались. Проверка подтверждает только форматирование и lint/компиляцию; динамический spawn, возврат к init, fault recovery и reaper cleanup всё ещё требуют runtime-логов.
-
-### Проверка capability gate для worker — код добавлен, lint ожидается
-
-- Worker теперь вызывает `spawn_worker()` при отсутствии capability `TaskSpawn` и требует точный результат `SyscallError::AccessDenied`. При любом другом результате он сообщает об ошибке и завершает работу.
-- Проверка включена в оба режима: нормальный worker до yield/exit и fault-worker до выполнения `UD2`.
-- Обычный shell QEMU-драйвер и worker-fault драйвер ожидают отдельный маркер успешного отказа. Это позволяет отличить отказ capability gate от ошибки из-за исчерпания process slots.
-- Изменения кода внесены; Clippy для обычного и fault-mode userland ещё не запускался. QEMU/CI не запускались. P7 остаётся открытым.
-
-### Worker TaskSpawn denial — lint checkpoint 2026-11-10
-
-- Пользователь выполнил `cargo fmt`, затем обе команды Clippy:
-  - `cargo clippy -p exhi-init --bins --target x86_64-unknown-none`
-  - `cargo clippy -p exhi-init --bins --target x86_64-unknown-none --features worker-fault-smoke-test`
-- Обе завершились успешно, без предупреждений. Проверка точного `SyscallError::AccessDenied` включена в обычный и fault-mode worker.
-- Serial QEMU assertions не запускались; runtime-подтверждения capability gate и fault recovery пока нет.
-
-
-## Актуализация P7 — 2026-11-10
-
-Self-hosted Actions [#513](https://github.com/mindwork64/exhiOS/actions/runs/42829639418) passed: build and complete QEMU runtime jobs. Динамический SpawnWorker, TaskSpawn denial, worker rollback/slot reuse, worker fault recovery с живым init, multi-process scheduler/reaper, интерактивная shell и конфигурация подтверждены runtime. Для устранения stack overflow при spawn process/reaper kernel stack увеличен до 17 страниц: одна guard page + 16 usable pages (64 KiB). P7.1–P7.4 приняты в текущем BSP/single-CPU scope. SMP и persistent storage остаются вне этого результата.
