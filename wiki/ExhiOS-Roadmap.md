@@ -37,8 +37,8 @@
 - [x] Освобождение page-table frame после замены PDE и инвалидирования 512 адресов.
 - [x] QEMU проверил RW supervisor NX mapping, read/write, unmap/NotMapped, восстановление identity map и reclaim; debug-exit 33.
 - [x] Локальный прогон: NX enabled, 2 MiB→4 KiB split, запись/чтение, unmap/TLB invalidation, identity restore/reclaim; debug-exit 33.
-- [ ] Отдельные address spaces с собственными PML4 roots и kernel mapping policy.
-- [ ] Физические адреса за пределами текущего 4 GiB allocator window.
+- [x] Отдельные address spaces с собственными PML4 roots и kernel mapping policy — реализованы в P2.5.
+- Физические адреса выше текущего 4 GiB allocator window намеренно отложены; это documented limitation alpha 0.1.
 
 ### P2.4 Kernel heap
 **Завершено; host tests, headless CI QEMU и локальный Linux Mint/QEMU подтверждены 2026-11-06.**
@@ -59,8 +59,8 @@
 - [x] QEMU smoke test: два PML4, одинаковый user VA 0x200000000 ведёт на разные physical frames; общие kernel/heap translations сохраняются; private page tables reclaimed, data frames safely returned.
 - [x] Headless CI QEMU: [run 42217123278](https://github.com/mindwork64/exhiOS/actions/runs/42217123278); safety-hardening commit a856090: [run 42217369804](https://github.com/mindwork64/exhiOS/actions/runs/42217369804).
 - [x] Локальный Linux Mint/QEMU пользователя (2026-11-06): kernel root 0x11B000; A PML4 0x177000; B PML4 0x179000; shared kernel translation 0x104000; shared heap translation 0x163000; user VA 0x200000000 → A frame 0x17B000 / B frame 0x17C000; reclaim прошёл; debug-exit status 33.
-- [ ] Дополнительные lifecycle/error-path и permission-negative tests перед подготовкой Ring 3.
-- [ ] Ring 3 execution и hardware-enforced user/supervisor fault tests — отдельная часть user-mode milestone (P5).
+- [x] Дополнительные lifecycle/error-path и permission-negative tests — закрыты в P2.5.1.
+- [x] Ring 3 execution и hardware-enforced user/supervisor fault tests — закрыты в P5.
 
 Границы текущего результата: smoke test проверяет раздельные mappings, CR3 switching и supervisor-only policy на Ring 0. Он ещё не доказывает выполнение кода в CPL3 или аппаратное блокирование доступа пользователя к supervisor pages.
 
