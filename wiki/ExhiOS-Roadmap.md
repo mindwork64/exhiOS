@@ -250,7 +250,8 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [ ] The two-slot production registry and per-process LoadedProcess/address-space, guarded kernel-stack, FXSAVE and scheduler records are implemented in code.
 - [ ] Capability-gated `SpawnWorker` is implemented: only init receives `TaskSpawn`; it can create one built-in worker while remaining runnable. Worker receives only `TaskYield`, `TaskExit` and `ConsoleWrite`.
 - [ ] `Exit` and validated CPL3 faults mark only the current process Finished; the dedicated reaper restores kernel mappings, releases Finished resources and reaps task records after switch-away.
-- [ ] Serial QEMU driver sends `spawn`, observes worker startup/completion and requires both records to be reaped. Runtime scenario not yet executed.
+- [ ] Serial QEMU driver sends `spawn`, observes normal worker startup/completion and requires both records to be reaped. Runtime scenario not yet executed.
+- [ ] Separate worker-fault QEMU mode forces CPL3 `UD2`, verifies that init still answers `hostname`, then requires the reaper to reclaim both process records. Runtime scenario not yet executed.
 
 ### P7.2 — libexhi
 
