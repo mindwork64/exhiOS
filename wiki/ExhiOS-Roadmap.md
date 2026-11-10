@@ -314,13 +314,13 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [x] User manually verified `help`, `hostname`, `version`, `config`, `echo`, worker startup, exact worker `TaskSpawn → AccessDenied`, yield sequence and clean worker exit.
 - [x] User reproduced worker slot recycling repeatedly on 2026-11-11: after the first worker exited, four subsequent `spawn` operations each reclaimed the Finished worker record, started a replacement and observed its TaskSpawn denial, yield sequence and clean exit. The init shell remained responsive throughout.
 - [x] The same run was performed after the TaskSpawn authorization check was moved ahead of reclamation. This validates the final ordering in the Release runtime, not just the earlier implementation.
-- [x] `scripts/run-release-qemu.sh` accepted the image checksum before launch. Independent `sha256sum --check` verification of the packaged archive and image manifest remains pending.
-- [ ] Run final `cargo fmt --all -- --check` and Clippy for `exhi-init` and the kernel `process-runtime` path on the synced tree.
+- [x] `scripts/run-release-qemu.sh` accepted the disk-image checksum before launch. The user later independently verified both checksum manifests for that package; both reported `ЦЕЛ`.
+- [x] Clippy completed successfully for `exhi-init --bins` and the kernel `process-runtime` path. It emitted existing lint suggestions in `exhi-memory`, `exhi-heap`, `exhi-elf` and kernel modules; no errors were reported.
+- [ ] Apply rustfmt to the `process.rs` formatting diff reported by `cargo fmt --all -- --check`, then repeat the check.
 - [x] Add the generated `Cargo.lock` to source control — committed on `main` in [38f4405](https://github.com/mindwork64/exhiOS/commit/38f44050a66b325acdfdcef7b1b2cdaab1e9a9bf).
-- [ ] Independently verify both the release archive checksum and the image checksum manifest with `sha256sum --check`.
 - [x] Choose and add project license/redistribution terms: Apache-2.0; root `LICENSE` contains the canonical Apache License 2.0 text.
 - [x] Rebuilt and repeated the Release QEMU smoke test after the TaskSpawn authorization-order change; the user supplied a successful boot and repeated worker-replacement log on 2026-11-11. Subsequent commits changed documentation only. Any future code change still requires a fresh Release build/QEMU run before tagging.
-- Do not publish until final Clippy, checksum and license/redistribution gates are resolved.
+- [ ] Rebuild the final package so it includes the new `LICENSE` and current release documentation; boot that package in QEMU/OVMF and rerun SHA-256 verification for the newly generated archive and image.
 
 The serial shell currently has basic CR/LF, Backspace/DEL and Ctrl+C handling, but no cursor-key navigation or command history. In the supplied terminal log, `[A[A` was interpreted as ordinary input after up-arrow escape sequences; this is a shell-input limitation, not a process-runtime failure.
 
