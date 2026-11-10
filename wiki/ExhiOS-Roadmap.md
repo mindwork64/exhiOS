@@ -319,7 +319,8 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - [ ] Add the locally generated `Cargo.lock` to source control; it is not currently present on `main`.
 - [ ] Independently verify the release archive checksum.
 - [ ] Choose and add a project license/redistribution terms; no LICENSE/COPYING file exists.
-- [ ] Rebuild and repeat the Release QEMU smoke test after any remaining source changes; only then consider a release tag. Do not publish until the license and remaining gates are resolved.
+- [x] Rebuilt and repeated the Release QEMU smoke test after the TaskSpawn authorization-order change; the user supplied a successful boot and repeated worker-replacement log on 2026-11-11. Subsequent commits changed documentation only. Any future code change still requires a fresh Release build/QEMU run before tagging.
+- Do not publish until Clippy, Cargo.lock, archive checksum and license/redistribution gates are resolved.
 
 The serial shell currently has basic CR/LF, Backspace/DEL and Ctrl+C handling, but no cursor-key navigation or command history. In the supplied terminal log, `[A[A` was interpreted as ordinary input after up-arrow escape sequences; this is a shell-input limitation, not a process-runtime failure.
 
