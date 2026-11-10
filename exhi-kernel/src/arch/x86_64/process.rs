@@ -1810,6 +1810,8 @@ extern "sysv64" fn exhi_process_reaper_main() -> ! {
 /// reclaimed on the faulting task's kernel stack.
 #[cfg(feature = "process-runtime")]
 fn handoff_faulting_process_to_scheduler(vector: u64) -> ! {
+    // The vector is only consumed by the dedicated worker-fault smoke mode.
+    let _ = vector;
     unsafe {
         core::arch::asm!("cli", options(nomem, nostack, preserves_flags));
     }
