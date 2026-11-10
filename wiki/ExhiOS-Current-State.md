@@ -2,7 +2,7 @@
 
 Снимок: **2026-11-10**
 Репозиторий: https://github.com/mindwork64/exhiOS
-Рабочая ветка: `main` (code-only update; Actions suppressed via `[skip ci]`).
+Рабочая ветка: `main` (self-hosted Actions #513 passed (build + complete QEMU runtime)).
 
 P0–P6 сохранены. P7 code path включает двухслотовый process manager, capability-gated `SpawnWorker`, независимые address space/kernel stack/FX state, deferred reaper cleanup, `FileRead` из kernel RAMFS и shell-команды `config`/`spawn`. Serial QEMU driver расширен проверкой запуска worker и очистки обоих процессов. Эта версия не собиралась и не запускалась в QEMU/CI; `cargo`, `rustfmt` и `clippy-driver` в локальном контейнере отсутствуют.
 
@@ -385,3 +385,8 @@ Runtime-приёмка P7.1: проверить `spawn` из Ring 3 shell, пе�
   - `cargo clippy -p exhi-init --bins --target x86_64-unknown-none --features worker-fault-smoke-test`
 - Обе завершились успешно, без предупреждений. Проверка точного `SyscallError::AccessDenied` включена в обычный и fault-mode worker.
 - Serial QEMU assertions не запускались; runtime-подтверждения capability gate и fault recovery пока нет.
+
+
+## Актуализация P7 — 2026-11-10
+
+Self-hosted Actions [#513](https://github.com/mindwork64/exhiOS/actions/runs/42829639418) passed: build and complete QEMU runtime jobs. Динамический SpawnWorker, TaskSpawn denial, worker rollback/slot reuse, worker fault recovery с живым init, multi-process scheduler/reaper, интерактивная shell и конфигурация подтверждены runtime. Для устранения stack overflow при spawn process/reaper kernel stack увеличен до 17 страниц: одна guard page + 16 usable pages (64 KiB). P7.1–P7.4 приняты в текущем BSP/single-CPU scope. SMP и persistent storage остаются вне этого результата.

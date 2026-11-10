@@ -247,27 +247,26 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 
 ### P7.1 — Production process creation and lifecycle
 
-- [ ] The two-slot production registry and per-process LoadedProcess/address-space, guarded kernel-stack, FXSAVE and scheduler records are implemented in code.
-- [ ] Capability-gated `SpawnWorker` is implemented: only init receives `TaskSpawn`; it can create one built-in worker while remaining runnable. Worker receives only `TaskYield`, `TaskExit` and `ConsoleWrite`.
-- [ ] `Exit` and validated CPL3 faults mark only the current process Finished; the dedicated reaper restores kernel mappings, releases Finished resources and reaps task records after switch-away.
-- [ ] Serial QEMU driver sends `spawn`, observes normal worker startup/completion and requires both records to be reaped. Runtime scenario not yet executed.
-- [ ] Separate worker-fault QEMU mode forces CPL3 `UD2`, verifies that init still answers `hostname`, then requires the reaper to reclaim both process records. Runtime scenario not yet executed. The dedicated worker-fault userland build and Clippy passed; the kernel `process-worker-fault-smoke-test` Clippy pass also succeeded with existing warnings confined to legacy modules.
+- [x] The two-slot production registry and per-process LoadedProcess/address-space, guarded kernel-stack, FXSAVE and scheduler records are runtime-verified.
+- [x] Capability-gated `SpawnWorker`: init alone receives `TaskSpawn`; worker receives only `TaskYield`, `TaskExit` and `ConsoleWrite`. The worker's explicit spawn attempt returned `AccessDenied` in both normal and fault modes.
+- [x] `Exit` and validated CPL3 faults mark only the current process Finished; the dedicated reaper restores kernel mappings, releases Finished resources and reaps task records after switch-away.
+- [x] Serial QEMU verified normal worker startup/yield/exit, occupied-slot rejection, cleanup of both records, and rollback after a post-activation setup failure followed by successful slot reuse.
+- [x] Separate worker-fault QEMU mode forced CPL3 `UD2`, verified init remained responsive to `hostname`, and confirmed reaper cleanup of both process records.
 
 ### P7.2 — libexhi
 
-- [ ] `no_std` wrappers include `console_write`, `console_read`, `file_read`, `spawn_worker`, `yield_now` and `exit`. Spawn authorization tests are present but not run.
+- [x] `no_std` wrappers include `console_write`, `console_read`, `file_read`, `spawn_worker`, `yield_now` and `exit`; ABI, wrapper and syscall-dispatcher unit tests passed in Actions #513.
 
 ### P7.3 — serial shell
 
-- [ ] Existing bounded COM1 shell includes the new `spawn` command and serial-driver scenario. Runtime scenario not yet executed.
+- [x] Bounded COM1 shell with `spawn` passed the interactive QEMU serial-driver scenario, including command handling, line editing, Ctrl+C, config output and exit.
 
 ### P7.4 — configuration
 
-- [ ] Init reads `/etc/exhi.conf` through capability-gated `FileRead` from kernel RAMFS, then applies `hostname`, `prompt` and `version` and falls back to defaults on malformed settings.
-- [ ] RAMFS remains volatile and kernel-populated; persistent storage and FileWrite are outside P7.
+- [x] Init reads `/etc/exhi.conf` through capability-gated `FileRead` from kernel RAMFS, applies `hostname`, `prompt` and `version`, and passes the shell runtime scenario. Bounded parser tests passed.
+- [x] RAMFS remains volatile and kernel-populated; persistent storage and FileWrite are outside P7.
 
-**Validation:** user-side build of both userland ELF images succeeded. Clippy completed successfully for workspace library/binary targets and all seven P7 kernel configurations: `process-runtime`, `process-shell-smoke-test`, `process-multi-smoke-test`, `process-fault-smoke-test`, `process-run-smoke-test`, `process-load-smoke-test` and `process-worker-fault-smoke-test`. The worker-fault userland build and Clippy also passed. The feature-specific `run_init` dead-code warning was removed and the multi-process configuration was rechecked. Remaining warnings are in legacy modules outside the new P7 process-runtime paths. No unit tests, CI or QEMU runtime scenarios were run. P7 remains open pending runtime evidence.
-
+**Validation:** GitHub Actions [run #513](https://github.com/mindwork64/exhiOS/actions/runs/42829639418) passed on self-hosted runner `eqstream`: build job success and the complete QEMU runtime job success (30 completed steps). This includes the new worker rollback/slot-reuse test, normal worker capability/yield/exit test, worker-fault recovery with live init, production two-process scheduler/reaper test, and the existing platform smoke tests. P7.1–P7.4 are accepted for the current BSP/single-CPU implementation. Persistent storage and SMP are not implied.
 ## Current platform boundaries
 
 - Production first-process runtime and the shared syscall CPU-local context are BSP/single-CPU only.

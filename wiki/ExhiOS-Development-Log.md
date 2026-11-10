@@ -559,3 +559,13 @@ Implementation:
 - User synced the capability-denial worker changes, ran `cargo fmt`, and executed Clippy for the default `exhi-init --bins` target and for the `worker-fault-smoke-test` feature configuration.
 - Both commands completed successfully with no warnings. The normal worker and fault-injection worker both compile with the exact `SyscallError::AccessDenied` assertion.
 - No tests, QEMU runtime scenarios, or GitHub Actions were run. The next acceptance evidence must come from the local serial QEMU scenarios.
+
+
+## 2026-11-10 — Worker spawn stack sizing and P7 runtime acceptance
+
+- Actions run [#513](https://github.com/mindwork64/exhiOS/actions/runs/42829639418) exposed a Double Fault when the interactive Ring 3 shell attempted to spawn a worker. The build job had passed; QEMU stopped in the shell scenario before the worker-started marker.
+- Increased the process/reaper kernel stack allocation from 5 to 17 pages: one guard page plus 16 usable pages (64 KiB). This provides headroom for the bounded `LoadedProcess` construction/rollback path on the parent process kernel stack. Fix: [69c280e](https://github.com/mindwork64/exhiOS/commit/69c280ee45d03e78b3bcb788692740372fd6baaa).
+- Re-ran Actions on the self-hosted `eqstream` runner. Build job passed; the complete QEMU runtime job passed all 30 steps. The interactive shell, worker spawn, explicit worker `TaskSpawn → AccessDenied`, rollback after post-activation failure, subsequent slot reuse, worker CPL3 fault recovery with live init, two-process scheduler/reaper lifecycle and existing platform smoke tests all passed.
+- ABI, ELF, memory, heap, console, input, driver, scheduler, syscall, libexhi, config, VFS/RAMFS unit-test jobs and all build variants passed in the build job.
+- User-side `cargo fmt` and Clippy for both normal `exhi-init --bins` and `worker-fault-smoke-test` configurations had already passed without warnings.
+- P7.1–P7.4 are accepted for the current BSP/single-CPU implementation. This does not claim SMP or persistent storage support.
