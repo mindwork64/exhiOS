@@ -35,8 +35,13 @@ pub(crate) const EMBEDDED_WORKER_ELF: &[u8] = include_bytes!(concat!(
     "/../target/x86_64-unknown-none/debug/exhi-worker"
 ));
 
+/// Kernel entry point invoked by the bootloader using the x86-64 System V ABI.
+///
+/// # Safety
+/// `boot_info` must be null or point to a properly aligned, initialized
+/// `BootInfo` value that remains readable while the kernel uses it.
 #[no_mangle]
-pub extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
+pub unsafe extern "sysv64" fn _start(boot_info: *const BootInfo) -> ! {
     let mut framebuffer_console: Option<exhi_console::FramebufferConsole<'static>> = None;
     serial::COM1.initialize();
     serial::COM1.write(b"ExhiOS Kernel 0.1\r\n");
