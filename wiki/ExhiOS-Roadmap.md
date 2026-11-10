@@ -285,3 +285,8 @@ Scope boundary: userland file-open/read/write syscalls and persistent on-disk fi
 - The worker now attempts `SpawnWorker` and requires the exact `AccessDenied` response before continuing. This is checked in both the normal yield/exit path and the fault-injection path before `UD2`.
 - Both QEMU serial drivers now require the explicit `TaskSpawn denied as expected` marker. This proves the capability gate rejects the syscall before the process-slot allocator can return a generic resource error.
 - Code is committed; userland Clippy and runtime scenarios remain pending. This does not change P7 acceptance state.
+
+### 2026-11-10 — Worker capability-denial lint passed
+
+- User ran `cargo fmt` and Clippy for `exhi-init --bins` in both the default configuration and with `worker-fault-smoke-test`. Both completed successfully with no warnings.
+- The exact `TaskSpawn → AccessDenied` assertion is now lint-clean in both worker paths. Runtime confirmation by the serial QEMU drivers remains pending; P7 is still open.
