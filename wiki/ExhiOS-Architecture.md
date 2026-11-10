@@ -266,7 +266,7 @@ The kernel embeds the `exhi-init` and built-in `exhi-worker` ET_EXEC images. `Lo
 
 The fixed two-slot production registry is aligned with static process-object, kernel-stack and FXSAVE slots. A capability-gated `SpawnWorker` syscall lets init fill the second slot while remaining runnable. The syscall loads the worker image, creates its independent address space and guarded stack, initializes FXSAVE, registers the scheduler task and restores init's CR3/TSS/FX context before returning. Only init receives `TaskSpawn`; the worker receives `TaskYield`, `TaskExit` and `ConsoleWrite`.
 
-All user processes share the production scheduler and deferred reaper. `Exit` and validated CPL3 exceptions mark only the current task Finished. The reaper runs on its own supervisor stack, restores kernel CR3, releases every Finished process's frames/page tables and reaps task records after switch-away. A worker that exits while init remains active is retained until the final reaper pass; this v1 design allows one worker instance per boot.
+All user processes share the production scheduler and deferred reaper. `Exit` and validated CPL3 exceptions mark only the current task Finished. The reaper runs on its own supervisor stack, restores kernel CR3, releases every Finished process's frames/page tables and reaps task records after switch-away. A worker that exits or faults while init remains active is retained until the final reaper pass; this v1 design allows one worker instance per boot. The optional `process-worker-fault-smoke-test` builds a worker that executes `UD2`, checks the faulting task identity/vector, resumes init, and requires the final reaper to release both process records.
 
 ### P7.2 — libexhi
 
