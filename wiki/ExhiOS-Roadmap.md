@@ -87,17 +87,18 @@
 - [x] QEMU debug-exit variant switches RSP to the bottom of the mapped stack and faults on the guard page. The CPU's #PF frame push faults into the same guard page, raising #DF on IST1; handler verifies its frame pointer is inside IST1.
 - [x] Headless CI QEMU/OVMF run [42256850017](https://github.com/mindwork64/exhiOS/actions/runs/42256850017): loader reports guard 0x1E6FF000, stack 0x1E700000..0x1E710000; guard is unmapped, stack remains supervisor-only, #DF reaches IST1, debug-exit status 33.
 - [x] Локальный Linux Mint/QEMU (2026-11-06): guard page 0x1E0D3000 не отображена; stack 0x1E0D4000..0x1E0E4000 (64 KiB) остался supervisor-only; вызванный guard fault привёл к vector 8 (#DF), exception frame 0x122FC8 находится внутри IST1 0x11F000..0x123000; debug-exit status 33.
-- [ ] Additional deliberate stack exhaustion/guard-page variants beyond the controlled #DF probe.
+- [x] Additional deliberate stack exhaustion/guard-page variant for process stacks: all 16 usable 4 KiB pages (64 KiB) of init, worker and reaper stacks are verified as identity-mapped supervisor RW pages, and each lower guard is verified unmapped. The worker-stack guard fault escalates from #PF to #DF on IST1.
+- [x] Локальный Linux Mint/QEMU прогон пользователя (2026-11-10): `P2.6: init, worker and reaper stacks have 64 KiB supervisor mappings and unmapped guards`; controlled worker guard fault produced vector 8 (Double Fault), the exception frame was on IST1, `P2.6: double-fault IST runtime smoke test passed`, QEMU debug-exit status 33.
 
-Code-only addition (2026-11-10, runtime pending): `process-stack-guard-smoke-test` validates all 16 usable 4 KiB pages of both process stacks and the reaper stack (64 KiB each), requires identity-mapped supervisor RW pages and an unmapped lower guard for every stack, then forces #PF/#DF delivery from the worker stack. It must end with the existing IST1 success marker and QEMU debug-exit status 33. Run locally with:
+Runtime command:
 
 ```bash
 EXHIOS_QEMU_EXIT_TEST=1 EXHIOS_PROCESS_STACK_GUARD_TEST=1 EXHIOS_HEADLESS=1 ./scripts/run-qemu.sh
 ```
 
-The new path has not yet been linted or run by the user; this P2.6 sub-item remains open.
+The process-stack guard scenario is accepted from the supplied local QEMU runtime log. User-side Clippy completed successfully but reported one new `unreachable_code` warning caused by the intentionally diverging smoke-test trigger; the normal Ring 3 handoff tail is now cfg-excluded in this test configuration ([fix](https://github.com/mindwork64/exhiOS/commit/23f34f878b4fa63a4e9600633f0c477f4e54a66c)). Clippy rerun for that final warning fix remains pending; other reported suggestions are in existing modules.
 
-Latest code checkpoint: [b46c870](https://github.com/mindwork64/exhiOS/commit/b46c8702e3725281e9a42654524649d1d04b4fe8).
+Latest process-stack test fix: [23f34f8](https://github.com/mindwork64/exhiOS/commit/23f34f878b4fa63a4e9600633f0c477f4e54a66c); feature implementation: [521e5fe](https://github.com/mindwork64/exhiOS/commit/521e5fe875217f8c18e2167598a07751577659aa).
 
 ## P3 — Basic devices
 
