@@ -34,9 +34,9 @@ use crate::memory;
 use super::address_space::PageMapping;
 use super::address_space::{self, AddressSpace, AddressSpaceError, UserPageFlags};
 #[cfg(feature = "process-runtime")]
+use super::{gdt, serial, stack_guard, syscall, user};
 #[cfg(feature = "process-stack-guard-smoke-test")]
 use super::{idt, vmm};
-use super::{gdt, serial, stack_guard, syscall, user};
 
 const PAGE_SIZE: u64 = 4096;
 const PAGE_MASK: u64 = PAGE_SIZE - 1;
