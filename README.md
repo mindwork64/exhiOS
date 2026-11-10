@@ -46,3 +46,7 @@ See [Changelog](CHANGELOG.md), [Release notes](RELEASE_NOTES.md), [Build instruc
 - Real-hardware compatibility has not been qualified; use QEMU/OVMF first.
 
 The release image is an experimental alpha. Do not use it as the only boot medium or on a system containing data you need to preserve.
+
+## License and distribution
+
+No project license or redistribution terms have been selected yet. The repository currently has no LICENSE/COPYING file. Decide and add the intended terms before publicly distributing source or binaries.
