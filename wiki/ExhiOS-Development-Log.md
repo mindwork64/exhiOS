@@ -515,3 +515,12 @@ Implementation:
 - Process registry slot selection is aligned with the matching static resource slot. Stack guard installation is tracked per slot to avoid duplicate installation on retry.
 - Updated the build script to build both ELF targets and extended the serial shell driver to verify worker execution and final reaper cleanup of both process records.
 - Updated the P7 roadmap and architecture pages. This was a code-only update: no GitHub Actions, QEMU, Cargo build/tests or Clippy were run. Local Rust formatting tools were unavailable.
+
+
+## 2026-11-10 — P7 dynamic worker creation: local lint checkpoint
+
+- User ran `cargo fmt` after syncing the P7 dynamic-worker implementation.
+- User built the two embedded userland images successfully with `cargo build -p exhi-init --bin exhi-init --bin exhi-worker --target x86_64-unknown-none`.
+- Clippy completed successfully for `cargo clippy --workspace --lib --bins --target x86_64-unknown-none`, the production `process-runtime` feature, `process-shell-smoke-test`, and `process-multi-smoke-test`.
+- The feature-specific multi-process Clippy pass reported one `dead_code` warning for `run_init`, because that feature enters through `run_process_pair`. The entry point is now cfg-gated out of the process-pair build; a confirming rerun is pending.
+- Existing Clippy warnings remain in older allocator, ELF and architecture modules. No unit tests, GitHub Actions or QEMU runs were performed. P7 runtime acceptance remains pending.
